@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Faceless Finance</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d0d0d;
+      color: #e8e8e8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 2rem 3rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    header .logo {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+
+    header .logo span { color: #6ee7b7; }
+
+    nav a {
+      color: #aaa;
+      text-decoration: none;
+      margin-left: 2rem;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+
+    nav a:hover { color: #fff; }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 2rem;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #1a2e26;
+      color: #6ee7b7;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 0.35rem 0.9rem;
+      border-radius: 999px;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 6vw, 4rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1px;
+      max-width: 700px;
+      margin-bottom: 1.25rem;
+    }
+
+    h1 span { color: #6ee7b7; }
+
+    p.subtitle {
+      font-size: 1.1rem;
+      color: #888;
+      max-width: 480px;
+      line-height: 1.7;
+      margin-bottom: 2.5rem;
+    }
+
+    .cta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+
+    .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+
+    .btn-primary { background: #6ee7b7; color: #0d0d0d; }
+
+    .btn-secondary {
+      background: transparent;
+      color: #e8e8e8;
+      border: 1px solid #333;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      max-width: 900px;
+      width: 100%;
+      margin-top: 5rem;
+      padding: 0 1rem;
+    }
+
+    .card {
+      background: #141414;
+      border: 1px solid #1e1e1e;
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: left;
+    }
+
+    .card .icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
+    .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .card p { font-size: 0.85rem; color: #666; line-height: 1.6; }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.8rem;
+      color: #444;
+      border-top: 1px solid #1a1a1a;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Faceless<span>Finance</span></div>
+    <nav>
+      <a href="#">Features</a>
+      <a href="#">Pricing</a>
+      <a href="#">Docs</a>
+      <a href="#">Sign in</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="badge">Now in Beta</div>
+    <h1>Invest <span>anonymously</span>.<br>Trade without a trace.</h1>
+    <p class="subtitle">
+      Faceless Finance gives you institutional-grade portfolio tools
+      with privacy at the core — no personal data required.
+    </p>
+    <div class="cta">
+      <a href="#" class="btn btn-primary">Get Early Access</a>
+      <a href="#" class="btn btn-secondary">Learn More</a>
+    </div>
+
+    <div class="features">
+      <div class="card">
+        <div class="icon">🔒</div>
+        <h3>Zero-knowledge Auth</h3>
+        <p>Sign in without an email or phone number. Your identity stays yours.</p>
+      </div>
+      <div class="card">
+        <div class="icon">📊</div>
+        <h3>Real-time Analytics</h3>
+        <p>Live market data, portfolio tracking, and risk metrics — all client-side.</p>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Instant Execution</h3>
+        <p>Sub-second order routing with no middlemen and no surveillance.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🌐</div>
+        <h3>Decentralized Custody</h3>
+        <p>Your assets, your keys. Non-custodial by default.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    &copy; 2026 Faceless Finance &mdash; Built for privacy-first investors.
+  </footer>
+
+</body>
+</html>
