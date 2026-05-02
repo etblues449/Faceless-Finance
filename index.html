@@ -661,7 +661,6 @@ function NewVideoPage({ go }) {
   const [scriptObj, setScriptObj] = useState(null);
   const [renderId, setRenderId] = useState(null);
   const [heygenSpeed, setHeygenSpeed] = useState(TONE_PRESETS[tone].speed);
-  const [polling, setPolling] = useState(false);
   const [createdVideoId, setCreatedVideoId] = useState(null);
 
   const generateIdeas = async () => {
@@ -733,7 +732,7 @@ function NewVideoPage({ go }) {
       dispatch({ type:'UPDATE_VIDEO', id, patch:{ heygen: { ...video.heygen, videoId, status:'processing' } } });
       setRenderId(videoId);
       setStep(4);
-      setPolling(true);
+      // Polling is handled at App level — runs across any tab navigation.
     } catch (e) {
       setError(e.message);
       if (createdVideoId) {
@@ -742,40 +741,8 @@ function NewVideoPage({ go }) {
     } finally { setGenerating(false); }
   };
 
-  // Poll HeyGen status
-  useEffect(() => {
-    if (!polling || !renderId || !createdVideoId) return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const s = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: renderId });
-        if (cancelled) return;
-        const status = s.status;
-        if (status === 'completed') {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            stage:'approval',
-            heygen:{ videoId: renderId, status:'completed', videoUrl: s.video_url, thumbnailUrl: s.thumbnail_url, duration: s.duration, error:'' },
-          }});
-          setPolling(false);
-        } else if (status === 'failed') {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            heygen:{ videoId: renderId, status:'failed', error: s.error?.message || 'render failed', videoUrl:'', thumbnailUrl:'' },
-          }});
-          setPolling(false);
-        } else {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            heygen:{ videoId: renderId, status, error:'' },
-          }});
-        }
-      } catch (e) { console.warn(e); }
-    };
-    tick();
-    const iv = setInterval(tick, 8000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [polling, renderId, createdVideoId]);
-
   const reset = () => {
-    setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setPolling(false); setError('');
+    setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setError('');
   };
 
   const keysOk = state.settings.anthropicKey && state.settings.heygenKey && state.settings.heygenAvatarId && state.settings.heygenVoiceId;
@@ -925,6 +892,22 @@ function ApprovalPage({ go }) {
     if (!confirm('Send back to script stage? You can edit and re-render.')) return;
     dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' } });
   };
+  const checkNow = async (v) => {
+    if (!v.heygen?.videoId) return;
+    try {
+      const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: v.heygen.videoId });
+      if (r.status === 'completed' && r.video_url) {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+          stage:'approval',
+          heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
+        }});
+      } else if (r.status === 'failed') {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status:'failed', error: r.error?.message || 'render failed' } } });
+      } else if (r.status) {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+      }
+    } catch (e) { alert('Status check failed: ' + e.message); }
+  };
 
   return (
     <div>
@@ -957,9 +940,12 @@ function ApprovalPage({ go }) {
             <div className="alert alert-warn">
               {v.heygen?.status === 'failed'
                 ? `Render failed: ${v.heygen.error || 'unknown error'}`
-                : <><span className="spin"></span> Rendering ({v.heygen?.status || 'queued'})… polls every 8 seconds.</>}
+                : <><span className="spin"></span> Rendering ({v.heygen?.status || 'queued'})… auto-polls every 8s.</>}
               {v.heygen?.status === 'failed' && (
                 <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
+              )}
+              {v.heygen?.status !== 'failed' && (
+                <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>
               )}
             </div>
           )}
@@ -1377,6 +1363,8 @@ function SettingsPage() {
 function App() {
   const [state, dispatch] = useReducer(reducer, null, loadState);
   const [page, setPage] = useState('pipeline');
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; });
 
   useEffect(() => { saveState(state); }, [state]);
   useEffect(() => {
@@ -1384,6 +1372,35 @@ function App() {
     const tc = document.querySelector('meta[name="theme-color"]');
     if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#0A0A0F' : '#F7F8FA');
   }, [state.settings.theme]);
+
+  // Global HeyGen polling: survives page navigation. Polls every 8s for any video in 'render' stage.
+  useEffect(() => {
+    const tick = async () => {
+      const s = stateRef.current;
+      if (!s.settings.heygenKey) return;
+      const rendering = s.videos.filter(v => v.stage === 'render' && v.heygen?.videoId);
+      for (const v of rendering) {
+        try {
+          const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId });
+          if (r.status === 'completed' && r.video_url) {
+            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+              stage:'approval',
+              heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
+            }});
+          } else if (r.status === 'failed') {
+            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+              heygen:{ ...v.heygen, status:'failed', error: r.error?.message || r.error?.detail || 'render failed' },
+            }});
+          } else if (r.status && r.status !== v.heygen.status) {
+            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+          }
+        } catch (e) { console.warn('poll error', e); }
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 8000);
+    return () => clearInterval(iv);
+  }, []);
 
   const store = useMemo(() => ({ state, dispatch }), [state]);
 
