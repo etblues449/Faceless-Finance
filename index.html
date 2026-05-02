@@ -214,6 +214,18 @@ const PLATFORMS = {
 
 const STAGES = ['idea','script','render','approval','approved','published'];
 
+const MOOD_PRESETS = {
+  neutral:       { label:'Neutral / educational', desc:'Balanced framing, no special angle.', hint:'' },
+  dataDriven:    { label:'Data-driven',           desc:'Lead with hard numbers and comparisons.',
+                   hint:'Lead with a precise £ figure in the first 5 words. Use 2-3 specific numerical comparisons in the body. Pose the punchline as a calculation: "X minus Y equals £Z in your pocket."' },
+  personalStory: { label:'Personal story',        desc:'Open with a character/scenario. Walk through their decision.',
+                   hint:'Open with a one-sentence character: "A 35-year-old PAYE earner on £80k..." Track that person through the body. End with what the listener should do given they are like that character.' },
+  hype:          { label:'Hype / urgent',         desc:'High-energy. Hard CTA. Time-bound.',
+                   hint:'Maximum energy. Sentences as short as 3-4 words. Repeat the CTA twice. Anchor urgency to a real UK tax date ("before April 5", "this tax year").' },
+  investigative: { label:'Investigative',         desc:'Expose a hidden cost or trap most people miss.',
+                   hint:'Frame as exposing a hidden truth. Use "most people miss this" or "what your payslip hides" once (not more). Walk through the trap, then the fix.' },
+};
+
 const TONE_PRESETS = {
   matStyle: {
     label: 'Mat-style (QuidSquid)',
@@ -437,9 +449,10 @@ Return ONLY a JSON array of 6 idea objects with this exact shape:
 No prose, no markdown fences, just the JSON array.`;
 }
 
-function scriptSystemPrompt(settings, tone, platform) {
+function scriptSystemPrompt(settings, tone, platform, mood='neutral') {
   const t = TONE_PRESETS[tone] || TONE_PRESETS.matStyle;
   const p = PLATFORMS[platform] || PLATFORMS.tiktok;
+  const m = MOOD_PRESETS[mood] || MOOD_PRESETS.neutral;
   const targetSec = Math.round((p.ideal[0] + p.ideal[1]) / 2);
   return `You are writing a UK personal-finance short-form video script for ${p.name} (aspect ${p.aspect}, target ${targetSec}s).
 
@@ -448,6 +461,7 @@ Audience: ${settings.audience}
 
 ${t.promptStyle}
 
+${m.hint ? `Mood angle (overlay on tone):\n${m.hint}\n` : ''}
 Hard rules:
 - UK only. Use £, HMRC, ISA, SIPP, PAYE, Personal Allowance, etc. Use 2025/26 tax thresholds.
 - Educational framing only. Never recommend a specific product. No "you should buy/invest in X."
@@ -487,6 +501,19 @@ Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
   "youtubeTitle": "title optimised for YouTube Shorts (max 100 chars)",
   "broll": ["3-5 short search queries for Pexels stock footage relevant to the script"]
 }`;
+}
+
+// ============================================================================
+// PRE-FLIGHT
+// ============================================================================
+
+function preflightRender(settings, scriptText) {
+  const missing = [];
+  if (!settings.heygenKey) missing.push('HeyGen API key (Settings)');
+  if (!settings.heygenAvatarId) missing.push('HeyGen Avatar ID (Settings)');
+  if (!settings.heygenVoiceId) missing.push('HeyGen Voice ID (Settings)');
+  if (!scriptText || !scriptText.trim()) missing.push('Script text');
+  return missing;
 }
 
 // ============================================================================
@@ -696,6 +723,7 @@ function NewVideoPage({ go }) {
   const [step, setStep] = useState(1);
   const [tone, setTone] = useState(state.settings.defaultTone || 'matStyle');
   const [platform, setPlatform] = useState('tiktok');
+  const [mood, setMood] = useState('neutral');
   const [ideas, setIdeas] = useState([]);
   const [topic, setTopic] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -733,7 +761,7 @@ function NewVideoPage({ go }) {
       const out = await callClaude({
         apiKey: state.settings.anthropicKey,
         model: state.settings.llmModel,
-        system: scriptSystemPrompt(state.settings, tone, platform),
+        system: scriptSystemPrompt(state.settings, tone, platform, mood),
         user: `Write the script for this idea:\nTitle: ${idea.title}\nHook: ${idea.hook}\nAngle: ${idea.angle}`,
         maxTokens: 2400,
       });
@@ -747,6 +775,8 @@ function NewVideoPage({ go }) {
   };
 
   const startRender = async () => {
+    const missing = preflightRender(state.settings, scriptObj?.script);
+    if (missing.length) { setError('Missing before render: ' + missing.join(', ')); return; }
     setError(''); setGenerating(true);
     try {
       // Persist video first as 'render' stage
@@ -796,6 +826,8 @@ function NewVideoPage({ go }) {
 
   const renderSample = async () => {
     if (!scriptObj?.script) return;
+    const missing = preflightRender(state.settings, scriptObj.script);
+    if (missing.length) { setSampleErr('Missing: ' + missing.join(', ')); return; }
     setSampleErr(''); setSampleUrl(''); setSampling(true);
     try {
       // Take first ~30 words for a ~10-second sample
@@ -862,6 +894,13 @@ function NewVideoPage({ go }) {
               </select>
               <div className="help">Script length and caption rules adapt to this. Other platforms get adapted captions automatically.</div>
             </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label className="label">Mood / angle</label>
+            <select value={mood} onChange={e=>setMood(e.target.value)}>
+              {Object.entries(MOOD_PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <div className="help">{MOOD_PRESETS[mood].desc}</div>
           </div>
           <button className="btn" onClick={() => setStep(2)} disabled={!keysOk}>Next: Pick an idea →</button>
         </div>
@@ -1027,6 +1066,7 @@ function ApprovalPage({ go }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
                 <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
               </>}
+              {v.heygen?.videoId && <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${v.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>}
               <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => del(v)}>× Delete</button>
             </div>
           </div>
@@ -1066,6 +1106,8 @@ function RerenderControls({ video, onClose }) {
   const [err, setErr] = useState('');
 
   const start = async () => {
+    const missing = preflightRender({ ...state.settings, heygenVoiceId: voiceId }, script);
+    if (missing.length) { setErr('Missing: ' + missing.join(', ')); return; }
     setErr(''); setSubmitting(true);
     try {
       const newVideoId = await heygenGenerate({
@@ -1177,6 +1219,7 @@ function PublishCard({ video }) {
               ⬇ Download MP4
             </button>
           )}
+          {video.heygen?.videoId && <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${video.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>}
           <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { if(confirm(`Delete "${video.idea?.title || 'this video'}"? Cannot be undone.`)) dispatch({ type:'DELETE_VIDEO', id:video.id }); }}>× Delete</button>
         </div>
       </div>
