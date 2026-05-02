@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FinCast Studio — UK Tax Saving</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg:#0A0A0F; --surface:#12121A; --card:#1A1A26; --card2:#22222F;
+    --border:#2A2A3E; --border2:#3A3A52;
+    --accent:#00E5A0; --accent-dim:rgba(0,229,160,.12); --accent-hover:#00FFB3;
+    --gold:#FFD166; --danger:#FF6B6B; --warn:#FFA94D;
+    --text:#E8E8F0; --text-dim:#9898B8; --muted:#6B6B8A;
+  }
+  *,*::before,*::after { box-sizing:border-box; }
+  html,body,#root { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif; overflow:hidden; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  input,textarea,select { font:inherit; color:inherit; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 12px; outline:none; width:100%; }
+  input:focus,textarea:focus,select:focus { border-color:var(--accent); }
+  textarea { resize:vertical; min-height:90px; }
+  a { color:var(--accent); }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:6px; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--border2); }
+  .app { display:flex; height:100vh; }
+  .side { width:230px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+  .brand { padding:20px 18px; border-bottom:1px solid var(--border); }
+  .brand-name { font-size:18px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:8px; }
+  .brand-sub { font-size:11px; color:var(--muted); margin-top:3px; letter-spacing:.04em; }
+  .nav { flex:1; padding:10px 0; overflow-y:auto; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:10px 18px; cursor:pointer; color:var(--text-dim); font-size:13px; border-left:3px solid transparent; transition:all .12s; user-select:none; }
+  .nav-item:hover { color:var(--text); background:rgba(255,255,255,.02); }
+  .nav-item.active { color:var(--accent); background:var(--accent-dim); border-left-color:var(--accent); font-weight:600; }
+  .nav-icon { width:18px; text-align:center; opacity:.85; }
+  .side-foot { padding:14px 18px; border-top:1px solid var(--border); font-size:11px; color:var(--muted); }
+  .main { flex:1; overflow-y:auto; padding:24px 28px; }
+  .page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; gap:16px; }
+  .page-title { font-size:22px; font-weight:700; }
+  .page-sub { font-size:13px; color:var(--muted); margin-top:3px; }
+  .row { display:flex; gap:12px; }
+  .col { flex:1; min-width:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+  .card-title { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
+  .label { font-size:12px; color:var(--text-dim); margin-bottom:6px; display:block; font-weight:500; }
+  .help { font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4; }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:8px; border:none; background:var(--accent); color:#000; font-weight:600; font-size:13px; transition:all .12s; }
+  .btn:hover:not(:disabled) { background:var(--accent-hover); transform:translateY(-1px); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-ghost { background:transparent; color:var(--text-dim); border:1px solid var(--border); }
+  .btn-ghost:hover:not(:disabled) { background:var(--card2); color:var(--text); transform:none; }
+  .btn-outline { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  .btn-outline:hover:not(:disabled) { background:var(--accent-dim); transform:none; }
+  .btn-danger { background:var(--danger); color:#fff; }
+  .btn-danger:hover:not(:disabled) { background:#ff5252; }
+  .btn-sm { padding:5px 11px; font-size:12px; }
+  .badge { display:inline-block; padding:3px 8px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; background:var(--card2); color:var(--text-dim); }
+  .badge-idea { background:rgba(255,209,102,.15); color:var(--gold); }
+  .badge-script { background:rgba(155,180,255,.15); color:#9BB4FF; }
+  .badge-render { background:rgba(255,169,77,.18); color:var(--warn); }
+  .badge-approval { background:rgba(0,229,160,.15); color:var(--accent); }
+  .badge-approved { background:rgba(0,229,160,.25); color:var(--accent); }
+  .badge-published { background:#22413a; color:var(--accent); }
+  .pill { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; background:var(--card2); color:var(--text-dim); }
+  .empty { padding:32px 16px; text-align:center; color:var(--muted); font-size:13px; border:1px dashed var(--border); border-radius:10px; }
+  .alert { padding:12px 14px; border-radius:8px; font-size:12px; line-height:1.5; }
+  .alert-warn { background:rgba(255,169,77,.1); border:1px solid rgba(255,169,77,.3); color:var(--warn); }
+  .alert-err { background:rgba(255,107,107,.08); border:1px solid rgba(255,107,107,.3); color:var(--danger); }
+  .alert-ok { background:var(--accent-dim); border:1px solid rgba(0,229,160,.3); color:var(--accent); }
+  .stage-col { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-height:60px; }
+  .stage-col-h { font-size:11px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; padding:4px 6px 10px; display:flex; justify-content:space-between; align-items:center; }
+  .vcard { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; cursor:pointer; transition:border-color .1s; }
+  .vcard:hover { border-color:var(--accent); }
+  .vcard-title { font-size:13px; font-weight:500; line-height:1.35; margin-bottom:6px; }
+  .vcard-meta { display:flex; gap:6px; flex-wrap:wrap; font-size:10px; color:var(--muted); }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; }
+  .modal { background:var(--card); border:1px solid var(--border); border-radius:14px; max-width:720px; width:100%; max-height:90vh; overflow-y:auto; }
+  .modal-h { padding:18px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .modal-b { padding:22px; }
+  .modal-f { padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
+  .seg { display:inline-flex; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:3px; gap:2px; }
+  .seg-btn { padding:6px 12px; border:none; background:transparent; color:var(--text-dim); border-radius:6px; font-size:12px; }
+  .seg-btn.active { background:var(--accent-dim); color:var(--accent); font-weight:600; }
+  .kbd { display:inline-block; font-family:monospace; font-size:11px; padding:2px 6px; border-radius:4px; background:var(--card2); color:var(--text-dim); border:1px solid var(--border); }
+  .preview-vid { width:100%; max-height:540px; background:#000; border-radius:8px; }
+  .platform-card { border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--card); }
+  .platform-card.tiktok { border-left:3px solid #FE2C55; }
+  .platform-card.reels { border-left:3px solid #E4405F; }
+  .platform-card.shorts { border-left:3px solid #FF0000; }
+  .platform-card.long { border-left:3px solid #aaa; }
+  .platform-h { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .platform-name { font-weight:700; font-size:13px; }
+  .char-count { font-size:11px; color:var(--muted); font-family:monospace; }
+  .char-count.over { color:var(--danger); }
+  .slider { -webkit-appearance:none; width:100%; height:4px; background:var(--border); border-radius:2px; outline:none; padding:0; }
+  .slider::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; }
+  .slider::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; border:none; }
+  .key-status { display:inline-flex; align-items:center; gap:4px; font-size:11px; }
+  .dot { width:6px; height:6px; border-radius:50%; background:var(--muted); }
+  .dot.ok { background:var(--accent); }
+  .dot.bad { background:var(--danger); }
+  .step-dots { display:flex; gap:6px; margin-bottom:18px; }
+  .step-dot { flex:1; height:3px; border-radius:2px; background:var(--border); }
+  .step-dot.done { background:var(--accent); }
+  .step-dot.active { background:var(--accent); box-shadow:0 0 0 2px var(--accent-dim); }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid var(--accent); border-top-color:transparent; border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .copy-tip { font-size:10px; color:var(--accent); margin-left:6px; opacity:0; transition:opacity .2s; }
+  .copy-tip.show { opacity:1; }
+  details { margin-top:8px; }
+  summary { cursor:pointer; font-size:12px; color:var(--text-dim); user-select:none; }
+  summary:hover { color:var(--text); }
+  pre.script-text { font:13px/1.7 -apple-system,Inter,sans-serif; white-space:pre-wrap; margin:0; color:var(--text-dim); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
+  }
+}
+</script>
+</head>
+<body>
+<div id="root" style="padding:24px;color:#9898B8;font:14px sans-serif">Loading FinCast Studio…</div>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect, useReducer, useMemo, useRef, useCallback } from 'react';
+import { createRoot } from 'react-dom/client';
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const STORAGE_KEY = 'fincast.v1';
+const APP_VERSION = '1.0.0';
+
+const PLATFORMS = {
+  tiktok:  { name:'TikTok',         aspect:'9:16', maxCaption:2200, ideal:[20,60],  hashtagLimit:5,  uploadUrl:'https://www.tiktok.com/upload', studioUrl:'https://www.tiktok.com/tiktokstudio/upload' },
+  reels:   { name:'Instagram Reels',aspect:'9:16', maxCaption:2200, ideal:[15,90],  hashtagLimit:10, uploadUrl:'https://www.instagram.com/reels/create/', studioUrl:'https://business.facebook.com/latest/content_calendar' },
+  shorts:  { name:'YouTube Shorts', aspect:'9:16', maxCaption:5000, ideal:[15,60],  hashtagLimit:5,  uploadUrl:'https://www.youtube.com/upload',     studioUrl:'https://studio.youtube.com' },
+  long:    { name:'YouTube Long',   aspect:'16:9', maxCaption:5000, ideal:[180,420],hashtagLimit:5,  uploadUrl:'https://www.youtube.com/upload',     studioUrl:'https://studio.youtube.com' },
+};
+
+const STAGES = ['idea','script','render','approval','approved','published'];
+
+const TONE_PRESETS = {
+  matStyle: {
+    label: 'Mat-style (QuidSquid)',
+    desc: 'Punchy. 6–10 word sentences. Brutal hook. £-saved on screen. Sub-30 sec.',
+    speed: 1.05,
+    wpmTarget: 165,
+    promptStyle: `Tone reference: like UK creator "QuidSquid" (Mat).
+- Open with a sharp hook in the first 3 seconds. No setup, no greeting.
+- Sentences 6-10 words. Punchy. No jargon.
+- Use one specific number per video (£X saved or owed).
+- Working-class register. No "let's dive in" / "in this video" filler.
+- End with a clear single action ("set up the SIPP this week", "claim it before April 5").
+- Total spoken duration: 25-45 seconds.`,
+  },
+  rebeccaStyle: {
+    label: 'Rebecca-style (chartered accountant)',
+    desc: 'Warm, technical-but-clear, slower educational pace, defines terms.',
+    speed: 0.95,
+    wpmTarget: 135,
+    promptStyle: `Tone reference: like UK creator "Rebecca's Finance Channel".
+- Calm, qualified-accountant register but warm and accessible.
+- Define every technical term in plain English ("Personal allowance — that's the £12,570 you can earn before any tax.").
+- Walk through one concept thoroughly with one worked example.
+- Slower pace, longer sentences allowed but never run-on.
+- Confidence without hype. No "you won't believe this" framing.
+- Total spoken duration: 60-90 seconds.`,
+  },
+  neutral: {
+    label: 'Neutral / educational',
+    desc: 'Clear, mid-pace, balanced.',
+    speed: 1.0,
+    wpmTarget: 150,
+    promptStyle: `Tone: clear, neutral, educational. No clickbait. Define terms briefly. 45-60 seconds spoken.`,
+  },
+};
+
+const FCA_DISCLAIMER = 'This is for educational purposes only and is not financial advice. I am not authorised by the Financial Conduct Authority. Always consult a qualified adviser before making financial decisions. Capital at risk.';
+
+const DEFAULT_SETTINGS = {
+  anthropicKey: '',
+  heygenKey: '',
+  heygenAvatarId: '',
+  heygenVoiceId: '',
+  pexelsKey: '',
+  bufferToken: '',
+  niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
+  audience: 'UK PAYE earners earning between minimum wage and £125,140. Particular relevance to those approaching or in the £100k–£125,140 personal-allowance taper zone.',
+  channelHandle: '',
+  defaultTone: 'matStyle',
+  defaultPlatforms: ['tiktok','reels','shorts'],
+  disclaimer: FCA_DISCLAIMER,
+  llmModel: 'claude-sonnet-4-6',
+};
+
+// ============================================================================
+// STATE / PERSISTENCE
+// ============================================================================
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { settings:{...DEFAULT_SETTINGS}, videos:[] };
+    const parsed = JSON.parse(raw);
+    return {
+      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings||{}) },
+      videos: parsed.videos || [],
+    };
+  } catch (e) {
+    console.warn('State load failed', e);
+    return { settings:{...DEFAULT_SETTINGS}, videos:[] };
+  }
+}
+function saveState(s) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) { console.warn(e); } }
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET_SETTINGS': return { ...state, settings:{...state.settings, ...action.patch} };
+    case 'CREATE_VIDEO': return { ...state, videos:[action.video, ...state.videos] };
+    case 'UPDATE_VIDEO': return { ...state, videos: state.videos.map(v => v.id===action.id ? {...v, ...action.patch, updatedAt:Date.now()} : v) };
+    case 'DELETE_VIDEO': return { ...state, videos: state.videos.filter(v => v.id !== action.id) };
+    case 'IMPORT': return action.state;
+    default: return state;
+  }
+}
+
+// ============================================================================
+// API HELPERS
+// ============================================================================
+
+async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, maxTokens=2400 }) {
+  if (!apiKey) throw new Error('Missing Anthropic API key. Add it in Settings.');
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers: {
+      'content-type':'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true',
+    },
+    body: JSON.stringify({
+      model, max_tokens: maxTokens,
+      system,
+      messages:[{ role:'user', content: user }],
+    }),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`Claude API ${r.status}: ${t.slice(0,300)}`);
+  }
+  const data = await r.json();
+  return data.content?.[0]?.text || '';
+}
+
+async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0 }) {
+  if (!apiKey) throw new Error('Missing HeyGen API key. Add it in Settings.');
+  if (!avatarId || !voiceId) throw new Error('Missing HeyGen avatar or voice ID. Add them in Settings.');
+  const dim = aspect==='16:9' ? { width:1920, height:1080 } : { width:1080, height:1920 };
+  const body = {
+    video_inputs: [{
+      character: { type:'avatar', avatar_id: avatarId, avatar_style:'normal' },
+      voice: { type:'text', input_text: scriptText, voice_id: voiceId, speed },
+    }],
+    dimension: dim,
+    test: false,
+  };
+  const r = await fetch('https://api.heygen.com/v2/video/generate', {
+    method:'POST',
+    headers:{ 'content-type':'application/json', 'x-api-key': apiKey },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`HeyGen ${r.status}: ${t.slice(0,300)}`);
+  }
+  const data = await r.json();
+  if (data.error) throw new Error(`HeyGen error: ${JSON.stringify(data.error)}`);
+  return data.data?.video_id;
+}
+
+async function heygenStatus({ apiKey, videoId }) {
+  const r = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, {
+    headers:{ 'x-api-key': apiKey },
+  });
+  if (!r.ok) throw new Error(`HeyGen status ${r.status}`);
+  const data = await r.json();
+  return data.data || {};
+}
+
+async function pexelsSearch({ apiKey, query, perPage=8 }) {
+  if (!apiKey) return { videos: [] };
+  const r = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, {
+    headers: { Authorization: apiKey },
+  });
+  if (!r.ok) throw new Error(`Pexels ${r.status}`);
+  return r.json();
+}
+
+// Buffer compose URL — phase 1 (no backend). Opens Buffer with prefilled text + media URL.
+function bufferComposeUrl({ text, mediaUrl }) {
+  const base = 'https://buffer.com/compose';
+  const params = new URLSearchParams();
+  if (text) params.set('text', text);
+  if (mediaUrl) params.set('picture', mediaUrl);
+  return `${base}?${params.toString()}`;
+}
+
+// ============================================================================
+// PROMPTS
+// ============================================================================
+
+function ideaSystemPrompt(settings) {
+  return `You are a UK personal-finance content strategist generating short-form video ideas.
+
+Channel niche: ${settings.niche}
+Target audience: ${settings.audience}
+
+Generate ideas that:
+- Address ONE specific UK tax-saving lever per idea (ISA, SIPP, salary sacrifice, marriage allowance, £100k taper, dividend allowance, CGT, Personal Savings Allowance, Trading Allowance, etc.).
+- Use real 2025/26 UK tax thresholds (Personal Allowance £12,570; basic rate to £50,270; higher rate to £125,140; additional rate above; ISA £20,000; pension annual allowance £60,000).
+- Hook with a specific number or scenario, not generic ("Why your salary hike at £100k makes you POORER" not "Tax tips").
+- Avoid SEBI/India terminology. UK-only: HMRC, FCA, GBP, ISA, SIPP, PAYE, self-assessment.
+- Stay clear of regulated financial-advice phrasing. Educational only.
+
+Return ONLY a JSON array of 6 idea objects with this exact shape:
+[{"title":"...","hook":"first 3 seconds spoken","angle":"the one tax lever covered","platform":"tiktok|reels|shorts|long"}]
+No prose, no markdown fences, just the JSON array.`;
+}
+
+function scriptSystemPrompt(settings, tone, platform) {
+  const t = TONE_PRESETS[tone] || TONE_PRESETS.matStyle;
+  const p = PLATFORMS[platform] || PLATFORMS.tiktok;
+  const targetSec = Math.round((p.ideal[0] + p.ideal[1]) / 2);
+  return `You are writing a UK personal-finance short-form video script for ${p.name} (aspect ${p.aspect}, target ${targetSec}s).
+
+Channel niche: ${settings.niche}
+Audience: ${settings.audience}
+
+${t.promptStyle}
+
+Hard rules:
+- UK only. Use £, HMRC, ISA, SIPP, PAYE, Personal Allowance, etc. Use 2025/26 tax thresholds.
+- Educational framing only. Never recommend a specific product. No "you should buy/invest in X."
+- Never mention specific brokers, platforms, or fund names.
+- Numbers must be plausible and round to whole pounds.
+- The script will be read aloud by an AI avatar. Write it as continuous spoken sentences (no headers, no bullets, no stage directions in the script field).
+- Approx ${t.wpmTarget} words per minute → aim for ${Math.round(t.wpmTarget * targetSec / 60)} words.
+- Do NOT include the disclaimer in the spoken script — it will be added separately to captions.
+
+Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
+{
+  "title": "video title (max 60 chars, hook + benefit)",
+  "hook": "first 3 seconds, verbatim",
+  "script": "the FULL spoken script as one continuous string of sentences",
+  "estimatedDurationSec": <integer>,
+  "captions": {
+    "tiktok": "caption for TikTok, hook + 1-2 lines + CTA, no hashtags",
+    "reels":  "caption for Reels, similar",
+    "shorts": "caption for YT Shorts (this becomes the description, can be slightly longer)",
+    "long":   "long-form description with timestamps placeholder"
+  },
+  "hashtags": {
+    "tiktok": ["#uktax","#..."],
+    "reels":  ["#..."],
+    "shorts": ["#..."],
+    "long":   ["#..."]
+  },
+  "youtubeTitle": "title optimised for YouTube Shorts (max 100 chars)",
+  "broll": ["3-5 short search queries for Pexels stock footage relevant to the script"]
+}`;
+}
+
+// ============================================================================
+// UTILS
+// ============================================================================
+
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const fmt = ts => ts ? new Date(ts).toLocaleString('en-GB', { dateStyle:'medium', timeStyle:'short' }) : '—';
+const stageBadgeCls = s => `badge badge-${s}`;
+const wordCount = s => (s||'').trim().split(/\s+/).filter(Boolean).length;
+
+function tryParseJSON(text) {
+  if (!text) return null;
+  // Strip code fences if present
+  const cleaned = text.replace(/```json\s*/g,'').replace(/```\s*$/g,'').trim();
+  try { return JSON.parse(cleaned); } catch {}
+  // Try to find first JSON object/array
+  const m = cleaned.match(/[\[{][\s\S]*[\]}]/);
+  if (m) { try { return JSON.parse(m[0]); } catch {} }
+  return null;
+}
+
+function copy(text) {
+  try { navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
+function download(filename, blobOrText, mime='text/plain') {
+  const blob = blobOrText instanceof Blob ? blobOrText : new Blob([blobOrText], { type:mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadRemote(url, filename) {
+  // Trigger browser download of a remote MP4. Some hosts CORS-block fetch; falling back to opening in a new tab.
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('fetch failed');
+    const blob = await r.blob();
+    download(filename, blob, blob.type || 'video/mp4');
+  } catch {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+// ============================================================================
+// CONTEXT
+// ============================================================================
+
+const StoreCtx = React.createContext(null);
+function useStore() { return React.useContext(StoreCtx); }
+
+// ============================================================================
+// LAYOUT
+// ============================================================================
+
+const NAV = [
+  { id:'pipeline', label:'Pipeline',   icon:'▦' },
+  { id:'new',      label:'New Video',  icon:'✦' },
+  { id:'approval', label:'Approval',   icon:'✓' },
+  { id:'publish',  label:'Publish',    icon:'↗' },
+  { id:'calendar', label:'Calendar',   icon:'▣' },
+  { id:'settings', label:'Settings',   icon:'⚙' },
+];
+
+function Sidebar({ page, setPage, state }) {
+  const counts = useMemo(() => {
+    const c = { pipeline: state.videos.length, approval:0, publish:0, calendar:0 };
+    state.videos.forEach(v => {
+      if (v.stage==='approval') c.approval++;
+      if (v.stage==='approved') c.publish++;
+    });
+    return c;
+  }, [state.videos]);
+  return (
+    <div className="side">
+      <div className="brand">
+        <div className="brand-name">▲ FinCast</div>
+        <div className="brand-sub">UK TAX-SAVING STUDIO</div>
+      </div>
+      <div className="nav">
+        {NAV.map(item => (
+          <div key={item.id}
+               className={`nav-item ${page===item.id?'active':''}`}
+               onClick={() => setPage(item.id)}>
+            <span className="nav-icon">{item.icon}</span>
+            <span style={{flex:1}}>{item.label}</span>
+            {counts[item.id] > 0 && <span className="pill">{counts[item.id]}</span>}
+          </div>
+        ))}
+      </div>
+      <div className="side-foot">
+        <KeyStatus state={state} />
+        <div style={{marginTop:6}}>v{APP_VERSION}</div>
+      </div>
+    </div>
+  );
+}
+
+function KeyStatus({ state }) {
+  const { anthropicKey, heygenKey, heygenAvatarId, heygenVoiceId } = state.settings;
+  const ok = anthropicKey && heygenKey && heygenAvatarId && heygenVoiceId;
+  return <span className="key-status"><span className={`dot ${ok?'ok':'bad'}`}></span>{ok?'Keys OK':'Keys missing'}</span>;
+}
+
+// ============================================================================
+// PAGE: PIPELINE
+// ============================================================================
+
+function PipelinePage() {
+  const { state, dispatch } = useStore();
+  const [openVideo, setOpenVideo] = useState(null);
+  const cols = [
+    { stage:'idea',      label:'Idea' },
+    { stage:'script',    label:'Script' },
+    { stage:'render',    label:'Rendering' },
+    { stage:'approval',  label:'Awaiting approval' },
+    { stage:'approved',  label:'Approved' },
+    { stage:'published', label:'Published' },
+  ];
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Pipeline</div>
+          <div className="page-sub">Every video by stage. Click a card to inspect.</div>
+        </div>
+      </div>
+      {state.videos.length === 0 && (
+        <div className="empty">No videos yet. Hit <strong>New Video</strong> to create your first one.</div>
+      )}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12}}>
+        {cols.map(c => {
+          const items = state.videos.filter(v => v.stage === c.stage);
+          return (
+            <div key={c.stage} className="stage-col">
+              <div className="stage-col-h"><span>{c.label}</span><span>{items.length}</span></div>
+              {items.length===0 && <div style={{fontSize:11,color:'var(--muted)',padding:6}}>—</div>}
+              {items.map(v => (
+                <div key={v.id} className="vcard" onClick={() => setOpenVideo(v.id)}>
+                  <div className="vcard-title">{v.idea?.title || 'Untitled'}</div>
+                  <div className="vcard-meta">
+                    <span className={stageBadgeCls(v.stage)}>{v.stage}</span>
+                    <span>{fmt(v.updatedAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {openVideo && <VideoModal id={openVideo} onClose={() => setOpenVideo(null)} />}
+    </div>
+  );
+}
+
+function VideoModal({ id, onClose }) {
+  const { state, dispatch } = useStore();
+  const v = state.videos.find(x => x.id===id);
+  if (!v) return null;
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">
+          <div>
+            <div style={{fontSize:16, fontWeight:700}}>{v.idea?.title}</div>
+            <div style={{fontSize:11, color:'var(--muted)', marginTop:3}}>
+              <span className={stageBadgeCls(v.stage)}>{v.stage}</span> · created {fmt(v.createdAt)}
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+        </div>
+        <div className="modal-b">
+          {v.idea?.hook && <div style={{marginBottom:14}}><div className="card-title">Hook</div><div style={{fontSize:13}}>{v.idea.hook}</div></div>}
+          {v.script?.text && (
+            <div style={{marginBottom:14}}>
+              <div className="card-title">Script ({wordCount(v.script.text)} words)</div>
+              <pre className="script-text">{v.script.text}</pre>
+            </div>
+          )}
+          {v.heygen?.videoUrl && (
+            <div style={{marginBottom:14}}>
+              <div className="card-title">Render</div>
+              <video src={v.heygen.videoUrl} controls className="preview-vid" />
+            </div>
+          )}
+          {v.heygen?.status && v.heygen.status !== 'completed' && (
+            <div className="alert alert-warn">HeyGen status: {v.heygen.status}{v.heygen.error?` — ${v.heygen.error}`:''}</div>
+          )}
+        </div>
+        <div className="modal-f">
+          <button className="btn btn-danger btn-sm" onClick={() => { if(confirm('Delete this video?')) { dispatch({type:'DELETE_VIDEO', id}); onClose(); } }}>Delete</button>
+          <button className="btn btn-ghost" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PAGE: NEW VIDEO (wizard)
+// ============================================================================
+
+function NewVideoPage({ go }) {
+  const { state, dispatch } = useStore();
+  const [step, setStep] = useState(1);
+  const [tone, setTone] = useState(state.settings.defaultTone || 'matStyle');
+  const [platform, setPlatform] = useState('tiktok');
+  const [ideas, setIdeas] = useState([]);
+  const [topic, setTopic] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
+  const [picked, setPicked] = useState(null); // selected idea
+  const [scriptObj, setScriptObj] = useState(null);
+  const [renderId, setRenderId] = useState(null);
+  const [heygenSpeed, setHeygenSpeed] = useState(TONE_PRESETS[tone].speed);
+  const [polling, setPolling] = useState(false);
+  const [createdVideoId, setCreatedVideoId] = useState(null);
+
+  const generateIdeas = async () => {
+    setError(''); setGenerating(true);
+    try {
+      const out = await callClaude({
+        apiKey: state.settings.anthropicKey,
+        model: state.settings.llmModel,
+        system: ideaSystemPrompt(state.settings),
+        user: topic ? `Generate 6 ideas focused on: ${topic}` : 'Generate 6 fresh ideas now.',
+        maxTokens: 1400,
+      });
+      const parsed = tryParseJSON(out);
+      if (!Array.isArray(parsed)) throw new Error('Could not parse ideas. Raw: ' + out.slice(0,200));
+      setIdeas(parsed);
+    } catch (e) { setError(e.message); }
+    finally { setGenerating(false); }
+  };
+
+  const generateScript = async (idea) => {
+    setError(''); setGenerating(true);
+    try {
+      const out = await callClaude({
+        apiKey: state.settings.anthropicKey,
+        model: state.settings.llmModel,
+        system: scriptSystemPrompt(state.settings, tone, platform),
+        user: `Write the script for this idea:\nTitle: ${idea.title}\nHook: ${idea.hook}\nAngle: ${idea.angle}`,
+        maxTokens: 2400,
+      });
+      const parsed = tryParseJSON(out);
+      if (!parsed || !parsed.script) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
+      setScriptObj(parsed);
+      setPicked(idea);
+      setStep(3);
+    } catch (e) { setError(e.message); }
+    finally { setGenerating(false); }
+  };
+
+  const startRender = async () => {
+    setError(''); setGenerating(true);
+    try {
+      // Persist video first as 'render' stage
+      const id = uid();
+      const video = {
+        id, createdAt:Date.now(), updatedAt:Date.now(),
+        stage: 'render',
+        idea: { ...picked, platform },
+        script: { text: scriptObj.script, durationSec: scriptObj.estimatedDurationSec, generatedAt: Date.now(), tone },
+        platforms: {
+          tiktok:  { caption: scriptObj.captions?.tiktok || '', hashtags: scriptObj.hashtags?.tiktok || [], posted:false, postUrl:'', scheduledAt:null },
+          reels:   { caption: scriptObj.captions?.reels  || '', hashtags: scriptObj.hashtags?.reels  || [], posted:false, postUrl:'', scheduledAt:null },
+          shorts:  { caption: scriptObj.captions?.shorts || '', hashtags: scriptObj.hashtags?.shorts || [], posted:false, postUrl:'', scheduledAt:null, title: scriptObj.youtubeTitle || scriptObj.title || '' },
+          long:    { caption: scriptObj.captions?.long   || '', hashtags: scriptObj.hashtags?.long   || [], posted:false, postUrl:'', scheduledAt:null, title: scriptObj.title || '' },
+        },
+        broll: scriptObj.broll || [],
+        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', speed: heygenSpeed, aspect: PLATFORMS[platform].aspect },
+      };
+      dispatch({ type:'CREATE_VIDEO', video });
+      setCreatedVideoId(id);
+
+      const videoId = await heygenGenerate({
+        apiKey: state.settings.heygenKey,
+        avatarId: state.settings.heygenAvatarId,
+        voiceId: state.settings.heygenVoiceId,
+        scriptText: scriptObj.script,
+        aspect: PLATFORMS[platform].aspect,
+        speed: heygenSpeed,
+      });
+      dispatch({ type:'UPDATE_VIDEO', id, patch:{ heygen: { ...video.heygen, videoId, status:'processing' } } });
+      setRenderId(videoId);
+      setStep(4);
+      setPolling(true);
+    } catch (e) {
+      setError(e.message);
+      if (createdVideoId) {
+        dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{ heygen:{ status:'failed', error:e.message } } });
+      }
+    } finally { setGenerating(false); }
+  };
+
+  // Poll HeyGen status
+  useEffect(() => {
+    if (!polling || !renderId || !createdVideoId) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const s = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: renderId });
+        if (cancelled) return;
+        const status = s.status;
+        if (status === 'completed') {
+          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
+            stage:'approval',
+            heygen:{ videoId: renderId, status:'completed', videoUrl: s.video_url, thumbnailUrl: s.thumbnail_url, duration: s.duration, error:'' },
+          }});
+          setPolling(false);
+        } else if (status === 'failed') {
+          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
+            heygen:{ videoId: renderId, status:'failed', error: s.error?.message || 'render failed', videoUrl:'', thumbnailUrl:'' },
+          }});
+          setPolling(false);
+        } else {
+          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
+            heygen:{ videoId: renderId, status, error:'' },
+          }});
+        }
+      } catch (e) { console.warn(e); }
+    };
+    tick();
+    const iv = setInterval(tick, 8000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [polling, renderId, createdVideoId]);
+
+  const reset = () => {
+    setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setPolling(false); setError('');
+  };
+
+  const keysOk = state.settings.anthropicKey && state.settings.heygenKey && state.settings.heygenAvatarId && state.settings.heygenVoiceId;
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">New Video</div>
+          <div className="page-sub">Idea → Script → Render → Approval</div>
+        </div>
+        {step > 1 && <button className="btn btn-ghost btn-sm" onClick={reset}>Start over</button>}
+      </div>
+
+      {!keysOk && (
+        <div className="alert alert-warn" style={{marginBottom:16}}>
+          API keys missing. Open <strong>Settings</strong> and add your Anthropic key, HeyGen key, avatar ID and voice ID before continuing.
+        </div>
+      )}
+
+      <div className="step-dots">
+        {[1,2,3,4].map(n => <div key={n} className={`step-dot ${step===n?'active':step>n?'done':''}`} />)}
+      </div>
+
+      {error && <div className="alert alert-err" style={{marginBottom:14}}>{error}</div>}
+
+      {step === 1 && (
+        <div className="card">
+          <div className="card-title">Step 1 · Choose tone & platform</div>
+          <div className="grid2" style={{marginBottom:14}}>
+            <div>
+              <label className="label">Tone</label>
+              <select value={tone} onChange={e=>{ setTone(e.target.value); setHeygenSpeed(TONE_PRESETS[e.target.value].speed); }}>
+                {Object.entries(TONE_PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <div className="help">{TONE_PRESETS[tone].desc}</div>
+            </div>
+            <div>
+              <label className="label">Primary platform</label>
+              <select value={platform} onChange={e=>setPlatform(e.target.value)}>
+                {Object.entries(PLATFORMS).map(([k,v]) => <option key={k} value={k}>{v.name} ({v.aspect})</option>)}
+              </select>
+              <div className="help">Script length and caption rules adapt to this. Other platforms get adapted captions automatically.</div>
+            </div>
+          </div>
+          <button className="btn" onClick={() => setStep(2)} disabled={!keysOk}>Next: Pick an idea →</button>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="card">
+          <div className="card-title">Step 2 · Pick or generate an idea</div>
+          <div style={{display:'flex', gap:8, marginBottom:14}}>
+            <input
+              placeholder="Topic angle (optional, e.g. 'salary sacrifice for higher rate')"
+              value={topic} onChange={e=>setTopic(e.target.value)}
+              onKeyDown={e => e.key==='Enter' && generateIdeas()} />
+            <button className="btn" onClick={generateIdeas} disabled={generating || !state.settings.anthropicKey} style={{flexShrink:0}}>
+              {generating ? <><span className="spin"></span> Generating…</> : '✦ Generate 6 ideas'}
+            </button>
+          </div>
+          {ideas.length === 0 && <div className="empty">No ideas yet. Hit Generate.</div>}
+          {ideas.map((idea, i) => (
+            <div key={i} className="vcard" style={{marginBottom:8}} onClick={() => generateScript(idea)}>
+              <div className="vcard-title">{idea.title}</div>
+              <div style={{fontSize:11, color:'var(--text-dim)', marginTop:4}}>{idea.hook}</div>
+              <div className="vcard-meta" style={{marginTop:6}}>
+                <span className="pill">{idea.angle}</span>
+                {idea.platform && <span className="pill">{idea.platform}</span>}
+              </div>
+            </div>
+          ))}
+          {generating && ideas.length>0 && <div style={{marginTop:8,color:'var(--accent)'}}><span className="spin"></span> Writing script…</div>}
+        </div>
+      )}
+
+      {step === 3 && scriptObj && (
+        <div className="card">
+          <div className="card-title">Step 3 · Review script & set HeyGen voice speed</div>
+          <div style={{marginBottom:12}}>
+            <label className="label">Title</label>
+            <input value={scriptObj.title} onChange={e=>setScriptObj({...scriptObj, title:e.target.value})} />
+          </div>
+          <div style={{marginBottom:12}}>
+            <label className="label">Spoken script ({wordCount(scriptObj.script)} words · ~{scriptObj.estimatedDurationSec}s)</label>
+            <textarea value={scriptObj.script} onChange={e=>setScriptObj({...scriptObj, script:e.target.value})} style={{minHeight:200}} />
+          </div>
+          <div style={{marginBottom:14}}>
+            <label className="label">HeyGen voice speed: <strong>{heygenSpeed.toFixed(2)}x</strong></label>
+            <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={heygenSpeed} onChange={e=>setHeygenSpeed(parseFloat(e.target.value))} />
+            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x. Slow for explainer, fast for hook-driven.</div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn" onClick={startRender} disabled={generating}>
+              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render with HeyGen'}
+            </button>
+            <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="card">
+          <div className="card-title">Step 4 · Rendering</div>
+          <div style={{fontSize:14, marginBottom:14}}>
+            HeyGen is rendering your video. Typical wait: 1–4 minutes for 30–60 seconds.<br/>
+            You can leave this page — when it's done it will appear in the <strong>Approval</strong> tab.
+          </div>
+          {createdVideoId && (() => {
+            const v = state.videos.find(x => x.id===createdVideoId);
+            if (!v) return null;
+            return (
+              <div>
+                <div style={{marginBottom:12}}>
+                  Status: <span className="pill"><span className="spin" style={{marginRight:6}}></span>{v.heygen?.status || 'queued'}</span>
+                </div>
+                {v.heygen?.videoUrl && (
+                  <>
+                    <video src={v.heygen.videoUrl} controls className="preview-vid" style={{marginBottom:12}} />
+                    <div className="alert alert-ok">Render complete. Head to Approval tab.</div>
+                  </>
+                )}
+                {v.heygen?.error && <div className="alert alert-err">{v.heygen.error}</div>}
+              </div>
+            );
+          })()}
+          <div style={{display:'flex',gap:8, marginTop:14}}>
+            <button className="btn" onClick={() => go('approval')}>Go to Approval →</button>
+            <button className="btn btn-ghost" onClick={reset}>Start another</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// PAGE: APPROVAL
+// ============================================================================
+
+function ApprovalPage({ go }) {
+  const { state, dispatch } = useStore();
+  const items = state.videos.filter(v => v.stage === 'approval' || v.stage === 'render');
+
+  const approve = (v) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved' } });
+  const reject = (v) => {
+    if (!confirm('Send back to script stage? You can edit and re-render.')) return;
+    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' } });
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Approval (Final Product)</div>
+          <div className="page-sub">Watch every render. Approve to unlock publishing, or send back.</div>
+        </div>
+      </div>
+      {items.length === 0 && <div className="empty">Nothing to review. New renders land here automatically.</div>}
+      {items.map(v => (
+        <div key={v.id} className="card" style={{marginBottom:14}}>
+          <div className="row" style={{alignItems:'flex-start', marginBottom:10}}>
+            <div className="col">
+              <div style={{fontWeight:600, fontSize:15}}>{v.idea?.title}</div>
+              <div style={{fontSize:11, color:'var(--muted)', marginTop:3}}>
+                <span className={stageBadgeCls(v.stage)}>{v.stage}</span> · {v.idea?.platform || '—'} · {v.script?.tone || '—'} · {fmt(v.updatedAt)}
+              </div>
+            </div>
+            {v.stage === 'approval' && (
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
+                <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
+              </div>
+            )}
+          </div>
+          {v.heygen?.videoUrl ? (
+            <video src={v.heygen.videoUrl} controls className="preview-vid" />
+          ) : (
+            <div className="alert alert-warn">
+              {v.heygen?.status === 'failed'
+                ? `Render failed: ${v.heygen.error || 'unknown error'}`
+                : <><span className="spin"></span> Rendering ({v.heygen?.status || 'queued'})… polls every 8 seconds.</>}
+              {v.heygen?.status === 'failed' && (
+                <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
+              )}
+            </div>
+          )}
+          <details>
+            <summary>View script ({wordCount(v.script?.text)} words)</summary>
+            <pre className="script-text" style={{marginTop:8}}>{v.script?.text}</pre>
+          </details>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================================
+// PAGE: PUBLISH
+// ============================================================================
+
+function PublishPage() {
+  const { state, dispatch } = useStore();
+  const items = state.videos.filter(v => v.stage === 'approved' || v.stage === 'published');
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Publish</div>
+          <div className="page-sub">Per-platform caption, hashtags, MP4 download, deep-link to upload.</div>
+        </div>
+      </div>
+      {items.length === 0 && <div className="empty">Nothing approved yet. Approve a video first.</div>}
+      {items.map(v => <PublishCard key={v.id} video={v} />)}
+    </div>
+  );
+}
+
+function PublishCard({ video }) {
+  const { state, dispatch } = useStore();
+  const [active, setActive] = useState(state.settings.defaultPlatforms[0] || 'tiktok');
+  const [copied, setCopied] = useState('');
+  const platforms = ['tiktok','reels','shorts','long'];
+
+  const updatePlatform = (k, patch) =>
+    dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{ platforms: { ...video.platforms, [k]: { ...video.platforms[k], ...patch } } } });
+
+  const markPublished = (k) => {
+    updatePlatform(k, { posted:true, postedAt: Date.now() });
+    // If all selected platforms have posted, advance stage
+    const allPosted = state.settings.defaultPlatforms.every(p => video.platforms?.[p]?.posted || p === k);
+    if (allPosted) dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{ stage:'published' } });
+  };
+
+  const onCopy = (label, text) => { copy(text); setCopied(label); setTimeout(()=>setCopied(''), 1200); };
+
+  const p = video.platforms[active] || {};
+  const pCfg = PLATFORMS[active];
+  const fullCaption = (p.caption || '') + (p.hashtags?.length ? '\n\n' + p.hashtags.join(' ') : '') + '\n\n' + state.settings.disclaimer;
+
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="row" style={{alignItems:'flex-start', marginBottom:10}}>
+        <div className="col">
+          <div style={{fontWeight:600, fontSize:15}}>{video.idea?.title}</div>
+          <div style={{fontSize:11, color:'var(--muted)', marginTop:3}}>
+            <span className={stageBadgeCls(video.stage)}>{video.stage}</span>
+            {video.heygen?.duration && <> · {Math.round(video.heygen.duration)}s</>}
+            {video.heygen?.aspect && <> · {video.heygen.aspect}</>}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          {video.heygen?.videoUrl && (
+            <button className="btn btn-ghost btn-sm" onClick={() => downloadRemote(video.heygen.videoUrl, `${video.idea?.title?.slice(0,40).replace(/[^a-z0-9]+/gi,'_') || 'video'}.mp4`)}>
+              ⬇ Download MP4
+            </button>
+          )}
+        </div>
+      </div>
+
+      {video.heygen?.videoUrl && (
+        <video src={video.heygen.videoUrl} controls style={{width:'100%', maxHeight:380, borderRadius:8, background:'#000', marginBottom:14}} />
+      )}
+
+      <div className="seg" style={{marginBottom:12}}>
+        {platforms.map(k => (
+          <button key={k} className={`seg-btn ${active===k?'active':''}`} onClick={()=>setActive(k)}>
+            {PLATFORMS[k].name}
+            {video.platforms[k]?.posted && ' ✓'}
+          </button>
+        ))}
+      </div>
+
+      <div className={`platform-card ${active}`}>
+        <div className="platform-h">
+          <div className="platform-name">{pCfg.name} · {pCfg.aspect} · ideal {pCfg.ideal[0]}–{pCfg.ideal[1]}s</div>
+          <div className={`char-count ${(p.caption?.length||0) > pCfg.maxCaption?'over':''}`}>
+            {p.caption?.length || 0} / {pCfg.maxCaption}
+          </div>
+        </div>
+
+        {(active === 'shorts' || active === 'long') && (
+          <div style={{marginBottom:10}}>
+            <label className="label">Title (max 100 chars)</label>
+            <input value={p.title || ''} onChange={e=>updatePlatform(active, { title:e.target.value })} maxLength={100} />
+          </div>
+        )}
+
+        <div style={{marginBottom:10}}>
+          <label className="label">Caption / description</label>
+          <textarea value={p.caption || ''} onChange={e=>updatePlatform(active, { caption:e.target.value })} style={{minHeight:120}} />
+        </div>
+
+        <div style={{marginBottom:10}}>
+          <label className="label">Hashtags (max {pCfg.hashtagLimit} recommended)</label>
+          <input value={(p.hashtags||[]).join(' ')} onChange={e=>updatePlatform(active, { hashtags: e.target.value.split(/\s+/).filter(Boolean) })} />
+        </div>
+
+        <details style={{marginBottom:10}}>
+          <summary>Preview full post (with disclaimer)</summary>
+          <pre className="script-text" style={{marginTop:8, padding:10, background:'var(--surface)', borderRadius:6}}>{fullCaption}</pre>
+        </details>
+
+        <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+          <button className="btn btn-sm" onClick={() => onCopy('caption', fullCaption)}>📋 Copy full caption</button>
+          {video.heygen?.videoUrl && <button className="btn btn-ghost btn-sm" onClick={() => downloadRemote(video.heygen.videoUrl, `${video.idea?.title?.slice(0,40).replace(/[^a-z0-9]+/gi,'_') || 'video'}_${active}.mp4`)}>⬇ MP4</button>}
+          <a className="btn btn-outline btn-sm" href={pCfg.studioUrl} target="_blank" rel="noopener">↗ Open {pCfg.name}</a>
+          {state.settings.bufferToken !== undefined && (
+            <a className="btn btn-ghost btn-sm" href={bufferComposeUrl({ text: fullCaption, mediaUrl: video.heygen?.videoUrl })} target="_blank" rel="noopener">→ Buffer</a>
+          )}
+          {!p.posted && <button className="btn btn-sm" style={{marginLeft:'auto'}} onClick={() => markPublished(active)}>✓ Mark posted</button>}
+          {p.posted && <span className="pill" style={{marginLeft:'auto'}}>Posted {fmt(p.postedAt)}</span>}
+          {copied===' caption' && <span className="copy-tip show">Copied</span>}
+        </div>
+      </div>
+
+      {video.broll?.length > 0 && (
+        <details style={{marginTop:12}}>
+          <summary>B-roll suggestions ({video.broll.length})</summary>
+          <BrollSearch queries={video.broll} pexelsKey={state.settings.pexelsKey} />
+        </details>
+      )}
+    </div>
+  );
+}
+
+function BrollSearch({ queries, pexelsKey }) {
+  const [active, setActive] = useState(queries[0]);
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!pexelsKey || !active) { setResults([]); return; }
+    setLoading(true); setErr('');
+    pexelsSearch({ apiKey: pexelsKey, query: active })
+      .then(r => setResults(r.videos || []))
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [active, pexelsKey]);
+  if (!pexelsKey) return <div className="help" style={{marginTop:8}}>Add a Pexels API key in Settings to search B-roll.</div>;
+  return (
+    <div style={{marginTop:8}}>
+      <div className="seg" style={{marginBottom:10, flexWrap:'wrap'}}>
+        {queries.map(q => <button key={q} className={`seg-btn ${active===q?'active':''}`} onClick={()=>setActive(q)}>{q}</button>)}
+      </div>
+      {loading && <div className="help"><span className="spin"></span> searching Pexels…</div>}
+      {err && <div className="alert alert-err">{err}</div>}
+      <div style={{display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8}}>
+        {results.slice(0,8).map(v => {
+          const file = v.video_files?.find(f => f.quality==='hd') || v.video_files?.[0];
+          return (
+            <a key={v.id} href={file?.link} target="_blank" rel="noopener" style={{display:'block'}}>
+              <img src={v.image} style={{width:'100%', aspectRatio:'9/16', objectFit:'cover', borderRadius:6, border:'1px solid var(--border)'}} alt="" />
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PAGE: CALENDAR
+// ============================================================================
+
+function CalendarPage() {
+  const { state, dispatch } = useStore();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const monday = useMemo(() => {
+    const d = new Date();
+    const day = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - day + weekOffset*7);
+    d.setHours(0,0,0,0);
+    return d;
+  }, [weekOffset]);
+  const days = Array.from({length:7}, (_,i) => { const d = new Date(monday); d.setDate(d.getDate()+i); return d; });
+
+  const items = state.videos.filter(v => v.stage==='approved' || v.stage==='published');
+
+  const setSchedule = (videoId, platform, dateIso) => {
+    const v = state.videos.find(x => x.id===videoId);
+    if (!v) return;
+    dispatch({ type:'UPDATE_VIDEO', id:videoId, patch:{ platforms: { ...v.platforms, [platform]: { ...v.platforms[platform], scheduledAt: dateIso ? new Date(dateIso).getTime() : null } } } });
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Calendar</div>
+          <div className="page-sub">Manual scheduling per platform. No magic best-time wisdom — you decide.</div>
+        </div>
+        <div style={{display:'flex',gap:6}}>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setWeekOffset(w=>w-1)}>← Prev</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setWeekOffset(0)}>Today</button>
+          <button className="btn btn-ghost btn-sm" onClick={()=>setWeekOffset(w=>w+1)}>Next →</button>
+        </div>
+      </div>
+
+      <div style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8, marginBottom:14}}>
+        {days.map(d => {
+          const ds = d.toDateString();
+          const today = new Date().toDateString() === ds;
+          const dayItems = [];
+          items.forEach(v => {
+            ['tiktok','reels','shorts','long'].forEach(plat => {
+              const sched = v.platforms?.[plat]?.scheduledAt;
+              if (sched && new Date(sched).toDateString() === ds) {
+                dayItems.push({ video:v, platform:plat, time:sched });
+              }
+            });
+          });
+          return (
+            <div key={ds} className="card" style={{padding:10, background: today?'var(--card2)':'var(--card)'}}>
+              <div style={{fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8}}>
+                {d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' })}
+              </div>
+              {dayItems.length===0 && <div style={{fontSize:11, color:'var(--muted)'}}>—</div>}
+              {dayItems.map(({video, platform, time}, i) => (
+                <div key={i} style={{fontSize:11, padding:6, background:'var(--surface)', borderRadius:6, marginBottom:6, lineHeight:1.4}}>
+                  <div style={{color:'var(--accent)', fontWeight:600}}>{PLATFORMS[platform].name}</div>
+                  <div>{new Date(time).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</div>
+                  <div style={{color:'var(--text-dim)', marginTop:3}}>{video.idea?.title?.slice(0,40)}…</div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="card">
+        <div className="card-title">Schedule a video</div>
+        {items.length===0 && <div className="empty">No approved videos to schedule.</div>}
+        {items.map(v => (
+          <div key={v.id} style={{padding:'12px 0', borderBottom:'1px solid var(--border)'}}>
+            <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>{v.idea?.title}</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8}}>
+              {['tiktok','reels','shorts','long'].map(plat => {
+                const sched = v.platforms?.[plat]?.scheduledAt;
+                const val = sched ? new Date(sched - new Date().getTimezoneOffset()*60000).toISOString().slice(0,16) : '';
+                return (
+                  <div key={plat}>
+                    <label className="label" style={{fontSize:11}}>{PLATFORMS[plat].name}</label>
+                    <input type="datetime-local" value={val} onChange={e => setSchedule(v.id, plat, e.target.value)} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// PAGE: SETTINGS
+// ============================================================================
+
+function SettingsPage() {
+  const { state, dispatch } = useStore();
+  const s = state.settings;
+  const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
+  const [showKeys, setShowKeys] = useState(false);
+
+  const exportData = () => download('fincast-backup.json', JSON.stringify(state, null, 2), 'application/json');
+  const importData = (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const parsed = JSON.parse(r.result);
+        if (!parsed.settings || !Array.isArray(parsed.videos)) throw new Error('bad shape');
+        if (confirm('Replace all current data with imported file?')) dispatch({ type:'IMPORT', state: parsed });
+      } catch (err) { alert('Invalid backup: ' + err.message); }
+    };
+    r.readAsText(file);
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Settings</div>
+          <div className="page-sub">Keys live in your browser only. Never sent to any server we control.</div>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={()=>setShowKeys(v=>!v)}>{showKeys?'Hide':'Show'} keys</button>
+      </div>
+
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">API Keys</div>
+        <div className="alert alert-warn" style={{marginBottom:14}}>
+          These stay in <code>localStorage</code> on this device. Don't share screenshots that include them. To reset: clear site data.
+        </div>
+        <div className="grid2">
+          <div>
+            <label className="label">Anthropic API key (Claude)</label>
+            <input type={showKeys?'text':'password'} value={s.anthropicKey} onChange={e=>set({ anthropicKey:e.target.value })} placeholder="sk-ant-..." />
+            <div className="help">Get from console.anthropic.com → API Keys.</div>
+          </div>
+          <div>
+            <label className="label">HeyGen API key</label>
+            <input type={showKeys?'text':'password'} value={s.heygenKey} onChange={e=>set({ heygenKey:e.target.value })} placeholder="..." />
+            <div className="help">HeyGen → Settings → Subscriptions → API → Create API Token.</div>
+          </div>
+          <div>
+            <label className="label">HeyGen Avatar ID</label>
+            <input value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })} placeholder="e.g. Daisy_avatar_v2_..." />
+            <div className="help">HeyGen → Avatars → click your avatar → "Copy ID" or in URL.</div>
+          </div>
+          <div>
+            <label className="label">HeyGen Voice ID</label>
+            <input value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })} placeholder="..." />
+            <div className="help">Use your own cloned voice ID. Find under Voices → your voice → Copy ID.</div>
+          </div>
+          <div>
+            <label className="label">Pexels API key (B-roll)</label>
+            <input type={showKeys?'text':'password'} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
+            <div className="help">Free at pexels.com/api. Leave blank to skip B-roll search.</div>
+          </div>
+          <div>
+            <label className="label">Buffer Access Token (optional)</label>
+            <input type={showKeys?'text':'password'} value={s.bufferToken} onChange={e=>set({ bufferToken:e.target.value })} placeholder="optional" />
+            <div className="help">Phase 1 just opens Buffer compose URL; token is reserved for the phase 2 worker integration.</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">Channel</div>
+        <div style={{marginBottom:12}}>
+          <label className="label">Niche</label>
+          <textarea value={s.niche} onChange={e=>set({ niche:e.target.value })} />
+        </div>
+        <div style={{marginBottom:12}}>
+          <label className="label">Audience</label>
+          <textarea value={s.audience} onChange={e=>set({ audience:e.target.value })} />
+        </div>
+        <div className="grid2">
+          <div>
+            <label className="label">Default tone</label>
+            <select value={s.defaultTone} onChange={e=>set({ defaultTone:e.target.value })}>
+              {Object.entries(TONE_PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Channel handle (for reference)</label>
+            <input value={s.channelHandle} onChange={e=>set({ channelHandle:e.target.value })} placeholder="@yourhandle" />
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">FCA Disclaimer (auto-appended to every caption)</div>
+        <textarea value={s.disclaimer} onChange={e=>set({ disclaimer:e.target.value })} style={{minHeight:80}} />
+        <div className="help">UK financial-promotion rules require this on educational content. Edit only if you know what you're doing.</div>
+      </div>
+
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">LLM</div>
+        <div>
+          <label className="label">Claude model</label>
+          <select value={s.llmModel} onChange={e=>set({ llmModel:e.target.value })}>
+            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+            <option value="claude-opus-4-7">claude-opus-4-7 (best quality, more expensive)</option>
+            <option value="claude-haiku-4-5">claude-haiku-4-5 (cheapest)</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Data</div>
+        <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
+          <button className="btn btn-ghost btn-sm" onClick={exportData}>⬇ Export backup (JSON)</button>
+          <label className="btn btn-ghost btn-sm" style={{cursor:'pointer'}}>
+            ⬆ Import backup
+            <input type="file" accept="application/json" onChange={importData} style={{display:'none'}} />
+          </label>
+          <button className="btn btn-danger btn-sm" onClick={() => { if(confirm('Delete ALL videos and reset settings to defaults? This cannot be undone.')) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }}>Reset everything</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// APP ROOT
+// ============================================================================
+
+function App() {
+  const [state, dispatch] = useReducer(reducer, null, loadState);
+  const [page, setPage] = useState('pipeline');
+
+  useEffect(() => { saveState(state); }, [state]);
+
+  const store = useMemo(() => ({ state, dispatch }), [state]);
+
+  return (
+    <StoreCtx.Provider value={store}>
+      <div className="app">
+        <Sidebar page={page} setPage={setPage} state={state} />
+        <div className="main">
+          {page === 'pipeline' && <PipelinePage />}
+          {page === 'new'      && <NewVideoPage go={setPage} />}
+          {page === 'approval' && <ApprovalPage go={setPage} />}
+          {page === 'publish'  && <PublishPage />}
+          {page === 'calendar' && <CalendarPage />}
+          {page === 'settings' && <SettingsPage />}
+        </div>
+      </div>
+    </StoreCtx.Provider>
+  );
+}
+
+createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
