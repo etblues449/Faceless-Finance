@@ -3,14 +3,30 @@
 <head>
 <meta charset="utf-8" />
 <title>FinCast Studio — UK Tax Saving</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="FinCast" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0A0A0F" />
 <style>
   :root {
+    --bg:#F7F8FA; --surface:#F0F2F6; --card:#FFFFFF; --card2:#E5E8EE;
+    --border:#DDE1E7; --border2:#C5C9D2;
+    --accent:#00A878; --accent-dim:rgba(0,168,120,.10); --accent-hover:#00C490;
+    --gold:#B8860B; --danger:#DC2626; --warn:#D97706;
+    --text:#0F1419; --text-dim:#4B5563; --muted:#6B7280;
+    --shadow:0 1px 2px rgba(15,20,25,0.04), 0 1px 3px rgba(15,20,25,0.05);
+    --shadow-modal:0 20px 60px rgba(15,20,25,0.18);
+  }
+  [data-theme="dark"] {
     --bg:#0A0A0F; --surface:#12121A; --card:#1A1A26; --card2:#22222F;
     --border:#2A2A3E; --border2:#3A3A52;
     --accent:#00E5A0; --accent-dim:rgba(0,229,160,.12); --accent-hover:#00FFB3;
     --gold:#FFD166; --danger:#FF6B6B; --warn:#FFA94D;
     --text:#E8E8F0; --text-dim:#9898B8; --muted:#6B6B8A;
+    --shadow:none;
+    --shadow-modal:0 20px 60px rgba(0,0,0,0.6);
   }
   *,*::before,*::after { box-sizing:border-box; }
   html,body,#root { height:100%; margin:0; }
@@ -42,7 +58,7 @@
   .col { flex:1; min-width:0; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; box-shadow:var(--shadow); }
   .card-title { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
   .label { font-size:12px; color:var(--text-dim); margin-bottom:6px; display:block; font-weight:500; }
   .help { font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4; }
@@ -66,9 +82,12 @@
   .pill { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; background:var(--card2); color:var(--text-dim); }
   .empty { padding:32px 16px; text-align:center; color:var(--muted); font-size:13px; border:1px dashed var(--border); border-radius:10px; }
   .alert { padding:12px 14px; border-radius:8px; font-size:12px; line-height:1.5; }
-  .alert-warn { background:rgba(255,169,77,.1); border:1px solid rgba(255,169,77,.3); color:var(--warn); }
-  .alert-err { background:rgba(255,107,107,.08); border:1px solid rgba(255,107,107,.3); color:var(--danger); }
-  .alert-ok { background:var(--accent-dim); border:1px solid rgba(0,229,160,.3); color:var(--accent); }
+  .alert-warn { background:rgba(217,119,6,.08); border:1px solid rgba(217,119,6,.25); color:var(--warn); }
+  .alert-err { background:rgba(220,38,38,.06); border:1px solid rgba(220,38,38,.25); color:var(--danger); }
+  .alert-ok { background:var(--accent-dim); border:1px solid rgba(0,168,120,.3); color:var(--accent); }
+  [data-theme="dark"] .alert-warn { background:rgba(255,169,77,.1); border-color:rgba(255,169,77,.3); }
+  [data-theme="dark"] .alert-err { background:rgba(255,107,107,.08); border-color:rgba(255,107,107,.3); }
+  [data-theme="dark"] .alert-ok { border-color:rgba(0,229,160,.3); }
   .stage-col { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-height:60px; }
   .stage-col-h { font-size:11px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; padding:4px 6px 10px; display:flex; justify-content:space-between; align-items:center; }
   .vcard { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; cursor:pointer; transition:border-color .1s; }
@@ -76,7 +95,7 @@
   .vcard-title { font-size:13px; font-weight:500; line-height:1.35; margin-bottom:6px; }
   .vcard-meta { display:flex; gap:6px; flex-wrap:wrap; font-size:10px; color:var(--muted); }
   .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; }
-  .modal { background:var(--card); border:1px solid var(--border); border-radius:14px; max-width:720px; width:100%; max-height:90vh; overflow-y:auto; }
+  .modal { background:var(--card); border:1px solid var(--border); border-radius:14px; max-width:720px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-modal); }
   .modal-h { padding:18px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
   .modal-b { padding:22px; }
   .modal-f { padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
@@ -113,6 +132,55 @@
   summary { cursor:pointer; font-size:12px; color:var(--text-dim); user-select:none; }
   summary:hover { color:var(--text); }
   pre.script-text { font:13px/1.7 -apple-system,Inter,sans-serif; white-space:pre-wrap; margin:0; color:var(--text-dim); }
+  /* === Mobile (cover screen, narrow phones) === */
+  @media (max-width: 768px) {
+    body { font-size:14px; }
+    .app { flex-direction:column-reverse; }
+    .side { width:100%; height:auto; min-height:62px; flex-direction:row; border-right:none; border-top:1px solid var(--border); padding:0; flex-shrink:0; }
+    .brand, .side-foot { display:none; }
+    .nav { display:flex; flex-direction:row; padding:0; flex:1; overflow-x:auto; }
+    .nav-item { flex:1; min-width:64px; flex-direction:column; padding:8px 4px; border-left:none; border-top:3px solid transparent; gap:3px; font-size:10px; text-align:center; justify-content:center; align-items:center; }
+    .nav-item.active { border-left:none; border-top-color:var(--accent); }
+    .nav-item .pill { display:none; }
+    .nav-icon { font-size:18px; }
+    .main { padding:16px 14px 24px; }
+    .page-head { flex-direction:column; gap:10px; }
+    .page-title { font-size:20px; }
+    .grid2, .grid3 { grid-template-columns:1fr; }
+    .pipeline-grid { grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:78vw; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:8px; }
+    .pipeline-grid > * { scroll-snap-align:start; }
+    .calendar-grid { grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:60vw; overflow-x:auto; }
+    .modal { max-width:100%; max-height:100vh; border-radius:0; }
+    .seg { flex-wrap:wrap; }
+    .platform-card .row { flex-direction:column; }
+  }
+  /* === Tablet / Fold inner screen unfolded (769–1100px) === */
+  @media (min-width: 769px) and (max-width: 1100px) {
+    .side { width: 200px; }
+    .main { padding: 20px 22px; }
+    .grid3 { grid-template-columns: repeat(2, 1fr); }
+    .pipeline-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)) !important; overflow-x: auto; }
+    .calendar-grid { grid-template-columns: repeat(7, minmax(110px, 1fr)) !important; overflow-x: auto; }
+    .modal { max-width: 640px; }
+  }
+  /* Touch devices: bigger tap targets */
+  @media (pointer: coarse) {
+    .nav-item { min-height: 48px; }
+    .btn { min-height: 40px; }
+    .btn-sm { min-height: 34px; }
+    input, textarea, select { min-height: 40px; padding: 10px 12px; }
+    .vcard { padding: 12px 14px; }
+    .seg-btn { padding: 8px 14px; min-height: 36px; }
+  }
+  /* === Foldable: when device reports two viewport segments (Fold open), keep modal off the hinge === */
+  @media (horizontal-viewport-segments: 2) {
+    .modal { max-width: calc(env(viewport-segment-right 0 0) - env(viewport-segment-left 1 0) - 32px); margin-right: calc(100vw - env(viewport-segment-right 0 0) + 16px); }
+  }
+  /* iOS safe-area for standalone app mode */
+  @supports (padding: max(0px)) {
+    .side { padding-bottom: max(0px, env(safe-area-inset-bottom)); }
+    .main { padding-top: max(16px, env(safe-area-inset-top)); }
+  }
 </style>
 <script type="importmap">
 {
@@ -198,6 +266,7 @@ const DEFAULT_SETTINGS = {
   defaultPlatforms: ['tiktok','reels','shorts'],
   disclaimer: FCA_DISCLAIMER,
   llmModel: 'claude-sonnet-4-6',
+  theme: 'light',
 };
 
 // ============================================================================
@@ -507,7 +576,7 @@ function PipelinePage() {
       {state.videos.length === 0 && (
         <div className="empty">No videos yet. Hit <strong>New Video</strong> to create your first one.</div>
       )}
-      <div style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12}}>
+      <div className="pipeline-grid" style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12}}>
         {cols.map(c => {
           const items = state.videos.filter(v => v.stage === c.stage);
           return (
@@ -1007,7 +1076,7 @@ function PublishCard({ video }) {
 
         <details style={{marginBottom:10}}>
           <summary>Preview full post (with disclaimer)</summary>
-          <pre className="script-text" style={{marginTop:8, padding:10, background:'var(--surface)', borderRadius:6}}>{fullCaption}</pre>
+          <pre className="script-text" style={{marginTop:8, padding:10, background:'var(--card2)', borderRadius:6}}>{fullCaption}</pre>
         </details>
 
         <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
@@ -1106,7 +1175,7 @@ function CalendarPage() {
         </div>
       </div>
 
-      <div style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8, marginBottom:14}}>
+      <div className="calendar-grid" style={{display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8, marginBottom:14}}>
         {days.map(d => {
           const ds = d.toDateString();
           const today = new Date().toDateString() === ds;
@@ -1126,7 +1195,7 @@ function CalendarPage() {
               </div>
               {dayItems.length===0 && <div style={{fontSize:11, color:'var(--muted)'}}>—</div>}
               {dayItems.map(({video, platform, time}, i) => (
-                <div key={i} style={{fontSize:11, padding:6, background:'var(--surface)', borderRadius:6, marginBottom:6, lineHeight:1.4}}>
+                <div key={i} style={{fontSize:11, padding:6, background:'var(--card2)', borderRadius:6, marginBottom:6, lineHeight:1.4}}>
                   <div style={{color:'var(--accent)', fontWeight:600}}>{PLATFORMS[platform].name}</div>
                   <div>{new Date(time).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</div>
                   <div style={{color:'var(--text-dim)', marginTop:3}}>{video.idea?.title?.slice(0,40)}…</div>
@@ -1266,14 +1335,23 @@ function SettingsPage() {
       </div>
 
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">LLM</div>
-        <div>
-          <label className="label">Claude model</label>
-          <select value={s.llmModel} onChange={e=>set({ llmModel:e.target.value })}>
-            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
-            <option value="claude-opus-4-7">claude-opus-4-7 (best quality, more expensive)</option>
-            <option value="claude-haiku-4-5">claude-haiku-4-5 (cheapest)</option>
-          </select>
+        <div className="card-title">Appearance</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Theme</label>
+            <select value={s.theme} onChange={e=>set({ theme:e.target.value })}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Claude model</label>
+            <select value={s.llmModel} onChange={e=>set({ llmModel:e.target.value })}>
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+              <option value="claude-opus-4-7">claude-opus-4-7 (best quality, more expensive)</option>
+              <option value="claude-haiku-4-5">claude-haiku-4-5 (cheapest)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1301,6 +1379,11 @@ function App() {
   const [page, setPage] = useState('pipeline');
 
   useEffect(() => { saveState(state); }, [state]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = state.settings.theme || 'light';
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#0A0A0F' : '#F7F8FA');
+  }, [state.settings.theme]);
 
   const store = useMemo(() => ({ state, dispatch }), [state]);
 
