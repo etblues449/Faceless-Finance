@@ -218,7 +218,8 @@ const TONE_PRESETS = {
   matStyle: {
     label: 'Mat-style (QuidSquid)',
     desc: 'Punchy. 6–10 word sentences. Brutal hook. £-saved on screen. Sub-30 sec.',
-    speed: 1.05,
+    speed: 1.0,
+    pitch: 0,
     wpmTarget: 165,
     promptStyle: `Tone reference: like UK creator "QuidSquid" (Mat).
 - Open with a sharp hook in the first 3 seconds. No setup, no greeting.
@@ -232,6 +233,7 @@ const TONE_PRESETS = {
     label: 'Rebecca-style (chartered accountant)',
     desc: 'Warm, technical-but-clear, slower educational pace, defines terms.',
     speed: 0.95,
+    pitch: 0,
     wpmTarget: 135,
     promptStyle: `Tone reference: like UK creator "Rebecca's Finance Channel".
 - Calm, qualified-accountant register but warm and accessible.
@@ -245,6 +247,7 @@ const TONE_PRESETS = {
     label: 'Neutral / educational',
     desc: 'Clear, mid-pace, balanced.',
     speed: 1.0,
+    pitch: 0,
     wpmTarget: 150,
     promptStyle: `Tone: clear, neutral, educational. No clickbait. Define terms briefly. 45-60 seconds spoken.`,
   },
@@ -328,14 +331,16 @@ async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, max
   return data.content?.[0]?.text || '';
 }
 
-async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0 }) {
+async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0, pitch=0 }) {
   if (!apiKey) throw new Error('Missing HeyGen API key. Add it in Settings.');
   if (!avatarId || !voiceId) throw new Error('Missing HeyGen avatar or voice ID. Add them in Settings.');
   const dim = aspect==='16:9' ? { width:1920, height:1080 } : { width:1080, height:1920 };
+  const voice = { type:'text', input_text: scriptText, voice_id: voiceId, speed };
+  if (pitch && Number(pitch) !== 0) voice.pitch = Number(pitch);
   const body = {
     video_inputs: [{
       character: { type:'avatar', avatar_id: avatarId, avatar_style:'normal' },
-      voice: { type:'text', input_text: scriptText, voice_id: voiceId, speed },
+      voice,
     }],
     dimension: dim,
     test: false,
@@ -361,6 +366,35 @@ async function heygenStatus({ apiKey, videoId }) {
   if (!r.ok) throw new Error(`HeyGen status ${r.status}`);
   const data = await r.json();
   return data.data || {};
+}
+
+async function heygenListAvatars({ apiKey }) {
+  if (!apiKey) throw new Error('Missing HeyGen API key.');
+  const r = await fetch('https://api.heygen.com/v2/avatars', { headers:{ 'x-api-key': apiKey } });
+  if (!r.ok) throw new Error(`HeyGen avatars ${r.status}: ${(await r.text()).slice(0,200)}`);
+  const j = await r.json();
+  const avatars = j.data?.avatars || [];
+  const talking = j.data?.talking_photos || [];
+  return [
+    ...avatars.map(a => ({ id: a.avatar_id, name: a.avatar_name, gender: a.gender, preview: a.preview_image_url, kind: 'avatar' })),
+    ...talking.map(a => ({ id: a.talking_photo_id, name: a.talking_photo_name, preview: a.preview_image_url, kind: 'talking_photo' })),
+  ];
+}
+
+async function heygenListVoices({ apiKey }) {
+  if (!apiKey) throw new Error('Missing HeyGen API key.');
+  const r = await fetch('https://api.heygen.com/v2/voices', { headers:{ 'x-api-key': apiKey } });
+  if (!r.ok) throw new Error(`HeyGen voices ${r.status}: ${(await r.text()).slice(0,200)}`);
+  const j = await r.json();
+  return (j.data?.voices || []).map(v => ({
+    id: v.voice_id,
+    name: v.name || v.display_name || v.voice_id,
+    language: v.language || v.locale,
+    gender: v.gender,
+    preview: v.preview_audio,
+    type: v.support_pause ? 'premium' : (v.is_clone ? 'cloned' : 'standard'),
+    isClone: !!v.is_clone,
+  }));
 }
 
 async function pexelsSearch({ apiKey, query, perPage=8 }) {
@@ -422,6 +456,15 @@ Hard rules:
 - The script will be read aloud by an AI avatar. Write it as continuous spoken sentences (no headers, no bullets, no stage directions in the script field).
 - Approx ${t.wpmTarget} words per minute → aim for ${Math.round(t.wpmTarget * targetSec / 60)} words.
 - Do NOT include the disclaimer in the spoken script — it will be added separately to captions.
+
+PROSODY rules (CRITICAL — without these the TTS sounds robotic):
+- Use commas every 5–8 words to mark micro-pauses. Even where written grammar wouldn't strictly need one.
+- Use em-dashes ( — ) to insert dramatic mid-sentence pauses where you'd take a breath.
+- Use ellipses (…) sparingly for dramatic effect (max once or twice per script).
+- Vary sentence length: never have more than 2 short sentences in a row before a longer one.
+- Front-load filler beats that real speech uses: "Look,", "Right,", "Here's the thing —", "OK so —" (use 1–2 of these per script, not more).
+- Stress key numbers by isolating them: "That's £20… in your pocket… every year." rather than "That's £20 in your pocket every year."
+- Spell out tricky numbers if HeyGen mispronounces them: "twelve five seventy" instead of "12,570" if rendering says it wrong (only spell out if you're confident TTS will mispronounce).
 
 Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
 {
@@ -661,6 +704,7 @@ function NewVideoPage({ go }) {
   const [scriptObj, setScriptObj] = useState(null);
   const [renderId, setRenderId] = useState(null);
   const [heygenSpeed, setHeygenSpeed] = useState(TONE_PRESETS[tone].speed);
+  const [heygenPitch, setHeygenPitch] = useState(TONE_PRESETS[tone].pitch || 0);
   const [createdVideoId, setCreatedVideoId] = useState(null);
 
   const generateIdeas = async () => {
@@ -716,7 +760,7 @@ function NewVideoPage({ go }) {
           long:    { caption: scriptObj.captions?.long   || '', hashtags: scriptObj.hashtags?.long   || [], posted:false, postUrl:'', scheduledAt:null, title: scriptObj.title || '' },
         },
         broll: scriptObj.broll || [],
-        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', speed: heygenSpeed, aspect: PLATFORMS[platform].aspect },
+        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', speed: heygenSpeed, pitch: heygenPitch, aspect: PLATFORMS[platform].aspect },
       };
       dispatch({ type:'CREATE_VIDEO', video });
       setCreatedVideoId(id);
@@ -728,6 +772,7 @@ function NewVideoPage({ go }) {
         scriptText: scriptObj.script,
         aspect: PLATFORMS[platform].aspect,
         speed: heygenSpeed,
+        pitch: heygenPitch,
       });
       dispatch({ type:'UPDATE_VIDEO', id, patch:{ heygen: { ...video.heygen, videoId, status:'processing' } } });
       setRenderId(videoId);
@@ -833,7 +878,12 @@ function NewVideoPage({ go }) {
           <div style={{marginBottom:14}}>
             <label className="label">HeyGen voice speed: <strong>{heygenSpeed.toFixed(2)}x</strong></label>
             <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={heygenSpeed} onChange={e=>setHeygenSpeed(parseFloat(e.target.value))} />
-            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x. Slow for explainer, fast for hook-driven.</div>
+            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x.</div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label className="label">HeyGen voice pitch: <strong>{heygenPitch > 0 ? '+' : ''}{heygenPitch}</strong></label>
+            <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
+            <div className="help">0 = neutral. Negative = deeper, positive = higher. Most cloned voices sound best at 0; only adjust if your clone is consistently too high or low.</div>
           </div>
           <div style={{display:'flex',gap:8}}>
             <button className="btn" onClick={startRender} disabled={generating}>
@@ -885,6 +935,7 @@ function NewVideoPage({ go }) {
 
 function ApprovalPage({ go }) {
   const { state, dispatch } = useStore();
+  const [rerenderingId, setRerenderingId] = useState(null);
   const items = state.videos.filter(v => v.stage === 'approval' || v.stage === 'render');
 
   const approve = (v) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved' } });
@@ -928,12 +979,14 @@ function ApprovalPage({ go }) {
               </div>
             </div>
             {v.stage === 'approval' && (
-              <div style={{display:'flex',gap:8}}>
+              <div style={{display:'flex',gap:8, flexWrap:'wrap'}}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setRerenderingId(rerenderingId===v.id?null:v.id)}>↻ Re-render</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
                 <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
               </div>
             )}
           </div>
+          {rerenderingId === v.id && <RerenderControls video={v} onClose={()=>setRerenderingId(null)} />}
           {v.heygen?.videoUrl ? (
             <video src={v.heygen.videoUrl} controls className="preview-vid" />
           ) : (
@@ -955,6 +1008,67 @@ function ApprovalPage({ go }) {
           </details>
         </div>
       ))}
+    </div>
+  );
+}
+
+function RerenderControls({ video, onClose }) {
+  const { state, dispatch } = useStore();
+  const [speed, setSpeed] = useState(video.heygen?.speed ?? 1.0);
+  const [pitch, setPitch] = useState(video.heygen?.pitch ?? 0);
+  const [voiceId, setVoiceId] = useState(state.settings.heygenVoiceId);
+  const [script, setScript] = useState(video.script?.text || '');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+
+  const start = async () => {
+    setErr(''); setSubmitting(true);
+    try {
+      const newVideoId = await heygenGenerate({
+        apiKey: state.settings.heygenKey,
+        avatarId: state.settings.heygenAvatarId,
+        voiceId,
+        scriptText: script,
+        aspect: video.heygen?.aspect || PLATFORMS[video.idea?.platform || 'tiktok'].aspect,
+        speed, pitch,
+      });
+      dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{
+        stage:'render',
+        script: { ...video.script, text: script, updatedAt: Date.now() },
+        heygen: { videoId: newVideoId, status:'processing', videoUrl:'', thumbnailUrl:'', error:'', speed, pitch, aspect: video.heygen?.aspect },
+      }});
+      onClose();
+    } catch (e) { setErr(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <div style={{marginTop:12, padding:14, border:'1px dashed var(--border)', borderRadius:8, background:'var(--card2)'}}>
+      <div className="card-title">Re-render with new settings</div>
+      <div className="grid2" style={{marginBottom:10}}>
+        <div>
+          <label className="label">Speed: {speed.toFixed(2)}x</label>
+          <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={speed} onChange={e=>setSpeed(parseFloat(e.target.value))} />
+        </div>
+        <div>
+          <label className="label">Pitch: {pitch>0?'+':''}{pitch}</label>
+          <input type="range" className="slider" min="-50" max="50" step="5" value={pitch} onChange={e=>setPitch(parseInt(e.target.value))} />
+        </div>
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">Voice ID (override)</label>
+        <input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Leave as Settings default or paste a different voice ID" />
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">Script (edit in place)</label>
+        <textarea value={script} onChange={e=>setScript(e.target.value)} style={{minHeight:140}} />
+      </div>
+      {err && <div className="alert alert-err" style={{marginBottom:10}}>{err}</div>}
+      <div style={{display:'flex',gap:8}}>
+        <button className="btn btn-sm" onClick={start} disabled={submitting}>{submitting?<><span className="spin"></span> Sending…</>:'→ Re-render'}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+      </div>
+      <div className="help" style={{marginTop:8}}>This burns another HeyGen credit. Original video will be replaced when the new render finishes.</div>
     </div>
   );
 }
@@ -1226,6 +1340,45 @@ function SettingsPage() {
   const s = state.settings;
   const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
   const [showKeys, setShowKeys] = useState(false);
+  const [avatars, setAvatars] = useState(null);
+  const [voices, setVoices] = useState(null);
+  const [fetching, setFetching] = useState('');
+  const [fetchErr, setFetchErr] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testUrl, setTestUrl] = useState('');
+  const [testText, setTestText] = useState("Hi, this is a quick voice test. The numbers are twelve thousand five hundred and seventy.");
+  const [testErr, setTestErr] = useState('');
+
+  const fetchAvatars = async () => {
+    setFetching('avatars'); setFetchErr('');
+    try { setAvatars(await heygenListAvatars({ apiKey: s.heygenKey })); }
+    catch (e) { setFetchErr(e.message); }
+    finally { setFetching(''); }
+  };
+  const fetchVoices = async () => {
+    setFetching('voices'); setFetchErr('');
+    try { setVoices(await heygenListVoices({ apiKey: s.heygenKey })); }
+    catch (e) { setFetchErr(e.message); }
+    finally { setFetching(''); }
+  };
+
+  const testVoice = async () => {
+    setTesting(true); setTestErr(''); setTestUrl('');
+    try {
+      const id = await heygenGenerate({
+        apiKey: s.heygenKey, avatarId: s.heygenAvatarId, voiceId: s.heygenVoiceId,
+        scriptText: testText, aspect:'9:16', speed: 1.0, pitch: 0,
+      });
+      // Poll until complete
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const r = await heygenStatus({ apiKey: s.heygenKey, videoId: id });
+        if (r.status === 'completed' && r.video_url) { setTestUrl(r.video_url); break; }
+        if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
+      }
+    } catch (e) { setTestErr(e.message); }
+    finally { setTesting(false); }
+  };
 
   const exportData = () => download('fincast-backup.json', JSON.stringify(state, null, 2), 'application/json');
   const importData = (e) => {
@@ -1269,14 +1422,46 @@ function SettingsPage() {
           </div>
           <div>
             <label className="label">HeyGen Avatar ID</label>
-            <input value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })} placeholder="e.g. Daisy_avatar_v2_..." />
-            <div className="help">HeyGen → Avatars → click your avatar → "Copy ID" or in URL.</div>
+            <div style={{display:'flex',gap:6}}>
+              <input value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })} placeholder="e.g. Daisy_avatar_v2_..." />
+              <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={fetchAvatars} disabled={!s.heygenKey || fetching==='avatars'}>
+                {fetching==='avatars'?<span className="spin"></span>:'↻ Fetch'}
+              </button>
+            </div>
+            {avatars && avatars.length > 0 && (
+              <select style={{marginTop:6}} value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })}>
+                <option value="">— Pick an avatar ({avatars.length}) —</option>
+                {avatars.map(a => <option key={a.id} value={a.id}>{a.name} ({a.kind}{a.gender?` · ${a.gender}`:''})</option>)}
+              </select>
+            )}
+            <div className="help">Tap "Fetch" once HeyGen key is in. Picks from a dropdown.</div>
           </div>
           <div>
             <label className="label">HeyGen Voice ID</label>
-            <input value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })} placeholder="..." />
-            <div className="help">Use your own cloned voice ID. Find under Voices → your voice → Copy ID.</div>
+            <div style={{display:'flex',gap:6}}>
+              <input value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })} placeholder="..." />
+              <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={fetchVoices} disabled={!s.heygenKey || fetching==='voices'}>
+                {fetching==='voices'?<span className="spin"></span>:'↻ Fetch'}
+              </button>
+            </div>
+            {voices && voices.length > 0 && (() => {
+              const cloned = voices.filter(v => v.isClone);
+              const others = voices.filter(v => !v.isClone);
+              return (
+                <select style={{marginTop:6}} value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })}>
+                  <option value="">— Pick a voice ({voices.length}) —</option>
+                  {cloned.length > 0 && <optgroup label="Your cloned voices">
+                    {cloned.map(v => <option key={v.id} value={v.id}>{v.name}{v.language?` · ${v.language}`:''}</option>)}
+                  </optgroup>}
+                  <optgroup label="HeyGen voices">
+                    {others.slice(0, 80).map(v => <option key={v.id} value={v.id}>{v.name}{v.language?` · ${v.language}`:''}{v.gender?` · ${v.gender}`:''}</option>)}
+                  </optgroup>
+                </select>
+              );
+            })()}
+            <div className="help">Cloned voices are listed first. If you don't see yours, re-create the clone in HeyGen UI.</div>
           </div>
+          {fetchErr && <div className="alert alert-err" style={{gridColumn:'1/-1'}}>{fetchErr}</div>}
           <div>
             <label className="label">Pexels API key (B-roll)</label>
             <input type={showKeys?'text':'password'} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
@@ -1288,6 +1473,22 @@ function SettingsPage() {
             <div className="help">Phase 1 just opens Buffer compose URL; token is reserved for the phase 2 worker integration.</div>
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">Test voice (~1 credit)</div>
+        <div style={{marginBottom:10}}>
+          <label className="label">Test phrase</label>
+          <textarea value={testText} onChange={e=>setTestText(e.target.value)} style={{minHeight:60}} />
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <button className="btn btn-sm" onClick={testVoice} disabled={testing || !s.heygenKey || !s.heygenAvatarId || !s.heygenVoiceId}>
+            {testing?<><span className="spin"></span> Rendering test… (~60s)</>:'▶ Render test'}
+          </button>
+          <span className="help">Burns one HeyGen credit but lets you A/B different voices without burning a full video.</span>
+        </div>
+        {testErr && <div className="alert alert-err" style={{marginTop:10}}>{testErr}</div>}
+        {testUrl && <video src={testUrl} controls style={{width:'100%',maxHeight:300,marginTop:10,borderRadius:8,background:'#000'}} />}
       </div>
 
       <div className="card" style={{marginBottom:14}}>
