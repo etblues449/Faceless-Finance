@@ -706,6 +706,9 @@ function NewVideoPage({ go }) {
   const [heygenSpeed, setHeygenSpeed] = useState(TONE_PRESETS[tone].speed);
   const [heygenPitch, setHeygenPitch] = useState(TONE_PRESETS[tone].pitch || 0);
   const [createdVideoId, setCreatedVideoId] = useState(null);
+  const [sampleUrl, setSampleUrl] = useState('');
+  const [sampling, setSampling] = useState(false);
+  const [sampleErr, setSampleErr] = useState('');
 
   const generateIdeas = async () => {
     setError(''); setGenerating(true);
@@ -788,6 +791,33 @@ function NewVideoPage({ go }) {
 
   const reset = () => {
     setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setError('');
+    setSampleUrl(''); setSampleErr('');
+  };
+
+  const renderSample = async () => {
+    if (!scriptObj?.script) return;
+    setSampleErr(''); setSampleUrl(''); setSampling(true);
+    try {
+      // Take first ~30 words for a ~10-second sample
+      const words = scriptObj.script.split(/\s+/);
+      const sampleText = words.slice(0, 30).join(' ') + (words.length > 30 ? '…' : '');
+      const id = await heygenGenerate({
+        apiKey: state.settings.heygenKey,
+        avatarId: state.settings.heygenAvatarId,
+        voiceId: state.settings.heygenVoiceId,
+        scriptText: sampleText,
+        aspect: PLATFORMS[platform].aspect,
+        speed: heygenSpeed, pitch: heygenPitch,
+      });
+      // Poll
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: id });
+        if (r.status === 'completed' && r.video_url) { setSampleUrl(r.video_url); break; }
+        if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
+      }
+    } catch (e) { setSampleErr(e.message); }
+    finally { setSampling(false); }
   };
 
   const keysOk = state.settings.anthropicKey && state.settings.heygenKey && state.settings.heygenAvatarId && state.settings.heygenVoiceId;
@@ -885,9 +915,21 @@ function NewVideoPage({ go }) {
             <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
             <div className="help">0 = neutral. Negative = deeper, positive = higher. Most cloned voices sound best at 0; only adjust if your clone is consistently too high or low.</div>
           </div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+            <button className="btn btn-outline btn-sm" onClick={renderSample} disabled={sampling || generating}>
+              {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s sample (1 credit)'}
+            </button>
+          </div>
+          {sampleErr && <div className="alert alert-err" style={{marginBottom:10}}>{sampleErr}</div>}
+          {sampleUrl && (
+            <div style={{marginBottom:14}}>
+              <video src={sampleUrl} controls style={{width:'100%',maxHeight:360,borderRadius:8,background:'#000'}} />
+              <div className="help" style={{marginTop:6}}>If the voice is wrong, try a different Voice ID in Settings, or adjust speed/pitch above and sample again.</div>
+            </div>
+          )}
           <div style={{display:'flex',gap:8}}>
-            <button className="btn" onClick={startRender} disabled={generating}>
-              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render with HeyGen'}
+            <button className="btn" onClick={startRender} disabled={generating || sampling}>
+              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render full video'}
             </button>
             <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
           </div>
