@@ -1001,6 +1001,7 @@ function ApprovalPage({ go }) {
       }
     } catch (e) { alert('Status check failed: ' + e.message); }
   };
+  const del = (v) => { if (confirm(`Delete "${v.idea?.title || 'this video'}"? Cannot be undone.`)) dispatch({ type:'DELETE_VIDEO', id:v.id }); };
 
   return (
     <div>
@@ -1020,13 +1021,14 @@ function ApprovalPage({ go }) {
                 <span className={stageBadgeCls(v.stage)}>{v.stage}</span> · {v.idea?.platform || '—'} · {v.script?.tone || '—'} · {fmt(v.updatedAt)}
               </div>
             </div>
-            {v.stage === 'approval' && (
-              <div style={{display:'flex',gap:8, flexWrap:'wrap'}}>
+            <div style={{display:'flex',gap:8, flexWrap:'wrap'}}>
+              {v.stage === 'approval' && <>
                 <button className="btn btn-ghost btn-sm" onClick={() => setRerenderingId(rerenderingId===v.id?null:v.id)}>↻ Re-render</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
                 <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
-              </div>
-            )}
+              </>}
+              <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => del(v)}>× Delete</button>
+            </div>
           </div>
           {rerenderingId === v.id && <RerenderControls video={v} onClose={()=>setRerenderingId(null)} />}
           {v.heygen?.videoUrl ? (
@@ -1169,12 +1171,13 @@ function PublishCard({ video }) {
             {video.heygen?.aspect && <> · {video.heygen.aspect}</>}
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {video.heygen?.videoUrl && (
             <button className="btn btn-ghost btn-sm" onClick={() => downloadRemote(video.heygen.videoUrl, `${video.idea?.title?.slice(0,40).replace(/[^a-z0-9]+/gi,'_') || 'video'}.mp4`)}>
               ⬇ Download MP4
             </button>
           )}
+          <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { if(confirm(`Delete "${video.idea?.title || 'this video'}"? Cannot be undone.`)) dispatch({ type:'DELETE_VIDEO', id:video.id }); }}>× Delete</button>
         </div>
       </div>
 
