@@ -118,7 +118,7 @@
   summary { cursor:pointer; font-size:12px; color:var(--text-dim); user-select:none; }
   summary:hover { color:var(--text); }
   pre.script-text { font:13px/1.7 -apple-system,Inter,sans-serif; white-space:pre-wrap; margin:0; color:var(--text-dim); }
-  /* === Mobile === */
+  /* === Mobile (cover screen, narrow phones) === */
   @media (max-width: 768px) {
     body { font-size:14px; }
     .app { flex-direction:column-reverse; }
@@ -139,6 +139,28 @@
     .modal { max-width:100%; max-height:100vh; border-radius:0; }
     .seg { flex-wrap:wrap; }
     .platform-card .row { flex-direction:column; }
+  }
+  /* === Tablet / Fold inner screen unfolded (769–1100px) === */
+  @media (min-width: 769px) and (max-width: 1100px) {
+    .side { width: 200px; }
+    .main { padding: 20px 22px; }
+    .grid3 { grid-template-columns: repeat(2, 1fr); }
+    .pipeline-grid { grid-template-columns: repeat(3, minmax(220px, 1fr)) !important; overflow-x: auto; }
+    .calendar-grid { grid-template-columns: repeat(7, minmax(110px, 1fr)) !important; overflow-x: auto; }
+    .modal { max-width: 640px; }
+  }
+  /* Touch devices: bigger tap targets */
+  @media (pointer: coarse) {
+    .nav-item { min-height: 48px; }
+    .btn { min-height: 40px; }
+    .btn-sm { min-height: 34px; }
+    input, textarea, select { min-height: 40px; padding: 10px 12px; }
+    .vcard { padding: 12px 14px; }
+    .seg-btn { padding: 8px 14px; min-height: 36px; }
+  }
+  /* === Foldable: when device reports two viewport segments (Fold open), keep modal off the hinge === */
+  @media (horizontal-viewport-segments: 2) {
+    .modal { max-width: calc(env(viewport-segment-right 0 0) - env(viewport-segment-left 1 0) - 32px); margin-right: calc(100vw - env(viewport-segment-right 0 0) + 16px); }
   }
   /* iOS safe-area for standalone app mode */
   @supports (padding: max(0px)) {
