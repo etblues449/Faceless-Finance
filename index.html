@@ -282,6 +282,8 @@ const DEFAULT_SETTINGS = {
   disclaimer: FCA_DISCLAIMER,
   llmModel: 'claude-sonnet-4-6',
   theme: 'light',
+  workerUrl: '',
+  userId: '',
 };
 
 // ============================================================================
@@ -425,6 +427,37 @@ function bufferComposeUrl({ text, mediaUrl }) {
   if (text) params.set('text', text);
   if (mediaUrl) params.set('picture', mediaUrl);
   return `${base}?${params.toString()}`;
+}
+
+// Phase 2 — Cloudflare Worker auto-publish. URL configured in Settings.
+async function workerCall(workerUrl, path, opts = {}) {
+  if (!workerUrl) throw new Error('Worker URL not set in Settings.');
+  const r = await fetch(`${workerUrl.replace(/\/+$/, '')}${path}`, opts);
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`Worker ${r.status}: ${t.slice(0, 200)}`);
+  }
+  return r.json();
+}
+async function workerAuthStatus(workerUrl, platform, userId) {
+  return workerCall(workerUrl, `/auth/${platform}/status?user_id=${encodeURIComponent(userId)}`);
+}
+async function workerInitOAuth(workerUrl, platform, userId, redirectTo) {
+  return workerCall(workerUrl, `/oauth/${platform}/init?user_id=${encodeURIComponent(userId)}&redirect_to=${encodeURIComponent(redirectTo)}`);
+}
+async function workerDisconnect(workerUrl, platform, userId) {
+  return workerCall(workerUrl, `/auth/${platform}/disconnect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+}
+async function workerPublish(workerUrl, platform, payload) {
+  return workerCall(workerUrl, `/publish/${platform}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ============================================================================
@@ -1184,7 +1217,12 @@ function PublishCard({ video }) {
   const { state, dispatch } = useStore();
   const [active, setActive] = useState(state.settings.defaultPlatforms[0] || 'tiktok');
   const [copied, setCopied] = useState('');
+  const [autoBusy, setAutoBusy] = useState('');
+  const [autoMsg, setAutoMsg] = useState('');
   const platforms = ['tiktok','reels','shorts','long'];
+
+  // Map FinCast platform key → worker platform key
+  const workerPlatform = (k) => k === 'reels' ? 'instagram' : (k === 'shorts' || k === 'long') ? 'youtube' : 'tiktok';
 
   const updatePlatform = (k, patch) =>
     dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{ platforms: { ...video.platforms, [k]: { ...video.platforms[k], ...patch } } } });
@@ -1274,10 +1312,33 @@ function PublishCard({ video }) {
           {state.settings.bufferToken !== undefined && (
             <a className="btn btn-ghost btn-sm" href={bufferComposeUrl({ text: fullCaption, mediaUrl: video.heygen?.videoUrl })} target="_blank" rel="noopener">→ Buffer</a>
           )}
+          {state.settings.workerUrl && state.settings.userId && video.heygen?.videoUrl && (
+            <button
+              className="btn btn-sm"
+              style={{background:'var(--gold)', color:'#000'}}
+              disabled={autoBusy===active}
+              onClick={async () => {
+                if (!confirm(`Auto-publish to ${pCfg.name} now?`)) return;
+                setAutoBusy(active); setAutoMsg('');
+                try {
+                  const res = await workerPublish(state.settings.workerUrl, workerPlatform(active), {
+                    user_id: state.settings.userId,
+                    video_url: video.heygen.videoUrl,
+                    caption: fullCaption,
+                    title: p.title || video.idea?.title,
+                  });
+                  setAutoMsg(`✓ ${res.note || 'Published'}${res.url?` — ${res.url}`:''}`);
+                  markPublished(active);
+                } catch (e) { setAutoMsg(`✗ ${e.message}`); }
+                finally { setAutoBusy(''); }
+              }}
+            >{autoBusy===active ? <><span className="spin"></span> Publishing…</> : `🚀 Auto-publish to ${pCfg.name}`}</button>
+          )}
           {!p.posted && <button className="btn btn-sm" style={{marginLeft:'auto'}} onClick={() => markPublished(active)}>✓ Mark posted</button>}
           {p.posted && <span className="pill" style={{marginLeft:'auto'}}>Posted {fmt(p.postedAt)}</span>}
           {copied===' caption' && <span className="copy-tip show">Copied</span>}
         </div>
+        {autoMsg && <div className={autoMsg.startsWith('✓')?'alert alert-ok':'alert alert-err'} style={{marginTop:10}}>{autoMsg}</div>}
       </div>
 
       {video.broll?.length > 0 && (
@@ -1423,6 +1484,104 @@ function CalendarPage() {
 // PAGE: SETTINGS
 // ============================================================================
 
+function PhaseTwoCard() {
+  const { state, dispatch } = useStore();
+  const s = state.settings;
+  const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
+  const [statuses, setStatuses] = useState({ tiktok: null, youtube: null, instagram: null });
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+
+  // Ensure userId exists
+  useEffect(() => {
+    if (!s.userId) set({ userId: (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)) });
+  }, []);
+
+  // Detect ?connected= query param after OAuth callback
+  useEffect(() => {
+    const u = new URL(location.href);
+    const connected = u.searchParams.get('connected');
+    if (connected) {
+      u.searchParams.delete('connected');
+      history.replaceState({}, '', u.toString());
+      check(connected);
+    }
+  }, []);
+
+  const check = async (platform) => {
+    if (!s.workerUrl || !s.userId) return;
+    try {
+      const res = await workerAuthStatus(s.workerUrl, platform, s.userId);
+      setStatuses(prev => ({ ...prev, [platform]: res }));
+    } catch (e) { setStatuses(prev => ({ ...prev, [platform]: { connected: false, error: e.message } })); }
+  };
+  const checkAll = async () => {
+    setErr('');
+    for (const p of ['tiktok','youtube','instagram']) await check(p);
+  };
+  useEffect(() => { if (s.workerUrl && s.userId) checkAll(); }, [s.workerUrl, s.userId]);
+
+  const connect = async (platform) => {
+    setErr(''); setBusy(platform);
+    try {
+      const redirect = location.origin + location.pathname;
+      const { authUrl } = await workerInitOAuth(s.workerUrl, platform, s.userId, redirect);
+      location.href = authUrl;
+    } catch (e) { setErr(e.message); setBusy(''); }
+  };
+  const disconnect = async (platform) => {
+    if (!confirm(`Disconnect ${platform}?`)) return;
+    setBusy(platform); setErr('');
+    try { await workerDisconnect(s.workerUrl, platform, s.userId); await check(platform); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(''); }
+  };
+
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">Phase 2 · Auto-Publish (Cloudflare Worker)</div>
+      <div className="help" style={{marginBottom:10}}>
+        Optional. Lets the app post directly to TikTok / YouTube / Instagram instead of you uploading manually. Requires deploying the worker (see <code>worker/README.md</code> in the repo).
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">Worker URL</label>
+        <input value={s.workerUrl} onChange={e => set({ workerUrl: e.target.value })} placeholder="https://fincast-worker.<you>.workers.dev" />
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">User ID (auto-generated)</label>
+        <input value={s.userId || ''} onChange={e => set({ userId: e.target.value })} />
+        <div className="help">Stable identifier so the worker knows which tokens belong to you.</div>
+      </div>
+      {err && <div className="alert alert-err" style={{marginBottom:10}}>{err}</div>}
+      {!s.workerUrl ? (
+        <div className="help">Set the worker URL above to enable per-platform connections.</div>
+      ) : (
+        <div style={{display:'grid', gridTemplateColumns:'1fr', gap:8}}>
+          {['tiktok','youtube','instagram'].map(p => {
+            const st = statuses[p];
+            return (
+              <div key={p} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'var(--card2)',borderRadius:8}}>
+                <strong style={{flex:1, textTransform:'capitalize'}}>{PLATFORMS[p==='instagram'?'reels':p].name.split(' ')[0]}{p==='youtube'?' (Shorts/Long)':''}</strong>
+                {st?.connected ? (
+                  <>
+                    <span className="pill" style={{color:'var(--accent)'}}>Connected{st.handle?` · ${st.handle}`:''}</span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => disconnect(p)} disabled={busy===p}>Disconnect</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="pill">Not connected</span>
+                    <button className="btn btn-sm" onClick={() => connect(p)} disabled={busy===p}>{busy===p?<span className="spin"></span>:'Connect →'}</button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { state, dispatch } = useStore();
   const s = state.settings;
@@ -1562,6 +1721,8 @@ function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <PhaseTwoCard />
 
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">Test voice (~1 credit)</div>

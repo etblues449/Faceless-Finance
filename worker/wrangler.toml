@@ -1,0 +1,25 @@
+name = "fincast-worker"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Replace ALLOWED_ORIGIN with your GitHub Pages URL (no trailing slash)
+[vars]
+ALLOWED_ORIGIN = "https://etblues449.github.io"
+APP_ROOT_PATH = "/Faceless-Finance"
+
+# KV namespace for storing OAuth tokens (encrypted at rest)
+# Create with: wrangler kv namespace create fincast_tokens
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "REPLACE_WITH_YOUR_KV_ID"
+
+# Secrets (set via: wrangler secret put <NAME>)
+# Required:
+#   TIKTOK_CLIENT_KEY
+#   TIKTOK_CLIENT_SECRET
+#   GOOGLE_CLIENT_ID
+#   GOOGLE_CLIENT_SECRET
+#   META_APP_ID
+#   META_APP_SECRET
+#   ENCRYPTION_KEY     (random 32+ char string)
