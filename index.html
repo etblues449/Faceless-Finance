@@ -286,6 +286,7 @@ const DEFAULT_SETTINGS = {
   defaultTalkingHeadProvider: 'auto', // 'auto' picks best available
   defaultCinematicProvider: 'auto',
   costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
+  characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
   audience: 'UK PAYE earners earning between minimum wage and £125,140. Particular relevance to those approaching or in the £100k–£125,140 personal-allowance taper zone.',
   channelHandle: '',
@@ -643,6 +644,16 @@ class HedraActTwoProvider extends VideoProvider {
   }
 }
 
+// Builds the final cinematic prompt by prepending the Character Bible.
+// Centralised so EVERY cinematic provider (Hedra, Veo, Sora, Runway) gets
+// the same locked persona description — regardless of which one renders.
+function applyCharacterBible(scene, settings) {
+  const bible = (settings?.characterBible || '').trim();
+  const scenePrompt = (scene.visualPrompt || scene.dialogue || '').trim();
+  if (!bible) return scenePrompt;
+  return `Subject reference (must match across all scenes): ${bible}\n\nScene: ${scenePrompt}`;
+}
+
 // ----------------------------------------------------------------------------
 // HedraCharacterProvider — cinematic via Hedra Character-2
 // ----------------------------------------------------------------------------
@@ -671,7 +682,7 @@ class HedraCharacterProvider extends VideoProvider {
         body: JSON.stringify({
           model: 'character-2',
           character_id: settings.hedraCharacterId,
-          prompt: sc.visualPrompt || sc.dialogue,
+          prompt: applyCharacterBible(sc, settings),
           duration_sec: sc.durationSec || 5,
           aspect_ratio: aspect || '9:16',
         }),
@@ -2035,6 +2046,23 @@ function PhaseThreeProvidersCard() {
           </div>
         </div>
         <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise.</div>
+      </div>
+
+      {/* Character Bible — locked persona description prepended to every cinematic prompt */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>📖 Character Bible (locks your AI persona across every cinematic generation)</div>
+        <div className="help" style={{marginBottom:8}}>
+          One paragraph describing how your character should look. Auto-prepended to every cinematic prompt sent to Hedra / Veo / Sora / Runway. Write it once, use it forever — every cinematic shot stays visually consistent.
+        </div>
+        <textarea
+          value={s.characterBible}
+          onChange={e=>set({ characterBible: e.target.value })}
+          placeholder="e.g. Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm."
+          style={{minHeight:90, fontFamily:'inherit'}}
+        />
+        <div className="help" style={{marginTop:6}}>
+          Tips: be specific and visual. Mention features that uniquely identify your persona. Avoid abstract traits ("confident", "trustworthy") — only physical descriptors.
+        </div>
       </div>
 
       {/* Provider preferences */}
