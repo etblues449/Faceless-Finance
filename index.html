@@ -274,6 +274,18 @@ const DEFAULT_SETTINGS = {
   heygenVoiceId: '',
   pexelsKey: '',
   bufferToken: '',
+  // Phase 3 — multi-provider video stack
+  hedraKey: '',
+  hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
+  elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
+  elevenLabsVoiceId: '',          // PVC voice ID
+  veoKey: '',                     // Google Vertex AI (Veo 3) — stub
+  veoProjectId: '',
+  openaiKey: '',                  // OpenAI (Sora 2) — stub
+  runwayKey: '',                  // Runway Gen-4 — stub
+  defaultTalkingHeadProvider: 'auto', // 'auto' picks best available
+  defaultCinematicProvider: 'auto',
+  costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
   audience: 'UK PAYE earners earning between minimum wage and £125,140. Particular relevance to those approaching or in the £100k–£125,140 personal-allowance taper zone.',
   channelHandle: '',
@@ -418,6 +430,442 @@ async function pexelsSearch({ apiKey, query, perPage=8 }) {
   return r.json();
 }
 
+// ============================================================================
+// PHASE 3 — STORYBOARD SCHEMA + VIDEO PROVIDER ABSTRACTION
+// ============================================================================
+//
+// A Storyboard is the provider-agnostic source of truth for a video. Any
+// provider (HeyGen, Hedra, Veo, Sora, Runway, future) can render it.
+//
+// Storyboard {
+//   version: 2,
+//   title, hook,
+//   scenes: [
+//     {
+//       id, dialogue, durationSec,
+//       type: 'talking-head' | 'cinematic',
+//       visualPrompt,           // text prompt for cinematic; background hint for talking-head
+//       brollKeywords: [str],
+//       avatarPosition?: 'left'|'center'|'right',
+//       avatarScale?: 'close'|'medium'|'wide',
+//       textOverlay?,
+//       transition?: 'cut'|'fade'|'slide',
+//       providerOverride?,      // force a specific provider for this scene
+//     }
+//   ],
+//   captions, hashtags, broll,
+//   totalDurationSec
+// }
+
+const STORYBOARD_VERSION = 2;
+
+// Build a storyboard from a flat script (backward-compat for old videos).
+function migrateScriptToStoryboard(scriptObj) {
+  if (!scriptObj) return null;
+  if (scriptObj.scenes && Array.isArray(scriptObj.scenes)) return scriptObj; // already a storyboard
+  const fullText = scriptObj.script || scriptObj.text || '';
+  // Split on em-dashes/double-line-breaks/full stops at scene-like boundaries
+  const sentences = fullText.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  const sceneCount = Math.max(1, Math.min(6, Math.ceil(sentences.length / 3)));
+  const perScene = Math.ceil(sentences.length / sceneCount);
+  const scenes = [];
+  for (let i = 0; i < sceneCount; i++) {
+    const dialogue = sentences.slice(i * perScene, (i + 1) * perScene).join(' ').trim();
+    if (!dialogue) continue;
+    const wpm = 150;
+    const wordCount = dialogue.split(/\s+/).length;
+    scenes.push({
+      id: 'scene_' + i,
+      dialogue,
+      durationSec: Math.round((wordCount / wpm) * 60),
+      type: 'talking-head',
+      visualPrompt: '',
+      brollKeywords: scriptObj.broll?.[i] ? [scriptObj.broll[i]] : [],
+      avatarPosition: 'center',
+      avatarScale: 'medium',
+      textOverlay: '',
+      transition: 'cut',
+    });
+  }
+  return {
+    version: STORYBOARD_VERSION,
+    title: scriptObj.title || '',
+    hook: scriptObj.hook || '',
+    scenes,
+    captions: scriptObj.captions || {},
+    hashtags: scriptObj.hashtags || {},
+    broll: scriptObj.broll || [],
+    totalDurationSec: scenes.reduce((s, sc) => s + sc.durationSec, 0),
+  };
+}
+
+function storyboardToFlatScript(storyboard) {
+  if (!storyboard?.scenes) return '';
+  return storyboard.scenes.map(s => s.dialogue).join('\n\n');
+}
+
+function storyboardDuration(storyboard) {
+  if (!storyboard?.scenes) return 0;
+  return storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 0), 0);
+}
+
+// ----------------------------------------------------------------------------
+// VideoProvider — base interface every provider implements
+// ----------------------------------------------------------------------------
+
+class VideoProvider {
+  static id = 'base';
+  static name = 'Base';
+  static caps = { talkingHead: false, cinematic: false, lipSync: false, characterRef: false, multiScene: false };
+
+  // Returns { available: bool, missing: [strings] }
+  static availability(settings) { return { available: false, missing: ['Override availability()'] }; }
+
+  // Returns estimated GBP cost for the scenes assigned to this provider
+  static estimateCost(scenes) { return 0; }
+
+  // Kicks off a render. Returns { jobs: [{ jobId, sceneIds }] } — jobs may map to one scene or many
+  static async startRender({ storyboard, scenes, settings, audioUrl, aspect }) {
+    throw new Error('Override startRender()');
+  }
+
+  // Polls a job. Returns { status, videoUrl?, error?, progress? }
+  static async pollJob({ jobId, settings }) { throw new Error('Override pollJob()'); }
+}
+
+// ----------------------------------------------------------------------------
+// HeyGenProvider — wraps existing HeyGen logic
+// ----------------------------------------------------------------------------
+
+class HeyGenProvider extends VideoProvider {
+  static id = 'heygen';
+  static name = 'HeyGen';
+  static caps = { talkingHead: true, cinematic: false, lipSync: true, characterRef: false, multiScene: true };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.heygenKey) missing.push('HeyGen API key');
+    if (!s.heygenAvatarId) missing.push('HeyGen Avatar ID');
+    if (!s.heygenVoiceId) missing.push('HeyGen Voice ID');
+    return { available: missing.length === 0, missing };
+  }
+
+  // HeyGen ~$0.10–0.30/min depending on plan; we model £0.05/scene flat
+  static estimateCost(scenes) { return Math.max(0.05, scenes.reduce((s, sc) => s + (sc.durationSec || 5) / 60 * 0.20, 0)); }
+
+  static async startRender({ storyboard, scenes, settings, aspect }) {
+    const { heygenKey, heygenAvatarId, heygenVoiceId } = settings;
+    const dim = aspect === '16:9' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+    // HeyGen supports multi-scene via video_inputs[]. One entry per scene.
+    const video_inputs = scenes.map(sc => ({
+      character: {
+        type: 'avatar',
+        avatar_id: heygenAvatarId,
+        avatar_style: sc.avatarScale === 'close' ? 'closeUp' : 'normal',
+        scale: sc.avatarScale === 'wide' ? 0.7 : (sc.avatarScale === 'close' ? 1.2 : 1.0),
+        offset: sc.avatarPosition === 'left' ? { x: -0.25, y: 0 } : sc.avatarPosition === 'right' ? { x: 0.25, y: 0 } : { x: 0, y: 0 },
+      },
+      voice: { type: 'text', input_text: sc.dialogue, voice_id: heygenVoiceId },
+      ...(sc.textOverlay ? { caption: { text: sc.textOverlay } } : {}),
+    }));
+    const r = await fetch('https://api.heygen.com/v2/video/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': heygenKey },
+      body: JSON.stringify({ video_inputs, dimension: dim, test: false }),
+    });
+    if (!r.ok) throw new Error(`HeyGen ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const data = await r.json();
+    if (data.error) throw new Error(`HeyGen: ${JSON.stringify(data.error)}`);
+    return { jobs: [{ jobId: data.data?.video_id, sceneIds: scenes.map(s => s.id), provider: 'heygen' }] };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    const r = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(jobId)}`, {
+      headers: { 'x-api-key': settings.heygenKey },
+    });
+    if (!r.ok) return { status: 'failed', error: `HeyGen status ${r.status}` };
+    const d = (await r.json()).data || {};
+    return { status: d.status, videoUrl: d.video_url, error: d.error?.message, progress: d.progress };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// HedraActTwoProvider — talking-head via Hedra Act-Two (character image + audio)
+// ----------------------------------------------------------------------------
+
+class HedraActTwoProvider extends VideoProvider {
+  static id = 'hedra_act_two';
+  static name = 'Hedra Act-Two';
+  static caps = { talkingHead: true, cinematic: false, lipSync: true, characterRef: true, multiScene: false };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.hedraKey) missing.push('Hedra API key');
+    if (!s.hedraCharacterId) missing.push('Hedra Character ID');
+    if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs voice (key + voice ID)');
+    return { available: missing.length === 0, missing };
+  }
+
+  // Hedra Act-Two ~30 credits/sec at ~$0.001/credit ≈ $0.03/sec → £0.024/sec
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.024, 0); }
+
+  static async startRender({ storyboard, scenes, settings, audioUrl }) {
+    if (!audioUrl) throw new Error('Hedra Act-Two needs pre-rendered ElevenLabs audio.');
+    // Each scene becomes a separate Hedra job (Hedra Act-Two is per-clip).
+    const jobs = [];
+    for (const sc of scenes) {
+      const r = await fetch('https://api.hedra.com/v1/generations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': settings.hedraKey },
+        body: JSON.stringify({
+          model: 'act-two',
+          character_id: settings.hedraCharacterId,
+          audio_url: audioUrl, // ideally we'd pre-slice audio per scene; v1 sends whole track
+          aspect_ratio: '9:16',
+          dialogue_text: sc.dialogue, // for lip-sync hints
+        }),
+      });
+      if (!r.ok) throw new Error(`Hedra ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      const d = await r.json();
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    const r = await fetch(`https://api.hedra.com/v1/generations/${jobId}`, {
+      headers: { 'x-api-key': settings.hedraKey },
+    });
+    if (!r.ok) return { status: 'failed', error: `Hedra status ${r.status}` };
+    const d = await r.json();
+    const map = { queued: 'pending', processing: 'processing', completed: 'completed', failed: 'failed' };
+    return { status: map[d.status] || d.status, videoUrl: d.video_url || d.output_url, error: d.error };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// HedraCharacterProvider — cinematic via Hedra Character-2
+// ----------------------------------------------------------------------------
+
+class HedraCharacterProvider extends VideoProvider {
+  static id = 'hedra_character';
+  static name = 'Hedra Character-2';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.hedraKey) missing.push('Hedra API key');
+    if (!s.hedraCharacterId) missing.push('Hedra Character ID (upload reference photos in Hedra)');
+    return { available: missing.length === 0, missing };
+  }
+
+  // Character-2 ~50 credits/sec at ~$0.001/credit ≈ $0.05/sec → £0.04/sec
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.04, 0); }
+
+  static async startRender({ storyboard, scenes, settings, aspect }) {
+    const jobs = [];
+    for (const sc of scenes) {
+      const r = await fetch('https://api.hedra.com/v1/generations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': settings.hedraKey },
+        body: JSON.stringify({
+          model: 'character-2',
+          character_id: settings.hedraCharacterId,
+          prompt: sc.visualPrompt || sc.dialogue,
+          duration_sec: sc.durationSec || 5,
+          aspect_ratio: aspect || '9:16',
+        }),
+      });
+      if (!r.ok) throw new Error(`Hedra ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      const d = await r.json();
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_character' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) { return HedraActTwoProvider.pollJob({ jobId, settings }); }
+}
+
+// ----------------------------------------------------------------------------
+// Stub providers — future-proof slots for Veo 3 / Sora 2 / Runway Gen-4
+// ----------------------------------------------------------------------------
+
+class Veo3Provider extends VideoProvider {
+  static id = 'veo3';
+  static name = 'Google Veo 3';
+  static caps = { talkingHead: true, cinematic: true, lipSync: true, characterRef: true, multiScene: false };
+  static availability(s) {
+    const missing = [];
+    if (!s.veoKey) missing.push('Google Vertex AI API key');
+    if (!s.veoProjectId) missing.push('Google Cloud Project ID');
+    return { available: missing.length === 0, missing };
+  }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.20, 0); } // ~$0.25/sec → £0.20
+  static async startRender() { throw new Error('Veo 3 provider stub — full implementation pending. Add veoKey to enable build-out.'); }
+  static async pollJob() { throw new Error('Veo 3 stub'); }
+}
+
+class Sora2Provider extends VideoProvider {
+  static id = 'sora2';
+  static name = 'OpenAI Sora 2';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+  static availability(s) { return { available: !!s.openaiKey, missing: s.openaiKey ? [] : ['OpenAI API key'] }; }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.16, 0); } // ~$0.20/sec
+  static async startRender() { throw new Error('Sora 2 provider stub — pending API maturity. Add openaiKey to enable build-out.'); }
+  static async pollJob() { throw new Error('Sora 2 stub'); }
+}
+
+class RunwayGen4Provider extends VideoProvider {
+  static id = 'runway_gen4';
+  static name = 'Runway Gen-4';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+  static availability(s) { return { available: !!s.runwayKey, missing: s.runwayKey ? [] : ['Runway API key'] }; }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.32, 0); } // ~$0.40/sec
+  static async startRender() { throw new Error('Runway Gen-4 provider stub. Add runwayKey to enable build-out.'); }
+  static async pollJob() { throw new Error('Runway stub'); }
+}
+
+// ----------------------------------------------------------------------------
+// Provider Registry + Picker
+// ----------------------------------------------------------------------------
+
+const PROVIDERS = {
+  heygen: HeyGenProvider,
+  hedra_act_two: HedraActTwoProvider,
+  hedra_character: HedraCharacterProvider,
+  veo3: Veo3Provider,
+  sora2: Sora2Provider,
+  runway_gen4: RunwayGen4Provider,
+};
+
+function listProvidersFor(sceneType, settings) {
+  const cap = sceneType === 'cinematic' ? 'cinematic' : 'talkingHead';
+  return Object.values(PROVIDERS).filter(p => p.caps[cap]).map(p => ({
+    P: p,
+    id: p.id,
+    name: p.name,
+    available: p.availability(settings).available,
+    missing: p.availability(settings).missing,
+  }));
+}
+
+function pickProviderForScene(scene, settings) {
+  // 1. Manual override on the scene
+  if (scene.providerOverride && PROVIDERS[scene.providerOverride]) {
+    const P = PROVIDERS[scene.providerOverride];
+    if (P.availability(settings).available) return P;
+  }
+  // 2. User's default for this scene type
+  const defaultId = scene.type === 'cinematic'
+    ? settings.defaultCinematicProvider
+    : settings.defaultTalkingHeadProvider;
+  if (defaultId && defaultId !== 'auto' && PROVIDERS[defaultId]) {
+    const P = PROVIDERS[defaultId];
+    if (P.availability(settings).available) return P;
+  }
+  // 3. Auto: cheapest available provider with the required capability
+  const candidates = listProvidersFor(scene.type, settings).filter(c => c.available);
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.P.estimateCost([scene]) - b.P.estimateCost([scene]));
+  return candidates[0].P;
+}
+
+function estimateStoryboardCost(storyboard, settings) {
+  if (!storyboard?.scenes) return { total: 0, byProvider: {}, unrenderableScenes: [] };
+  const byProvider = {};
+  const unrenderable = [];
+  for (const sc of storyboard.scenes) {
+    const P = pickProviderForScene(sc, settings);
+    if (!P) { unrenderable.push(sc.id); continue; }
+    byProvider[P.id] = byProvider[P.id] || { name: P.name, scenes: [], cost: 0 };
+    byProvider[P.id].scenes.push(sc);
+  }
+  for (const id of Object.keys(byProvider)) {
+    byProvider[id].cost = PROVIDERS[id].estimateCost(byProvider[id].scenes);
+  }
+  const total = Object.values(byProvider).reduce((s, p) => s + p.cost, 0);
+  return { total, byProvider, unrenderableScenes: unrenderable };
+}
+
+// ----------------------------------------------------------------------------
+// ElevenLabs direct audio (provider-agnostic voice track for Hedra/Veo/etc.)
+// ----------------------------------------------------------------------------
+
+async function elevenLabsTTS({ apiKey, voiceId, text }) {
+  if (!apiKey || !voiceId) throw new Error('ElevenLabs key + voice ID required.');
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': apiKey, 'content-type': 'application/json', 'accept': 'audio/mpeg' },
+    body: JSON.stringify({
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true },
+    }),
+  });
+  if (!r.ok) throw new Error(`ElevenLabs ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const blob = await r.blob();
+  return URL.createObjectURL(blob); // local blob URL — providers needing remote URL must upload
+}
+
+// ----------------------------------------------------------------------------
+// Render orchestrator — takes a storyboard, picks providers per scene,
+// dispatches renders, returns job handles for polling.
+// ----------------------------------------------------------------------------
+
+async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
+  const cost = estimateStoryboardCost(storyboard, settings);
+  if (cost.unrenderableScenes.length) {
+    throw new Error(`No available provider for scene(s): ${cost.unrenderableScenes.join(', ')}. Configure a provider in Settings.`);
+  }
+  if (settings.costCapPerVideoGBP && cost.total > settings.costCapPerVideoGBP) {
+    throw new Error(`Estimated cost £${cost.total.toFixed(2)} exceeds your cap of £${settings.costCapPerVideoGBP}. Raise cap in Settings or use cheaper providers.`);
+  }
+  // Group scenes by provider
+  const groups = {};
+  for (const sc of storyboard.scenes) {
+    const P = pickProviderForScene(sc, settings);
+    groups[P.id] = groups[P.id] || { P, scenes: [] };
+    groups[P.id].scenes.push(sc);
+  }
+  // If any provider needs ElevenLabs audio, render it once
+  let audioUrl = null;
+  const needsAudio = Object.values(groups).some(g => g.P === HedraActTwoProvider);
+  if (needsAudio) {
+    audioUrl = await elevenLabsTTS({
+      apiKey: settings.elevenLabsKey,
+      voiceId: settings.elevenLabsVoiceId,
+      text: storyboardToFlatScript(storyboard),
+    });
+  }
+  const allJobs = [];
+  for (const { P, scenes } of Object.values(groups)) {
+    const { jobs } = await P.startRender({ storyboard, scenes, settings, audioUrl, aspect });
+    allJobs.push(...jobs);
+  }
+  return { jobs: allJobs, cost };
+}
+
+async function pollAllJobs({ jobs, settings, onProgress }) {
+  const results = jobs.map(j => ({ ...j, status: 'pending', videoUrl: null }));
+  let pending = results.length;
+  const maxAttempts = 120; // 10 min @ 5s
+  for (let i = 0; i < maxAttempts && pending > 0; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    for (const r of results) {
+      if (r.status === 'completed' || r.status === 'failed') continue;
+      try {
+        const P = PROVIDERS[r.provider];
+        const upd = await P.pollJob({ jobId: r.jobId, settings });
+        if (upd.status === 'completed') { r.status = 'completed'; r.videoUrl = upd.videoUrl; pending--; }
+        else if (upd.status === 'failed') { r.status = 'failed'; r.error = upd.error; pending--; }
+        else { r.progress = upd.progress; }
+      } catch (e) { r.status = 'failed'; r.error = e.message; pending--; }
+    }
+    onProgress?.(results);
+  }
+  return results;
+}
+
 // Buffer compose URL — phase 1 (no backend). Opens Buffer with prefilled text + media URL.
 function bufferComposeUrl({ text, mediaUrl }) {
   const base = 'https://buffer.com/compose';
@@ -480,12 +928,34 @@ PROSODY rules (CRITICAL — without these the TTS sounds robotic):
 - Stress key numbers by isolating them: "That's £20… in your pocket… every year." rather than "That's £20 in your pocket every year."
 - Spell out tricky numbers if HeyGen mispronounces them: "twelve five seventy" instead of "12,570" if rendering says it wrong (only spell out if you're confident TTS will mispronounce).
 
+SCENE BREAKDOWN (CRITICAL):
+- Break the script into 3–6 short scenes (one per beat: hook, problem, lever, proof, payoff).
+- Each scene gets its own dialogue (1–3 sentences), a visualPrompt (what's on screen), and a type.
+- type 'talking-head' = avatar in frame speaking. Use for explanation, hook, CTA.
+- type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
+- Mix types. A typical 50s video might be: cinematic hook (5s) → talking-head explanation (15s) → cinematic illustration (5s) → talking-head proof (15s) → cinematic payoff (5s) → talking-head CTA (5s).
+- For talking-head scenes, set avatarPosition (left/center/right) and avatarScale (close/medium/wide) for visual variety.
+- For cinematic scenes, write visualPrompt as a vivid one-sentence description suitable for an AI video model (e.g. Veo 3, Hedra Character-2). Be specific about location, action, mood, time of day.
+
 Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
 {
   "title": "video title (max 60 chars, hook + benefit)",
   "hook": "first 3 seconds, verbatim",
-  "script": "the FULL spoken script as one continuous string of sentences",
-  "estimatedDurationSec": <integer>,
+  "scenes": [
+    {
+      "id": "scene_1",
+      "dialogue": "the spoken text for this scene (1-3 sentences)",
+      "durationSec": 5,
+      "type": "talking-head" | "cinematic",
+      "visualPrompt": "for cinematic: vivid description for AI video model. for talking-head: short hint about background/B-roll",
+      "brollKeywords": ["keyword1","keyword2"],
+      "avatarPosition": "left" | "center" | "right",
+      "avatarScale": "close" | "medium" | "wide",
+      "textOverlay": "optional on-screen text caption (8 words max) — empty string if none",
+      "transition": "cut" | "fade" | "slide"
+    }
+  ],
+  "estimatedDurationSec": <sum of scene durations>,
   "captions": {
     "tiktok": "caption for TikTok, hook + 1-2 lines + CTA, no hashtags",
     "reels":  "caption for Reels, similar",
@@ -499,7 +969,7 @@ Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
     "long":   ["#..."]
   },
   "youtubeTitle": "title optimised for YouTube Shorts (max 100 chars)",
-  "broll": ["3-5 short search queries for Pexels stock footage relevant to the script"]
+  "broll": ["3-5 short search queries for Pexels stock footage relevant to the script (used as fallback)"]
 }`;
 }
 
@@ -763,11 +1233,17 @@ function NewVideoPage({ go }) {
         model: state.settings.llmModel,
         system: scriptSystemPrompt(state.settings, tone, platform, mood),
         user: `Write the script for this idea:\nTitle: ${idea.title}\nHook: ${idea.hook}\nAngle: ${idea.angle}`,
-        maxTokens: 2400,
+        maxTokens: 3200,
       });
       const parsed = tryParseJSON(out);
-      if (!parsed || !parsed.script) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
-      setScriptObj(parsed);
+      // New format: parsed.scenes[]. Old format: parsed.script (string). Accept either.
+      if (!parsed || (!parsed.scenes && !parsed.script)) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
+      // If LLM returned old format, migrate inline
+      const storyboard = parsed.scenes
+        ? { version: STORYBOARD_VERSION, ...parsed }
+        : migrateScriptToStoryboard(parsed);
+      // Stash combined object: storyboard + legacy fields for any code still reading them
+      setScriptObj({ ...parsed, storyboard, script: storyboardToFlatScript(storyboard) });
       setPicked(idea);
       setStep(3);
     } catch (e) { setError(e.message); }
@@ -775,17 +1251,24 @@ function NewVideoPage({ go }) {
   };
 
   const startRender = async () => {
-    const missing = preflightRender(state.settings, scriptObj?.script);
-    if (missing.length) { setError('Missing before render: ' + missing.join(', ')); return; }
+    if (!scriptObj?.storyboard) { setError('No storyboard. Regenerate the script.'); return; }
     setError(''); setGenerating(true);
     try {
-      // Persist video first as 'render' stage
+      // Pre-flight via cost estimator (also surfaces missing providers)
+      const cost = estimateStoryboardCost(scriptObj.storyboard, state.settings);
+      if (cost.unrenderableScenes.length) {
+        throw new Error(`No provider available for scene(s): ${cost.unrenderableScenes.join(', ')}. Configure a provider in Settings.`);
+      }
+
+      // Persist video first
       const id = uid();
+      const flatScript = storyboardToFlatScript(scriptObj.storyboard);
       const video = {
         id, createdAt:Date.now(), updatedAt:Date.now(),
         stage: 'render',
         idea: { ...picked, platform },
-        script: { text: scriptObj.script, durationSec: scriptObj.estimatedDurationSec, generatedAt: Date.now(), tone },
+        script: { text: flatScript, durationSec: storyboardDuration(scriptObj.storyboard), generatedAt: Date.now(), tone },
+        storyboard: scriptObj.storyboard,
         platforms: {
           tiktok:  { caption: scriptObj.captions?.tiktok || '', hashtags: scriptObj.hashtags?.tiktok || [], posted:false, postUrl:'', scheduledAt:null },
           reels:   { caption: scriptObj.captions?.reels  || '', hashtags: scriptObj.hashtags?.reels  || [], posted:false, postUrl:'', scheduledAt:null },
@@ -793,28 +1276,41 @@ function NewVideoPage({ go }) {
           long:    { caption: scriptObj.captions?.long   || '', hashtags: scriptObj.hashtags?.long   || [], posted:false, postUrl:'', scheduledAt:null, title: scriptObj.title || '' },
         },
         broll: scriptObj.broll || [],
-        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', speed: heygenSpeed, pitch: heygenPitch, aspect: PLATFORMS[platform].aspect },
+        render: {
+          status: 'queued',
+          jobs: [],
+          estimatedCostGBP: cost.total,
+          providersUsed: Object.keys(cost.byProvider),
+          aspect: PLATFORMS[platform].aspect,
+          startedAt: Date.now(),
+        },
+        // Legacy field for backward-compat with existing UI code
+        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', aspect: PLATFORMS[platform].aspect },
       };
       dispatch({ type:'CREATE_VIDEO', video });
       setCreatedVideoId(id);
 
-      const videoId = await heygenGenerate({
-        apiKey: state.settings.heygenKey,
-        avatarId: state.settings.heygenAvatarId,
-        voiceId: state.settings.heygenVoiceId,
-        scriptText: scriptObj.script,
+      // Orchestrate
+      const { jobs } = await orchestrateRender({
+        storyboard: scriptObj.storyboard,
+        settings: state.settings,
         aspect: PLATFORMS[platform].aspect,
-        speed: heygenSpeed,
-        pitch: heygenPitch,
       });
-      dispatch({ type:'UPDATE_VIDEO', id, patch:{ heygen: { ...video.heygen, videoId, status:'processing' } } });
-      setRenderId(videoId);
+
+      dispatch({ type:'UPDATE_VIDEO', id, patch:{
+        render: { ...video.render, status: 'processing', jobs },
+        // For single-job HeyGen renders, also populate legacy heygen.videoId so old UI works
+        heygen: { ...video.heygen, videoId: jobs[0]?.jobId || '', status: 'processing' },
+      } });
+      setRenderId(jobs[0]?.jobId);
       setStep(4);
-      // Polling is handled at App level — runs across any tab navigation.
     } catch (e) {
       setError(e.message);
       if (createdVideoId) {
-        dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{ heygen:{ status:'failed', error:e.message } } });
+        dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
+          render: { status: 'failed', error: e.message },
+          heygen: { status: 'failed', error: e.message },
+        } });
       }
     } finally { setGenerating(false); }
   };
@@ -1086,13 +1582,56 @@ function ApprovalPage({ go }) {
               )}
             </div>
           )}
+          {v.storyboard?.scenes?.length ? (
+            <StoryboardPreview storyboard={v.storyboard} jobs={v.render?.jobs} settings={state.settings} />
+          ) : null}
           <details>
-            <summary>View script ({wordCount(v.script?.text)} words)</summary>
+            <summary>View flat script ({wordCount(v.script?.text)} words)</summary>
             <pre className="script-text" style={{marginTop:8}}>{v.script?.text}</pre>
           </details>
         </div>
       ))}
     </div>
+  );
+}
+
+function StoryboardPreview({ storyboard, jobs = [], settings }) {
+  const cost = useMemo(() => settings ? estimateStoryboardCost(storyboard, settings) : null, [storyboard, settings]);
+  const jobBySceneId = {};
+  for (const j of jobs || []) for (const sid of (j.sceneIds || [])) jobBySceneId[sid] = j;
+  return (
+    <details open style={{marginTop:10, marginBottom:10}}>
+      <summary>Scenes ({storyboard.scenes.length}) · {storyboardDuration(storyboard)}s
+        {cost ? <span style={{color:'var(--muted)', marginLeft:8}}>· est £{cost.total.toFixed(2)} via {Object.values(cost.byProvider).map(p=>p.name).join(' + ') || '—'}</span> : null}
+      </summary>
+      <div style={{display:'grid', gap:8, marginTop:8}}>
+        {storyboard.scenes.map((sc, i) => {
+          const job = jobBySceneId[sc.id];
+          const provider = sc.providerOverride
+            ? PROVIDERS[sc.providerOverride]?.name
+            : (settings ? pickProviderForScene(sc, settings)?.name : null);
+          return (
+            <div key={sc.id} style={{padding:10, background:'var(--card2)', borderRadius:8, fontSize:12}}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                <span className="pill" style={{background: sc.type==='cinematic' ? 'rgba(255,169,77,0.18)' : 'rgba(155,180,255,0.15)', color: sc.type==='cinematic' ? 'var(--warn)' : '#9BB4FF'}}>{i+1}. {sc.type}</span>
+                <span style={{color:'var(--muted)'}}>{sc.durationSec}s</span>
+                {provider && <span style={{color:'var(--muted)'}}>→ {provider}</span>}
+                {job?.status && <span className="pill" style={{marginLeft:'auto'}}>{job.status}</span>}
+              </div>
+              <div style={{marginBottom:4}}><strong>Dialogue:</strong> {sc.dialogue}</div>
+              {sc.visualPrompt && <div style={{color:'var(--text-dim)', marginBottom:4}}><strong>Visual:</strong> {sc.visualPrompt}</div>}
+              {sc.textOverlay && <div style={{color:'var(--text-dim)'}}><strong>Overlay:</strong> "{sc.textOverlay}"</div>}
+              {(sc.avatarPosition || sc.avatarScale) && sc.type === 'talking-head' && (
+                <div style={{color:'var(--muted)', fontSize:11, marginTop:4}}>position: {sc.avatarPosition || 'center'} · scale: {sc.avatarScale || 'medium'}</div>
+              )}
+              {job?.videoUrl && (
+                <video src={job.videoUrl} controls className="preview-vid" style={{marginTop:8, maxHeight:200}} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -1423,6 +1962,143 @@ function CalendarPage() {
 // PAGE: SETTINGS
 // ============================================================================
 
+function PhaseThreeProvidersCard() {
+  const { state, dispatch } = useStore();
+  const s = state.settings;
+  const set = (patch) => dispatch({ type: 'SET_SETTINGS', patch });
+  const [showKeys, setShowKeys] = useState(false);
+
+  const allProviders = Object.values(PROVIDERS).map(P => ({ P, avail: P.availability(s) }));
+  const talkingProviders = allProviders.filter(({ P }) => P.caps.talkingHead);
+  const cinematicProviders = allProviders.filter(({ P }) => P.caps.cinematic);
+
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">Phase 3 · Multi-Provider Video Stack</div>
+      <div className="help" style={{marginBottom:14}}>
+        FinCast routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
+      </div>
+
+      {/* ElevenLabs (provider-agnostic voice) */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🎙️ ElevenLabs (voice — used by all video providers)</div>
+        <div className="grid2">
+          <div>
+            <label className="label">ElevenLabs API key</label>
+            <input type={showKeys?'text':'password'} value={s.elevenLabsKey} onChange={e=>set({ elevenLabsKey:e.target.value })} placeholder="sk_..." />
+            <div className="help">elevenlabs.io → Profile → API Keys.</div>
+          </div>
+          <div>
+            <label className="label">ElevenLabs Voice ID (your PVC)</label>
+            <input value={s.elevenLabsVoiceId} onChange={e=>set({ elevenLabsVoiceId:e.target.value })} placeholder="21m00Tcm4TlvDq8ikWAM" />
+            <div className="help">From Voice Lab → your trained voice → copy ID under name.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hedra */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🎬 Hedra (talking-head + cinematic) — recommended primary provider</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Hedra API key</label>
+            <input type={showKeys?'text':'password'} value={s.hedraKey} onChange={e=>set({ hedraKey:e.target.value })} placeholder="hdr_..." />
+            <div className="help">Hedra → Profile (E icon) → Settings → API → Create new key.</div>
+          </div>
+          <div>
+            <label className="label">Hedra Character ID</label>
+            <input value={s.hedraCharacterId} onChange={e=>set({ hedraCharacterId:e.target.value })} placeholder="char_..." />
+            <div className="help">Upload 5-10 reference photos of you in Hedra → Characters. Copy the Character ID.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stub providers */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🔮 Future providers (stubs — paste key to activate when API matures)</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Google Vertex AI key (Veo 3)</label>
+            <input type={showKeys?'text':'password'} value={s.veoKey} onChange={e=>set({ veoKey:e.target.value })} placeholder="ya29... or service-account JSON" />
+          </div>
+          <div>
+            <label className="label">Google Cloud Project ID</label>
+            <input value={s.veoProjectId} onChange={e=>set({ veoProjectId:e.target.value })} placeholder="my-fincast-project" />
+          </div>
+          <div>
+            <label className="label">OpenAI API key (Sora 2)</label>
+            <input type={showKeys?'text':'password'} value={s.openaiKey} onChange={e=>set({ openaiKey:e.target.value })} placeholder="sk-..." />
+          </div>
+          <div>
+            <label className="label">Runway API key (Gen-4)</label>
+            <input type={showKeys?'text':'password'} value={s.runwayKey} onChange={e=>set({ runwayKey:e.target.value })} placeholder="rw_..." />
+          </div>
+        </div>
+        <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise.</div>
+      </div>
+
+      {/* Provider preferences */}
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600, marginBottom:8}}>⚙️ Provider preferences</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Default talking-head provider</label>
+            <select value={s.defaultTalkingHeadProvider} onChange={e=>set({ defaultTalkingHeadProvider:e.target.value })}>
+              <option value="auto">Auto (cheapest available)</option>
+              {talkingProviders.map(({ P, avail }) => (
+                <option key={P.id} value={P.id} disabled={!avail.available}>
+                  {P.name}{!avail.available ? ` — needs ${avail.missing.join(', ')}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Default cinematic provider</label>
+            <select value={s.defaultCinematicProvider} onChange={e=>set({ defaultCinematicProvider:e.target.value })}>
+              <option value="auto">Auto (cheapest available)</option>
+              {cinematicProviders.map(({ P, avail }) => (
+                <option key={P.id} value={P.id} disabled={!avail.available}>
+                  {P.name}{!avail.available ? ` — needs ${avail.missing.join(', ')}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Cost cap per video (£)</label>
+            <input type="number" min="0" step="0.50" value={s.costCapPerVideoGBP} onChange={e=>set({ costCapPerVideoGBP: parseFloat(e.target.value) || 0 })} />
+            <div className="help">Render refuses if estimated cost exceeds this. 0 = unlimited.</div>
+          </div>
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setShowKeys(v=>!v)}>{showKeys ? 'Hide' : 'Show'} provider keys</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Provider status overview */}
+      <div style={{marginTop:8, padding:10, background:'var(--bg)', borderRadius:8, border:'1px solid var(--border)'}}>
+        <div style={{fontSize:12, color:'var(--muted)', marginBottom:6}}>Provider status</div>
+        <div style={{display:'grid', gap:4, fontSize:12}}>
+          {allProviders.map(({ P, avail }) => (
+            <div key={P.id} style={{display:'flex', alignItems:'center', gap:8}}>
+              <span style={{width:10,height:10,borderRadius:5,background: avail.available ? 'var(--accent)' : 'var(--muted)'}} />
+              <strong>{P.name}</strong>
+              <span style={{color:'var(--muted)'}}>
+                {[
+                  P.caps.talkingHead && 'talking-head',
+                  P.caps.cinematic && 'cinematic',
+                  P.caps.lipSync && 'lip-sync',
+                  P.caps.characterRef && 'char-ref',
+                ].filter(Boolean).join(' · ')}
+              </span>
+              {!avail.available && <span style={{marginLeft:'auto', color:'var(--muted)', fontSize:11}}>missing: {avail.missing.join(', ')}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { state, dispatch } = useStore();
   const s = state.settings;
@@ -1563,6 +2239,8 @@ function SettingsPage() {
         </div>
       </div>
 
+      <PhaseThreeProvidersCard />
+
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">Test voice (~1 credit)</div>
         <div style={{marginBottom:10}}>
@@ -1662,28 +2340,77 @@ function App() {
     if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#0A0A0F' : '#F7F8FA');
   }, [state.settings.theme]);
 
-  // Global HeyGen polling: survives page navigation. Polls every 8s for any video in 'render' stage.
+  // Global multi-provider polling: survives page navigation. Polls every 8s.
+  // Handles new render.jobs[] (multi-provider) and legacy heygen.videoId (single HeyGen job).
   useEffect(() => {
     const tick = async () => {
       const s = stateRef.current;
-      if (!s.settings.heygenKey) return;
-      const rendering = s.videos.filter(v => v.stage === 'render' && v.heygen?.videoId);
+      const rendering = s.videos.filter(v => v.stage === 'render');
       for (const v of rendering) {
-        try {
-          const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId });
-          if (r.status === 'completed' && r.video_url) {
-            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
-              stage:'approval',
-              heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
-            }});
-          } else if (r.status === 'failed') {
-            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
-              heygen:{ ...v.heygen, status:'failed', error: r.error?.message || r.error?.detail || 'render failed' },
-            }});
-          } else if (r.status && r.status !== v.heygen.status) {
-            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+        // NEW PATH: render.jobs[]
+        if (v.render?.jobs?.length) {
+          let allDone = true;
+          let anyFailed = false;
+          let updatedJobs = [...v.render.jobs];
+          for (let i = 0; i < updatedJobs.length; i++) {
+            const job = updatedJobs[i];
+            if (job.status === 'completed' || job.status === 'failed') continue;
+            const P = PROVIDERS[job.provider];
+            if (!P) { allDone = false; continue; }
+            try {
+              const upd = await P.pollJob({ jobId: job.jobId, settings: s.settings });
+              if (upd.status === 'completed' && upd.videoUrl) {
+                updatedJobs[i] = { ...job, status: 'completed', videoUrl: upd.videoUrl };
+              } else if (upd.status === 'failed') {
+                updatedJobs[i] = { ...job, status: 'failed', error: upd.error };
+                anyFailed = true;
+              } else {
+                updatedJobs[i] = { ...job, status: upd.status || 'processing' };
+                allDone = false;
+              }
+            } catch (e) { console.warn('poll error', e); allDone = false; }
           }
-        } catch (e) { console.warn('poll error', e); }
+          // If all jobs done and at least one succeeded, advance to approval
+          if (allDone) {
+            const successful = updatedJobs.filter(j => j.status === 'completed');
+            if (successful.length === updatedJobs.length) {
+              // For now, single-job renders use that one URL. Multi-job renders concat later (Commit 2 — stitching).
+              const primaryUrl = successful[0].videoUrl;
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage: 'approval',
+                render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
+                heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
+              }});
+            } else if (anyFailed) {
+              const errs = updatedJobs.filter(j => j.status === 'failed').map(j => j.error).join('; ');
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                render: { ...v.render, status: 'failed', jobs: updatedJobs, error: errs },
+                heygen: { ...v.heygen, status: 'failed', error: errs },
+              }});
+            }
+          } else {
+            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render: { ...v.render, jobs: updatedJobs } } });
+          }
+          continue;
+        }
+        // LEGACY PATH: old videos with v.heygen.videoId, no render.jobs
+        if (v.heygen?.videoId && s.settings.heygenKey) {
+          try {
+            const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId });
+            if (r.status === 'completed' && r.video_url) {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage:'approval',
+                heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
+              }});
+            } else if (r.status === 'failed') {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                heygen:{ ...v.heygen, status:'failed', error: r.error?.message || r.error?.detail || 'render failed' },
+              }});
+            } else if (r.status && r.status !== v.heygen.status) {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+            }
+          } catch (e) { console.warn('poll error', e); }
+        }
       }
     };
     tick();
