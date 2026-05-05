@@ -283,8 +283,8 @@ const DEFAULT_SETTINGS = {
   veoProjectId: '',
   openaiKey: '',                  // OpenAI (Sora 2) — stub
   runwayKey: '',                  // Runway Gen-4 — stub
-  defaultTalkingHeadProvider: 'auto', // 'auto' picks best available
-  defaultCinematicProvider: 'auto',
+  defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
+  defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
   costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
   characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
@@ -610,23 +610,33 @@ class HedraActTwoProvider extends VideoProvider {
   // Hedra Act-Two ~30 credits/sec at ~$0.001/credit ≈ $0.03/sec → £0.024/sec
   static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.024, 0); }
 
-  static async startRender({ storyboard, scenes, settings, audioUrl }) {
-    if (!audioUrl) throw new Error('Hedra Act-Two needs pre-rendered ElevenLabs audio.');
-    // Each scene becomes a separate Hedra job (Hedra Act-Two is per-clip).
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    // Self-contained: for each scene, render that scene's dialogue via
+    // ElevenLabs → upload the audio Blob to Hedra → submit Act-Two render
+    // referencing the uploaded audio asset. No external hosting required.
     const jobs = [];
     for (const sc of scenes) {
+      // 1. Per-scene audio render via ElevenLabs (only the dialogue for THIS scene)
+      const audioBlob = await elevenLabsTTS({
+        apiKey: settings.elevenLabsKey,
+        voiceId: settings.elevenLabsVoiceId,
+        text: sc.dialogue,
+      });
+      // 2. Upload audio to Hedra → get internal asset id
+      const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+      // 3. Submit Act-Two generation
       const r = await fetch('https://api.hedra.com/v1/generations', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': settings.hedraKey },
         body: JSON.stringify({
           model: 'act-two',
           character_id: settings.hedraCharacterId,
-          audio_url: audioUrl, // ideally we'd pre-slice audio per scene; v1 sends whole track
-          aspect_ratio: '9:16',
-          dialogue_text: sc.dialogue, // for lip-sync hints
+          audio_id: audioAssetId,
+          aspect_ratio: aspect,
+          dialogue_text: sc.dialogue, // helps lip-sync alignment
         }),
       });
-      if (!r.ok) throw new Error(`Hedra ${r.status}: ${(await r.text()).slice(0, 300)}`);
+      if (!r.ok) throw new Error(`Hedra Act-Two ${r.status}: ${(await r.text()).slice(0, 300)}`);
       const d = await r.json();
       jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
     }
@@ -814,8 +824,27 @@ async function elevenLabsTTS({ apiKey, voiceId, text }) {
     }),
   });
   if (!r.ok) throw new Error(`ElevenLabs ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const blob = await r.blob();
-  return URL.createObjectURL(blob); // local blob URL — providers needing remote URL must upload
+  return r.blob(); // returns audio/mpeg Blob — caller decides what to do with it
+}
+
+// Upload an audio Blob to Hedra's assets endpoint. Returns an asset id Hedra
+// can reference internally (no public URL needed — solves the blob-URL problem).
+// Hedra exposes a two-step upload (init → put) for media; we use a single
+// multipart POST which their API also accepts for short audio clips.
+async function hedraUploadAudio(blob, settings) {
+  if (!settings.hedraKey) throw new Error('Hedra API key required for audio upload.');
+  const form = new FormData();
+  form.append('file', blob, 'scene_audio.mp3');
+  form.append('type', 'audio');
+  const r = await fetch('https://api.hedra.com/v1/assets', {
+    method: 'POST',
+    headers: { 'x-api-key': settings.hedraKey },
+    body: form,
+  });
+  if (!r.ok) throw new Error(`Hedra audio upload ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const data = await r.json();
+  // Hedra returns either { id } or { asset_id } depending on API version
+  return data.id || data.asset_id || data.assetId;
 }
 
 // ----------------------------------------------------------------------------
@@ -831,26 +860,18 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   if (settings.costCapPerVideoGBP && cost.total > settings.costCapPerVideoGBP) {
     throw new Error(`Estimated cost £${cost.total.toFixed(2)} exceeds your cap of £${settings.costCapPerVideoGBP}. Raise cap in Settings or use cheaper providers.`);
   }
-  // Group scenes by provider
+  // Group scenes by provider. Each provider is now self-contained — it does
+  // its own audio rendering / upload as needed. The orchestrator just
+  // dispatches and aggregates.
   const groups = {};
   for (const sc of storyboard.scenes) {
     const P = pickProviderForScene(sc, settings);
     groups[P.id] = groups[P.id] || { P, scenes: [] };
     groups[P.id].scenes.push(sc);
   }
-  // If any provider needs ElevenLabs audio, render it once
-  let audioUrl = null;
-  const needsAudio = Object.values(groups).some(g => g.P === HedraActTwoProvider);
-  if (needsAudio) {
-    audioUrl = await elevenLabsTTS({
-      apiKey: settings.elevenLabsKey,
-      voiceId: settings.elevenLabsVoiceId,
-      text: storyboardToFlatScript(storyboard),
-    });
-  }
   const allJobs = [];
   for (const { P, scenes } of Object.values(groups)) {
-    const { jobs } = await P.startRender({ storyboard, scenes, settings, audioUrl, aspect });
+    const { jobs } = await P.startRender({ storyboard, scenes, settings, aspect });
     allJobs.push(...jobs);
   }
   return { jobs: allJobs, cost };
