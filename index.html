@@ -1220,9 +1220,40 @@ function Sidebar({ page, setPage, state }) {
   );
 }
 
+function checkKeys(settings) {
+  // Provider-aware keys check. Returns { ok, missing[] }.
+  if (!settings.anthropicKey) return { ok: false, missing: ['Anthropic API key (script generation)'] };
+  const missing = [];
+  // Talking-head provider keys
+  const thId = settings.defaultTalkingHeadProvider;
+  if (thId === 'heygen') {
+    if (!settings.heygenKey) missing.push('HeyGen API key');
+    if (!settings.heygenAvatarId) missing.push('HeyGen Avatar ID');
+    if (!settings.heygenVoiceId) missing.push('HeyGen Voice ID');
+  } else if (thId === 'hedra_act_two') {
+    if (!settings.hedraKey) missing.push('Hedra API key');
+    if (!settings.hedraCharacterId) missing.push('Hedra Character ID');
+    if (!settings.elevenLabsKey) missing.push('ElevenLabs API key');
+    if (!settings.elevenLabsVoiceId) missing.push('ElevenLabs Voice ID');
+  } else if (thId === 'auto' || !thId) {
+    // Auto — at least ONE provider must have all its keys
+    const hgOk = settings.heygenKey && settings.heygenAvatarId && settings.heygenVoiceId;
+    const hdOk = settings.hedraKey && settings.hedraCharacterId && settings.elevenLabsKey && settings.elevenLabsVoiceId;
+    if (!hgOk && !hdOk) missing.push('Either a complete HeyGen setup OR a complete Hedra+ElevenLabs setup');
+  }
+  // Cinematic provider keys (only required if you intend to render cinematic scenes — but Claude often does)
+  const cnId = settings.defaultCinematicProvider;
+  if (cnId === 'hedra_character' || cnId === 'auto' || !cnId) {
+    if (!settings.hedraKey) missing.push('Hedra API key (for cinematic scenes)');
+    if (!settings.hedraCharacterId) missing.push('Hedra Character ID (for cinematic scenes)');
+  }
+  // Dedupe
+  const unique = Array.from(new Set(missing));
+  return { ok: unique.length === 0, missing: unique };
+}
+
 function KeyStatus({ state }) {
-  const { anthropicKey, heygenKey, heygenAvatarId, heygenVoiceId } = state.settings;
-  const ok = anthropicKey && heygenKey && heygenAvatarId && heygenVoiceId;
+  const { ok } = checkKeys(state.settings);
   return <span className="key-status"><span className={`dot ${ok?'ok':'bad'}`}></span>{ok?'Keys OK':'Keys missing'}</span>;
 }
 
@@ -1484,7 +1515,8 @@ function NewVideoPage({ go }) {
     finally { setSampling(false); }
   };
 
-  const keysOk = state.settings.anthropicKey && state.settings.heygenKey && state.settings.heygenAvatarId && state.settings.heygenVoiceId;
+  const keys = checkKeys(state.settings);
+  const keysOk = keys.ok;
 
   return (
     <div>
@@ -1498,7 +1530,10 @@ function NewVideoPage({ go }) {
 
       {!keysOk && (
         <div className="alert alert-warn" style={{marginBottom:16}}>
-          API keys missing. Open <strong>Settings</strong> and add your Anthropic key, HeyGen key, avatar ID and voice ID before continuing.
+          <strong>Keys missing — check Settings:</strong>
+          <ul style={{margin:'6px 0 0 16px', padding:0, fontSize:13}}>
+            {keys.missing.map((m, i) => <li key={i}>{m}</li>)}
+          </ul>
         </div>
       )}
 
