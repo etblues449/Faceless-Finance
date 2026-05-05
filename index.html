@@ -1066,8 +1066,8 @@ SCENE BREAKDOWN (CRITICAL):
 - type 'talking-head' = avatar in frame speaking. Use for explanation, hook, CTA.
 - type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Voiceover plays over it. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
 - CRITICAL DISTINCTION:
-  * `dialogue` is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
-  * `visualPrompt` is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here.
+  * The dialogue field is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
+  * The visualPrompt field is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here.
   * Both fields are REQUIRED for both scene types. A cinematic scene STILL has spoken voiceover dialogue — just no avatar in frame.
 - Mix types. A typical 50s video might be: cinematic hook (5s) → talking-head explanation (15s) → cinematic illustration (5s) → talking-head proof (15s) → cinematic payoff (5s) → talking-head CTA (5s).
 - For talking-head scenes, set avatarPosition (left/center/right) and avatarScale (close/medium/wide) for visual variety.
