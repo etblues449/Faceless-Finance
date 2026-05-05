@@ -277,6 +277,8 @@ const DEFAULT_SETTINGS = {
   // Phase 3 — multi-provider video stack
   hedraKey: '',
   hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
+  hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Configurable — Hedra has moved API URLs around
+  hedraAuthScheme: 'bearer',      // 'bearer' or 'x-api-key' — try Bearer first (more common in newer APIs)
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
@@ -502,7 +504,76 @@ function migrateScriptToStoryboard(scriptObj) {
 
 function storyboardToFlatScript(storyboard) {
   if (!storyboard?.scenes) return '';
-  return storyboard.scenes.map(s => s.dialogue).join('\n\n');
+  // Filter out scenes where the dialogue looks like a visual prompt
+  // (cinematic-only scenes can have empty dialogue, or dialogue that
+  // duplicates the visualPrompt — only include real spoken lines).
+  return storyboard.scenes
+    .filter(s => {
+      const d = (s.dialogue || '').trim();
+      if (!d) return false;
+      // Heuristic: if dialogue starts with "A close-up", "A wide shot",
+      // "Camera tracks", etc., it's a visual direction not voiceover
+      const visualMarkers = /^(a (close[\- ]up|wide|medium|tight|low|high|tracking|aerial|drone|dolly|slow|fast)|camera (tracks|pans|zooms|pushes)|cut to|fade (to|from)|close[\- ]up of|wide shot of|tracking shot|cinematic shot|interior|exterior|setting:|scene:)\b/i;
+      return !visualMarkers.test(d);
+    })
+    .map(s => s.dialogue.trim())
+    .join('\n\n');
+}
+
+// ============================================================================
+// IN-APP DEBUG LOG — captures every provider request/response
+// ============================================================================
+const __debugLog = [];
+const MAX_DEBUG_ENTRIES = 100;
+function logEvent(provider, action, detail) {
+  const entry = { ts: Date.now(), provider, action, detail: typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 600) };
+  __debugLog.unshift(entry);
+  if (__debugLog.length > MAX_DEBUG_ENTRIES) __debugLog.length = MAX_DEBUG_ENTRIES;
+  // Also log to browser console for desktop devtools
+  console.log(`[${provider}] ${action}:`, detail);
+}
+function getDebugLog() { return [...__debugLog]; }
+function clearDebugLog() { __debugLog.length = 0; }
+window.__fincastDebugLog = getDebugLog; // allow `window.__fincastDebugLog()` from console
+
+// Wrapped fetch that logs every request, every response, every error.
+// All provider code should use this instead of raw fetch.
+async function loggedFetch(provider, url, opts = {}) {
+  const startedAt = Date.now();
+  logEvent(provider, 'request', { url, method: opts.method || 'GET' });
+  try {
+    const r = await fetch(url, opts);
+    const durationMs = Date.now() - startedAt;
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      logEvent(provider, 'response_error', { url, status: r.status, body: text.slice(0, 400), durationMs });
+      throw new Error(`${provider} ${r.status} (${durationMs}ms): ${text.slice(0, 300)}`);
+    }
+    logEvent(provider, 'response_ok', { url, status: r.status, durationMs });
+    return r;
+  } catch (e) {
+    const durationMs = Date.now() - startedAt;
+    if (e.message?.includes(provider)) throw e;
+    logEvent(provider, 'fetch_error', { url, error: e.message, durationMs, hint: 'Likely CORS, DNS, or network. Check provider base URL in Settings.' });
+    throw new Error(`${provider} fetch failed (${durationMs}ms): ${e.message}. URL: ${url}. Likely CORS/DNS issue — try changing the base URL in Settings.`);
+  }
+}
+
+// Build Hedra auth headers from settings — tries Bearer or x-api-key per user pref.
+function hedraAuthHeaders(settings, contentType = 'application/json') {
+  const h = {};
+  if (settings.hedraAuthScheme === 'bearer') {
+    h['Authorization'] = `Bearer ${settings.hedraKey}`;
+  } else {
+    h['X-API-Key'] = settings.hedraKey;
+  }
+  if (contentType) h['content-type'] = contentType;
+  return h;
+}
+
+function hedraUrl(settings, path) {
+  const base = (settings.hedraBaseUrl || 'https://api.hedra.com/web-app/public').replace(/\/+$/, '');
+  return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
 function storyboardDuration(storyboard) {
@@ -611,46 +682,43 @@ class HedraActTwoProvider extends VideoProvider {
   static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.024, 0); }
 
   static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
-    // Self-contained: for each scene, render that scene's dialogue via
-    // ElevenLabs → upload the audio Blob to Hedra → submit Act-Two render
-    // referencing the uploaded audio asset. No external hosting required.
     const jobs = [];
     for (const sc of scenes) {
-      // 1. Per-scene audio render via ElevenLabs (only the dialogue for THIS scene)
       const audioBlob = await elevenLabsTTS({
         apiKey: settings.elevenLabsKey,
         voiceId: settings.elevenLabsVoiceId,
         text: sc.dialogue,
       });
-      // 2. Upload audio to Hedra → get internal asset id
       const audioAssetId = await hedraUploadAudio(audioBlob, settings);
-      // 3. Submit Act-Two generation
-      const r = await fetch('https://api.hedra.com/v1/generations', {
+      const r = await loggedFetch('hedra-act-two', hedraUrl(settings, '/generations'), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': settings.hedraKey },
+        headers: hedraAuthHeaders(settings),
         body: JSON.stringify({
-          model: 'act-two',
+          type: 'act-two',
+          ai_model_id: 'act-two',
           character_id: settings.hedraCharacterId,
           audio_id: audioAssetId,
           aspect_ratio: aspect,
-          dialogue_text: sc.dialogue, // helps lip-sync alignment
+          text_prompt: sc.dialogue,
         }),
       });
-      if (!r.ok) throw new Error(`Hedra Act-Two ${r.status}: ${(await r.text()).slice(0, 300)}`);
       const d = await r.json();
-      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
+      jobs.push({ jobId: d.id || d.generation_id || d.asset_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
     }
     return { jobs };
   }
 
   static async pollJob({ jobId, settings }) {
-    const r = await fetch(`https://api.hedra.com/v1/generations/${jobId}`, {
-      headers: { 'x-api-key': settings.hedraKey },
-    });
-    if (!r.ok) return { status: 'failed', error: `Hedra status ${r.status}` };
-    const d = await r.json();
-    const map = { queued: 'pending', processing: 'processing', completed: 'completed', failed: 'failed' };
-    return { status: map[d.status] || d.status, videoUrl: d.video_url || d.output_url, error: d.error };
+    try {
+      const r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}`), {
+        headers: hedraAuthHeaders(settings, null),
+      });
+      const d = await r.json();
+      const map = { queued: 'pending', pending: 'pending', processing: 'processing', completed: 'completed', failed: 'failed', error: 'failed' };
+      return { status: map[d.status] || d.status, videoUrl: d.video_url || d.output_url || d.url, error: d.error };
+    } catch (e) {
+      return { status: 'failed', error: e.message };
+    }
   }
 }
 
@@ -686,20 +754,20 @@ class HedraCharacterProvider extends VideoProvider {
   static async startRender({ storyboard, scenes, settings, aspect }) {
     const jobs = [];
     for (const sc of scenes) {
-      const r = await fetch('https://api.hedra.com/v1/generations', {
+      const r = await loggedFetch('hedra-character', hedraUrl(settings, '/generations'), {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': settings.hedraKey },
+        headers: hedraAuthHeaders(settings),
         body: JSON.stringify({
-          model: 'character-2',
+          type: 'character-2',
+          ai_model_id: 'character-2',
           character_id: settings.hedraCharacterId,
-          prompt: applyCharacterBible(sc, settings),
-          duration_sec: sc.durationSec || 5,
+          text_prompt: applyCharacterBible(sc, settings),
+          duration_ms: (sc.durationSec || 5) * 1000,
           aspect_ratio: aspect || '9:16',
         }),
       });
-      if (!r.ok) throw new Error(`Hedra ${r.status}: ${(await r.text()).slice(0, 300)}`);
       const d = await r.json();
-      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_character' });
+      jobs.push({ jobId: d.id || d.generation_id || d.asset_id, sceneIds: [sc.id], provider: 'hedra_character' });
     }
     return { jobs };
   }
@@ -833,18 +901,50 @@ async function elevenLabsTTS({ apiKey, voiceId, text }) {
 // multipart POST which their API also accepts for short audio clips.
 async function hedraUploadAudio(blob, settings) {
   if (!settings.hedraKey) throw new Error('Hedra API key required for audio upload.');
-  const form = new FormData();
-  form.append('file', blob, 'scene_audio.mp3');
-  form.append('type', 'audio');
-  const r = await fetch('https://api.hedra.com/v1/assets', {
-    method: 'POST',
-    headers: { 'x-api-key': settings.hedraKey },
-    body: form,
-  });
-  if (!r.ok) throw new Error(`Hedra audio upload ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const data = await r.json();
-  // Hedra returns either { id } or { asset_id } depending on API version
-  return data.id || data.asset_id || data.assetId;
+  // Two-step Hedra asset upload (newer API): create asset record → put bytes.
+  // Try this first; fall back to single-step multipart if it errors.
+  try {
+    // Step 1: create asset
+    const init = await loggedFetch('hedra-asset-init', hedraUrl(settings, '/assets'), {
+      method: 'POST',
+      headers: hedraAuthHeaders(settings),
+      body: JSON.stringify({ type: 'audio', name: 'scene_audio.mp3' }),
+    });
+    const initData = await init.json();
+    const assetId = initData.id || initData.asset_id;
+    const uploadUrl = initData.upload_url || initData.signed_url;
+    if (uploadUrl) {
+      // Step 2: PUT bytes to signed URL
+      await loggedFetch('hedra-asset-put', uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': blob.type || 'audio/mpeg' },
+        body: blob,
+      });
+    } else if (assetId) {
+      // Some API versions accept multipart on POST /assets/{id}/content
+      const form = new FormData();
+      form.append('file', blob, 'scene_audio.mp3');
+      await loggedFetch('hedra-asset-upload', hedraUrl(settings, `/assets/${assetId}/content`), {
+        method: 'POST',
+        headers: hedraAuthHeaders(settings, null),
+        body: form,
+      });
+    }
+    return assetId;
+  } catch (e) {
+    logEvent('hedra-asset-fallback', 'two_step_failed_trying_multipart', e.message);
+    // Fallback: single-step multipart
+    const form = new FormData();
+    form.append('file', blob, 'scene_audio.mp3');
+    form.append('type', 'audio');
+    const r = await loggedFetch('hedra-asset-multipart', hedraUrl(settings, '/assets'), {
+      method: 'POST',
+      headers: hedraAuthHeaders(settings, null),
+      body: form,
+    });
+    const data = await r.json();
+    return data.id || data.asset_id || data.assetId;
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -962,9 +1062,13 @@ PROSODY rules (CRITICAL — without these the TTS sounds robotic):
 
 SCENE BREAKDOWN (CRITICAL):
 - Break the script into 3–6 short scenes (one per beat: hook, problem, lever, proof, payoff).
-- Each scene gets its own dialogue (1–3 sentences), a visualPrompt (what's on screen), and a type.
+- Each scene gets its own DIALOGUE (the spoken words, voiceover) AND a VISUALPROMPT (what's on screen) AND a TYPE.
 - type 'talking-head' = avatar in frame speaking. Use for explanation, hook, CTA.
-- type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
+- type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Voiceover plays over it. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
+- CRITICAL DISTINCTION:
+  * `dialogue` is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
+  * `visualPrompt` is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here.
+  * Both fields are REQUIRED for both scene types. A cinematic scene STILL has spoken voiceover dialogue — just no avatar in frame.
 - Mix types. A typical 50s video might be: cinematic hook (5s) → talking-head explanation (15s) → cinematic illustration (5s) → talking-head proof (15s) → cinematic payoff (5s) → talking-head CTA (5s).
 - For talking-head scenes, set avatarPosition (left/center/right) and avatarScale (close/medium/wide) for visual variety.
 - For cinematic scenes, write visualPrompt as a vivid one-sentence description suitable for an AI video model (e.g. Veo 3, Hedra Character-2). Be specific about location, action, mood, time of day.
@@ -1482,11 +1586,14 @@ function NewVideoPage({ go }) {
             <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
             <div className="help">0 = neutral. Negative = deeper, positive = higher. Most cloned voices sound best at 0; only adjust if your clone is consistently too high or low.</div>
           </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-            <button className="btn btn-outline btn-sm" onClick={renderSample} disabled={sampling || generating}>
-              {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s sample (1 credit)'}
-            </button>
-          </div>
+          {state.settings.defaultTalkingHeadProvider === 'heygen' && (
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+              <button className="btn btn-outline btn-sm" onClick={renderSample} disabled={sampling || generating}>
+                {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s sample (1 credit)'}
+              </button>
+              <span className="help" style={{fontSize:11}}>Legacy HeyGen-only test. Skip — use full render.</span>
+            </div>
+          )}
           {sampleErr && <div className="alert alert-err" style={{marginBottom:10}}>{sampleErr}</div>}
           {sampleUrl && (
             <div style={{marginBottom:14}}>
@@ -1994,6 +2101,47 @@ function CalendarPage() {
 // PAGE: SETTINGS
 // ============================================================================
 
+function DebugLogCard() {
+  const [tick, setTick] = useState(0);
+  const [auto, setAuto] = useState(true);
+  useEffect(() => {
+    if (!auto) return;
+    const iv = setInterval(() => setTick(t => t + 1), 2000);
+    return () => clearInterval(iv);
+  }, [auto]);
+  const log = getDebugLog();
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">🐞 Debug Log (last {log.length} provider calls)</div>
+      <div className="help" style={{marginBottom:10}}>
+        Every API call FinCast makes shows here in real-time. If a render fails, the error appears below — copy it and send to support. Auto-refreshes every 2s.
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAuto(a => !a)}>{auto ? '⏸ Pause' : '▶ Resume'} auto-refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { clearDebugLog(); setTick(t => t + 1); }}>🗑 Clear log</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(JSON.stringify(log, null, 2)); }}>📋 Copy log as JSON</button>
+      </div>
+      {log.length === 0 ? (
+        <div className="empty" style={{textAlign:'center', padding:20, fontSize:12, color:'var(--muted)'}}>No log entries yet. Trigger a render to see calls land here.</div>
+      ) : (
+        <div style={{maxHeight:400, overflowY:'auto', fontFamily:'ui-monospace,monospace', fontSize:11}}>
+          {log.map((e, i) => {
+            const isError = e.action.includes('error') || e.action.includes('failed');
+            return (
+              <div key={i} style={{padding:'6px 8px', background: isError ? 'rgba(255,80,80,0.08)' : 'var(--card2)', borderRadius:6, marginBottom:4, borderLeft: isError ? '3px solid var(--danger)' : '3px solid transparent'}}>
+                <div style={{color: isError ? 'var(--danger)' : 'var(--text-dim)'}}>
+                  <strong>{new Date(e.ts).toLocaleTimeString()}</strong> · <strong>{e.provider}</strong> · {e.action}
+                </div>
+                <div style={{color:'var(--text)', wordBreak:'break-all', whiteSpace:'pre-wrap', marginTop:2}}>{e.detail}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhaseThreeProvidersCard() {
   const { state, dispatch } = useStore();
   const s = state.settings;
@@ -2041,6 +2189,19 @@ function PhaseThreeProvidersCard() {
             <label className="label">Hedra Character ID</label>
             <input value={s.hedraCharacterId} onChange={e=>set({ hedraCharacterId:e.target.value })} placeholder="char_..." />
             <div className="help">Upload 5-10 reference photos of you in Hedra → Characters. Copy the Character ID.</div>
+          </div>
+          <div>
+            <label className="label">Hedra base URL (advanced)</label>
+            <input value={s.hedraBaseUrl} onChange={e=>set({ hedraBaseUrl:e.target.value })} placeholder="https://api.hedra.com/web-app/public" />
+            <div className="help">Override if Hedra's API has moved. Default: <code>api.hedra.com/web-app/public</code></div>
+          </div>
+          <div>
+            <label className="label">Hedra auth scheme</label>
+            <select value={s.hedraAuthScheme || 'bearer'} onChange={e=>set({ hedraAuthScheme:e.target.value })}>
+              <option value="bearer">Authorization: Bearer (most common)</option>
+              <option value="x-api-key">X-API-Key (legacy header)</option>
+            </select>
+            <div className="help">If renders fail with 401/403, try the other option.</div>
           </div>
         </div>
       </div>
@@ -2290,21 +2451,27 @@ function SettingsPage() {
 
       <PhaseThreeProvidersCard />
 
-      <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">Test voice (~1 credit)</div>
-        <div style={{marginBottom:10}}>
-          <label className="label">Test phrase</label>
-          <textarea value={testText} onChange={e=>setTestText(e.target.value)} style={{minHeight:60}} />
+      <DebugLogCard />
+
+      {s.defaultTalkingHeadProvider === 'heygen' && s.heygenVoiceId && (
+        <div className="card" style={{marginBottom:14}}>
+          <div className="card-title">Test voice (HeyGen — legacy)</div>
+          <div className="alert alert-warn" style={{marginBottom:10, fontSize:12}}>
+            This card only works when HeyGen is your active talking-head provider. With Hedra, the equivalent is generating a real video in New Video.
+          </div>
+          <div style={{marginBottom:10}}>
+            <label className="label">Test phrase</label>
+            <textarea value={testText} onChange={e=>setTestText(e.target.value)} style={{minHeight:60}} />
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <button className="btn btn-sm" onClick={testVoice} disabled={testing || !s.heygenKey || !s.heygenAvatarId || !s.heygenVoiceId}>
+              {testing?<><span className="spin"></span> Rendering test… (~60s)</>:'▶ Render test'}
+            </button>
+          </div>
+          {testErr && <div className="alert alert-err" style={{marginTop:10}}>{testErr}</div>}
+          {testUrl && <video src={testUrl} controls style={{width:'100%',maxHeight:300,marginTop:10,borderRadius:8,background:'#000'}} />}
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <button className="btn btn-sm" onClick={testVoice} disabled={testing || !s.heygenKey || !s.heygenAvatarId || !s.heygenVoiceId}>
-            {testing?<><span className="spin"></span> Rendering test… (~60s)</>:'▶ Render test'}
-          </button>
-          <span className="help">Burns one HeyGen credit but lets you A/B different voices without burning a full video.</span>
-        </div>
-        {testErr && <div className="alert alert-err" style={{marginTop:10}}>{testErr}</div>}
-        {testUrl && <video src={testUrl} controls style={{width:'100%',maxHeight:300,marginTop:10,borderRadius:8,background:'#000'}} />}
-      </div>
+      )}
 
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">Channel</div>
