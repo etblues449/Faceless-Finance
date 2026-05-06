@@ -279,6 +279,7 @@ const DEFAULT_SETTINGS = {
   hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
   hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Configurable — Hedra has moved API URLs around
   hedraAuthScheme: 'bearer',      // 'bearer' or 'x-api-key' — try Bearer first (more common in newer APIs)
+  corsProxy: '',                  // Optional URL prefix for CORS proxy — e.g. https://corsproxy.io/?url= (Hedra requires server-to-server)
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
@@ -573,7 +574,17 @@ function hedraAuthHeaders(settings, contentType = 'application/json') {
 
 function hedraUrl(settings, path) {
   const base = (settings.hedraBaseUrl || 'https://api.hedra.com/web-app/public').replace(/\/+$/, '');
-  return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  const fullUrl = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  // If a CORS proxy is configured, prepend it. Supports two patterns:
+  //   1. Prefix style: "https://corsproxy.io/?url=" → proxy + encodeURIComponent(fullUrl)
+  //   2. Wrap style:   "https://my-worker.workers.dev/proxy?url=" → same as above
+  // Heuristic: if proxy ends with "?url=" or "=" or "?", we URL-encode the target.
+  // Otherwise we just concatenate.
+  const proxy = (settings.corsProxy || '').trim();
+  if (!proxy) return fullUrl;
+  if (proxy.endsWith('=') || proxy.endsWith('?url=')) return proxy + encodeURIComponent(fullUrl);
+  if (proxy.endsWith('/')) return proxy + fullUrl.replace(/^https?:\/\//, '');
+  return proxy + '/' + fullUrl.replace(/^https?:\/\//, '');
 }
 
 function storyboardDuration(storyboard) {
@@ -2237,6 +2248,18 @@ function PhaseThreeProvidersCard() {
               <option value="x-api-key">X-API-Key (legacy header)</option>
             </select>
             <div className="help">If renders fail with 401/403, try the other option.</div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">CORS proxy (REQUIRED if browser direct calls fail)</label>
+            <input value={s.corsProxy} onChange={e=>set({ corsProxy:e.target.value })} placeholder="https://corsproxy.io/?url=" />
+            <div className="help">
+              Hedra's API requires server-to-server calls (browsers can't call it directly — that's the "Failed to fetch" you saw). Two options:
+              <ul style={{margin:'6px 0 0 16px',padding:0}}>
+                <li><strong>Quick test:</strong> paste <code>https://corsproxy.io/?url=</code> (free public proxy, OK for testing, unreliable for production)</li>
+                <li><strong>Production:</strong> deploy the FinCast Cloudflare Worker (free, reliable). Paste your worker URL ending with <code>/proxy?url=</code></li>
+              </ul>
+              Leave blank if you have a server-side setup.
+            </div>
           </div>
         </div>
       </div>
