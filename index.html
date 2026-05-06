@@ -745,26 +745,38 @@ class HedraActTwoProvider extends VideoProvider {
 
   static async pollJob({ jobId, settings }) {
     try {
-      // Verified endpoint: GET /generations/{id}/status (per Hedra starter)
+      // Verified endpoint: GET /generations/{id}/status (per Hedra starter).
       const r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}/status`), {
         headers: hedraAuthHeaders(settings, null),
       });
       const d = await r.json();
-      // Verified status values: queued | processing | finalizing | complete | error
+      // Always log the full response shape so users can see ground truth in the
+      // debug panel when polling appears stuck.
+      logEvent('hedra-poll', 'response_body', { jobId, body: d });
+      // Permissive status map — covers every variant Hedra has used historically.
+      // Any unrecognized value defaults to 'processing' so we never falsely
+      // mark a job as completed/failed and never wedge it in an unmapped state.
+      const RAW = String(d.status || '').toLowerCase();
       const map = {
-        queued: 'pending',
-        processing: 'processing',
-        finalizing: 'processing',
-        complete: 'completed',
-        error: 'failed',
+        queued: 'pending', pending: 'pending', submitted: 'pending', in_queue: 'pending', waiting: 'pending',
+        processing: 'processing', running: 'processing', in_progress: 'processing',
+        finalizing: 'processing', encoding: 'processing', uploading: 'processing',
+        complete: 'completed', completed: 'completed', done: 'completed', success: 'completed', succeeded: 'completed',
+        error: 'failed', failed: 'failed', cancelled: 'failed', canceled: 'failed',
       };
+      const status = map[RAW] || 'processing';
+      // Look for a download URL under any common field name. Hedra has used
+      // download_url, video_url, output_url at various points.
+      const videoUrl = d.download_url || d.video_url || d.output_url || d.url;
       return {
-        status: map[d.status] || d.status,
-        videoUrl: d.download_url, // verified field name (presigned S3 URL — fetch without API key)
-        progress: d.progress,
-        error: d.error_message,
+        status,
+        videoUrl,
+        progress: d.progress ?? d.percent_complete,
+        error: d.error_message || d.error || (RAW && !map[RAW] ? `Hedra returned unmapped status: ${RAW}` : ''),
+        raw: d,
       };
     } catch (e) {
+      logEvent('hedra-poll', 'pollJob_error', { jobId, error: e.message });
       return { status: 'failed', error: e.message };
     }
   }
@@ -1937,13 +1949,20 @@ function StoryboardPreview({ storyboard, jobs = [], settings }) {
                 <span className="pill" style={{background: sc.type==='cinematic' ? 'rgba(255,169,77,0.18)' : 'rgba(155,180,255,0.15)', color: sc.type==='cinematic' ? 'var(--warn)' : '#9BB4FF'}}>{i+1}. {sc.type}</span>
                 <span style={{color:'var(--muted)'}}>{sc.durationSec}s</span>
                 {provider && <span style={{color:'var(--muted)'}}>→ {provider}</span>}
-                {job?.status && <span className="pill" style={{marginLeft:'auto'}}>{job.status}</span>}
+                {job?.status && (
+                  <span className="pill" style={{marginLeft:'auto', background: job.status === 'failed' ? 'rgba(232,77,82,0.15)' : (job.status === 'completed' ? 'rgba(45,194,107,0.15)' : 'rgba(255,255,255,0.06)'), color: job.status === 'failed' ? 'var(--danger)' : (job.status === 'completed' ? 'var(--success,#2DC26B)' : 'var(--muted)')}}>{job.status}</span>
+                )}
               </div>
               <div style={{marginBottom:4}}><strong>Dialogue:</strong> {sc.dialogue}</div>
               {sc.visualPrompt && <div style={{color:'var(--text-dim)', marginBottom:4}}><strong>Visual:</strong> {sc.visualPrompt}</div>}
               {sc.textOverlay && <div style={{color:'var(--text-dim)'}}><strong>Overlay:</strong> "{sc.textOverlay}"</div>}
               {(sc.avatarPosition || sc.avatarScale) && sc.type === 'talking-head' && (
                 <div style={{color:'var(--muted)', fontSize:11, marginTop:4}}>position: {sc.avatarPosition || 'center'} · scale: {sc.avatarScale || 'medium'}</div>
+              )}
+              {job?.error && (
+                <div style={{marginTop:6, padding:6, borderRadius:6, background:'rgba(232,77,82,0.08)', color:'var(--danger)', fontSize:11}}>
+                  <strong>Error:</strong> {job.error}
+                </div>
               )}
               {job?.videoUrl && (
                 <video src={job.videoUrl} controls className="preview-vid" style={{marginTop:8, maxHeight:200}} />
@@ -2947,8 +2966,63 @@ function App() {
           {page === 'calendar' && <CalendarPage />}
           {page === 'settings' && <SettingsPage />}
         </div>
+        <DebugPanel />
       </div>
     </StoreCtx.Provider>
+  );
+}
+
+// Floating debug panel — fixed bottom-right. Tap the bug icon to expand.
+// Shows the last N entries from __debugLog (every provider request, response,
+// raw response body, and error) so users can see ground truth when something
+// looks stuck. Auto-refreshes every 2s while open.
+function DebugPanel() {
+  const [open, setOpen] = useState(false);
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const iv = setInterval(() => force(x => x + 1), 2000);
+    return () => clearInterval(iv);
+  }, [open]);
+  const entries = open ? getDebugLog().slice(0, 60) : [];
+  const copy = async () => {
+    const text = entries.map(e => `[${new Date(e.ts).toISOString()}] [${e.provider}] ${e.action}: ${e.detail}`).join('\n');
+    try { await navigator.clipboard.writeText(text); alert('Copied ' + entries.length + ' log lines.'); }
+    catch { alert('Copy failed; long-press the panel text to select instead.'); }
+  };
+  return (
+    <>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Debug log"
+        style={{position:'fixed', right:14, bottom:14, zIndex:9999, width:44, height:44, borderRadius:22, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text)', fontSize:18, cursor:'pointer', boxShadow:'0 4px 14px rgba(0,0,0,0.18)'}}
+      >🐞</button>
+      {open && (
+        <div style={{position:'fixed', right:14, bottom:64, width:'min(92vw, 560px)', maxHeight:'70vh', zIndex:9999, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, boxShadow:'0 8px 28px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column'}}>
+          <div style={{padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8}}>
+            <strong style={{fontSize:13}}>Debug log</strong>
+            <span style={{fontSize:11, color:'var(--muted)'}}>{entries.length} most recent</span>
+            <span style={{flex:1}}/>
+            <button className="btn btn-ghost btn-sm" onClick={copy}>Copy</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { clearDebugLog(); force(x => x + 1); }}>Clear</button>
+          </div>
+          <div style={{overflow:'auto', padding:'8px 12px', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize:11, lineHeight:1.45}}>
+            {entries.length === 0 && <div style={{color:'var(--muted)'}}>No events yet. Trigger a render or tap "Check now" to see provider traffic here.</div>}
+            {entries.map((e, i) => {
+              const color = e.action.includes('error') ? 'var(--danger)' : (e.action === 'response_body' ? '#9BB4FF' : 'var(--text)');
+              return (
+                <div key={i} style={{padding:'6px 0', borderBottom:'1px dashed var(--border)', color}}>
+                  <div style={{color:'var(--muted)', fontSize:10}}>
+                    {new Date(e.ts).toLocaleTimeString()} · <strong style={{color}}>{e.provider}</strong> · {e.action}
+                  </div>
+                  <div style={{whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2}}>{e.detail}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
