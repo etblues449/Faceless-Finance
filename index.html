@@ -1546,10 +1546,14 @@ function NewVideoPage({ go }) {
         aspect: PLATFORMS[platform].aspect,
       });
 
+      // Only mirror jobId into the legacy v.heygen.videoId field when the
+      // first job is actually a HeyGen render — otherwise we'd pollute it
+      // with Hedra/Veo/Sora UUIDs and break legacy code paths (the
+      // "↗ HeyGen" deep-link, the legacy poll fallback, etc.).
+      const isHeyGenJob = jobs[0]?.provider === 'heygen';
       dispatch({ type:'UPDATE_VIDEO', id, patch:{
         render: { ...video.render, status: 'processing', jobs },
-        // For single-job HeyGen renders, also populate legacy heygen.videoId so old UI works
-        heygen: { ...video.heygen, videoId: jobs[0]?.jobId || '', status: 'processing' },
+        heygen: { ...video.heygen, videoId: isHeyGenJob ? (jobs[0]?.jobId || '') : '', status: 'processing' },
       } });
       setRenderId(jobs[0]?.jobId);
       setStep(4);
@@ -1732,16 +1736,20 @@ function NewVideoPage({ go }) {
         <div className="card">
           <div className="card-title">Step 4 · Rendering</div>
           <div style={{fontSize:14, marginBottom:14}}>
-            HeyGen is rendering your video. Typical wait: 1–4 minutes for 30–60 seconds.<br/>
+            Your video is rendering. Typical wait: 2–6 minutes for a 30–60s clip (Hedra cinematic + Act-Two lip-sync).<br/>
             You can leave this page — when it's done it will appear in the <strong>Approval</strong> tab.
           </div>
           {createdVideoId && (() => {
             const v = state.videos.find(x => x.id===createdVideoId);
             if (!v) return null;
+            const jobs = v.render?.jobs;
+            const statusLabel = jobs?.length
+              ? `${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done`
+              : (v.heygen?.status || 'queued');
             return (
               <div>
                 <div style={{marginBottom:12}}>
-                  Status: <span className="pill"><span className="spin" style={{marginRight:6}}></span>{v.heygen?.status || 'queued'}</span>
+                  Status: <span className="pill"><span className="spin" style={{marginRight:6}}></span>{statusLabel}</span>
                 </div>
                 {v.heygen?.videoUrl && (
                   <>
@@ -1778,7 +1786,54 @@ function ApprovalPage({ go }) {
     dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' } });
   };
   const checkNow = async (v) => {
-    if (!v.heygen?.videoId) return;
+    // NEW PATH: provider-aware polling for any multi-provider render
+    if (v.render?.jobs?.length) {
+      let updatedJobs = [...v.render.jobs];
+      let allDone = true, anyFailed = false;
+      for (let i = 0; i < updatedJobs.length; i++) {
+        const job = updatedJobs[i];
+        if (job.status === 'completed' || job.status === 'failed') continue;
+        const P = PROVIDERS[job.provider];
+        if (!P) { allDone = false; continue; }
+        try {
+          const upd = await P.pollJob({ jobId: job.jobId, settings: state.settings });
+          if (upd.status === 'completed' && upd.videoUrl) {
+            updatedJobs[i] = { ...job, status: 'completed', videoUrl: upd.videoUrl };
+          } else if (upd.status === 'failed') {
+            updatedJobs[i] = { ...job, status: 'failed', error: upd.error };
+            anyFailed = true;
+          } else {
+            updatedJobs[i] = { ...job, status: upd.status || 'processing' };
+            allDone = false;
+          }
+        } catch (e) {
+          updatedJobs[i] = { ...job, status: 'failed', error: e.message };
+          anyFailed = true;
+        }
+      }
+      if (allDone) {
+        const successful = updatedJobs.filter(j => j.status === 'completed');
+        if (successful.length === updatedJobs.length) {
+          const primaryUrl = successful[0].videoUrl;
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            stage: 'approval',
+            render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
+            heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
+          }});
+        } else if (anyFailed) {
+          const errs = updatedJobs.filter(j => j.status === 'failed').map(j => j.error).join('; ');
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            render: { ...v.render, status: 'failed', jobs: updatedJobs, error: errs },
+            heygen: { ...v.heygen, status: 'failed', error: errs },
+          }});
+        }
+      } else {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render: { ...v.render, jobs: updatedJobs } } });
+      }
+      return;
+    }
+    // LEGACY PATH: only true-legacy videos (no v.render) with a real HeyGen jobId
+    if (!v.heygen?.videoId || !state.settings.heygenKey) return;
     try {
       const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: v.heygen.videoId, settings: state.settings });
       if (r.status === 'completed' && r.video_url) {
@@ -1819,26 +1874,35 @@ function ApprovalPage({ go }) {
                 <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
                 <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
               </>}
-              {v.heygen?.videoId && <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${v.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>}
+              {v.heygen?.videoId && (!v.render || v.render.jobs?.[0]?.provider === 'heygen') && (
+                <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${v.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>
+              )}
               <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => del(v)}>× Delete</button>
             </div>
           </div>
           {rerenderingId === v.id && <RerenderControls video={v} onClose={()=>setRerenderingId(null)} />}
           {v.heygen?.videoUrl ? (
             <video src={v.heygen.videoUrl} controls className="preview-vid" />
-          ) : (
-            <div className="alert alert-warn">
-              {v.heygen?.status === 'failed'
-                ? `Render failed: ${v.heygen.error || 'unknown error'}`
-                : <><span className="spin"></span> Rendering ({v.heygen?.status || 'queued'})… auto-polls every 8s.</>}
-              {v.heygen?.status === 'failed' && (
-                <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
-              )}
-              {v.heygen?.status !== 'failed' && (
-                <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>
-              )}
-            </div>
-          )}
+          ) : (() => {
+            // Compute aggregate status from multi-provider jobs when present, else fall back to legacy v.heygen.
+            const jobs = v.render?.jobs;
+            const failed = jobs?.length ? jobs.filter(j => j.status === 'failed') : null;
+            const isFailed = (failed?.length > 0) || v.heygen?.status === 'failed';
+            const errMsg = isFailed
+              ? (failed?.length ? failed.map(j => j.error).join('; ') : (v.heygen?.error || 'unknown error'))
+              : '';
+            const progressText = jobs?.length
+              ? `Rendering (${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done)… auto-polls every 8s.`
+              : `Rendering (${v.heygen?.status || 'queued'})… auto-polls every 8s.`;
+            return (
+              <div className="alert alert-warn">
+                {isFailed ? `Render failed: ${errMsg}` : <><span className="spin"></span> {progressText}</>}
+                {isFailed
+                  ? <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
+                  : <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>}
+              </div>
+            );
+          })()}
           {v.storyboard?.scenes?.length ? (
             <StoryboardPreview storyboard={v.storyboard} jobs={v.render?.jobs} settings={state.settings} />
           ) : null}
