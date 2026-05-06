@@ -2840,8 +2840,12 @@ function App() {
           }
           continue;
         }
-        // LEGACY PATH: old videos with v.heygen.videoId, no render.jobs
-        if (v.heygen?.videoId && s.settings.heygenKey) {
+        // LEGACY PATH: old videos with v.heygen.videoId, no render.jobs.
+        // Only fires for videos rendered BEFORE multi-provider was wired in
+        // (i.e. genuine legacy HeyGen jobs). New videos always have v.render
+        // present — even with empty jobs[] — so we skip them here to avoid
+        // polling HeyGen with a non-HeyGen job ID.
+        if (!v.render && v.heygen?.videoId && s.settings.heygenKey) {
           try {
             const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId, settings: s.settings });
             if (r.status === 'completed' && r.video_url) {
