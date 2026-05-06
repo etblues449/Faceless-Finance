@@ -23,14 +23,21 @@ const PUBLISHERS = { tiktok: publishTikTok, youtube: publishYouTube, instagram: 
 
 // Header names the worker forwards from client → upstream and upstream → client.
 // This is the union of every auth/identifier header any provider expects.
+//
+// IMPORTANT: do NOT forward 'accept-encoding' (request) or 'content-encoding' /
+// 'content-length' (response). Cloudflare's fetch() auto-decompresses gzipped
+// upstream responses; if we forwarded the original content-encoding/length,
+// the browser would try to decompress already-decompressed content and fail
+// with "Failed to fetch". Let CF + the browser negotiate encoding/length on
+// the wire between worker and client.
 const FORWARD_REQUEST_HEADERS = [
   'authorization', 'x-api-key', 'xi-api-key', 'x-hedra-key', 'x-anthropic-key',
   'anthropic-version', 'anthropic-dangerous-direct-browser-access',
-  'content-type', 'accept', 'accept-encoding', 'user-agent',
+  'content-type', 'accept', 'user-agent',
   'openai-organization', 'openai-project',
 ];
 const FORWARD_RESPONSE_HEADERS = [
-  'content-type', 'content-length', 'content-disposition', 'content-encoding',
+  'content-type', 'content-disposition',
   'cache-control', 'etag', 'last-modified', 'location',
 ];
 

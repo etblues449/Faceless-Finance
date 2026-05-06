@@ -2,6 +2,17 @@
 // If ALLOWED_ORIGIN env var is set, lock down to those origins. Otherwise allow any.
 // (Lockdown matters for OAuth/publish which deal with tokens. The /proxy/* endpoint
 //  doesn't expose tokens — the client passes their own — so wide-open is acceptable.)
+// Explicit Allow-Headers list. We previously used '*' but some Chromium
+// builds (especially mobile) have intermittently rejected wildcards on
+// preflight responses. Enumerate every header any provider might send.
+const ALLOW_HEADERS = [
+  'Authorization', 'Content-Type', 'Accept',
+  'X-API-Key', 'xi-api-key', 'X-Hedra-Key', 'X-Anthropic-Key',
+  'anthropic-version', 'anthropic-dangerous-direct-browser-access',
+  'OpenAI-Organization', 'OpenAI-Project',
+  'X-Requested-With',
+].join(', ');
+
 export function corsHeaders(env, request) {
   const origin = request.headers.get('Origin') || '';
   const allowed = (env?.ALLOWED_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -9,7 +20,7 @@ export function corsHeaders(env, request) {
   return {
     'Access-Control-Allow-Origin': matched,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Headers': ALLOW_HEADERS,
     'Access-Control-Expose-Headers': 'X-Proxied-By, X-Upstream-Status',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
