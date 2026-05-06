@@ -1,0 +1,27 @@
+name = "fincast-worker"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+
+# CORS allowlist — comma-separated origins. Leave blank to allow any.
+# Locked-down example: "https://etblues449.github.io"
+[vars]
+ALLOWED_ORIGIN = ""
+APP_ROOT_PATH = "/Faceless-Finance"
+
+# OPTIONAL: KV namespace for storing OAuth tokens (Phase 2 auto-publish only).
+# The /proxy/* endpoint works WITHOUT this — only OAuth + /publish/* need it.
+# To enable later: uncomment, run `wrangler kv namespace create fincast_tokens`,
+# paste the returned ID here, then `wrangler deploy`.
+#
+# [[kv_namespaces]]
+# binding = "TOKENS"
+# id = ""
+
+# OPTIONAL Secrets (only needed if using Phase 2 OAuth publishing). Set via:
+#   wrangler secret put TIKTOK_CLIENT_KEY
+#   wrangler secret put TIKTOK_CLIENT_SECRET
+#   wrangler secret put GOOGLE_CLIENT_ID
+#   wrangler secret put GOOGLE_CLIENT_SECRET
+#   wrangler secret put META_APP_ID
+#   wrangler secret put META_APP_SECRET
+#   wrangler secret put ENCRYPTION_KEY     (random 32+ char string)
