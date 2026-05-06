@@ -1057,6 +1057,24 @@ async function hedraListModels(settings) {
 // dispatches renders, returns job handles for polling.
 // ----------------------------------------------------------------------------
 
+// HeyGen audio asset upload — used for single-shot renders that pair an
+// external ElevenLabs voice track with a HeyGen avatar. Returns the
+// asset_id that goes into video_inputs[0].voice.audio_asset_id.
+// Endpoint: POST https://upload.heygen.com/v1/asset (separate host from API).
+async function heygenUploadAudio(blob, settings) {
+  if (!settings.heygenKey) throw new Error('HeyGen API key required for audio upload.');
+  const url = proxiedUrl('https://upload.heygen.com/v1/asset', settings);
+  const r = await loggedFetch('heygen-upload-audio', url, {
+    method: 'POST',
+    headers: { 'content-type': blob.type || 'audio/mpeg', 'x-api-key': settings.heygenKey },
+    body: blob,
+  });
+  const d = await r.json();
+  const id = d?.data?.id || d?.id;
+  if (!id) throw new Error(`HeyGen upload returned no asset id. Response: ${JSON.stringify(d).slice(0, 200)}`);
+  return id;
+}
+
 async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const cost = estimateStoryboardCost(storyboard, settings);
   if (cost.unrenderableScenes.length) {
@@ -1066,49 +1084,80 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     throw new Error(`Estimated cost £${cost.total.toFixed(2)} exceeds your cap of £${settings.costCapPerVideoGBP}. Raise cap in Settings or use cheaper providers.`);
   }
 
-  // FAST PATH — single-shot render. Bundles every scene's dialogue into ONE
-  // ElevenLabs audio file and submits ONE Hedra Act-Two generation covering
-  // the entire video. Reduces queue wait time from N × (queue + render) to
-  // 1 × (queue + render). For a 6-scene 45s video this is the difference
-  // between ~30 min and ~3 min on Hedra's standard tier.
-  //
-  // Eligibility: user has Hedra Act-Two + ElevenLabs configured, total
-  // duration <= 60s (Hedra Character-2/Act-Two single-clip limit).
   const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
-  const fastEligible =
-    settings.singleShotRender !== false &&
+  const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+  const singleShotEnabled = settings.singleShotRender !== false;
+
+  // FAST PATH 1 — HeyGen single-shot with ElevenLabs audio.
+  // HeyGen API tier renders 30–60s clips in 2–4 min. Accepts external audio
+  // natively (voice.type:"audio" + audio_asset_id). This is the *fastest*
+  // route to a finished video for users who have HeyGen configured.
+  // Per May 2026 HeyGen v2 docs: POST /v2/video/generate with
+  // voice:{type:"audio", audio_asset_id} + character:{type:"avatar"}.
+  const heygenEligible =
+    singleShotEnabled &&
+    settings.heygenKey && settings.heygenAvatarId &&
+    settings.elevenLabsKey && settings.elevenLabsVoiceId &&
+    fullText && totalDuration <= 120;
+  if (heygenEligible) {
+    logEvent('orchestrate', 'heygen_single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
+    const audioBlob = await elevenLabsTTS({ settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: fullText });
+    const audioAssetId = await heygenUploadAudio(audioBlob, settings);
+    const dim = aspect === '16:9' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+    const sc0 = storyboard.scenes[0] || {};
+    const video_inputs = [{
+      character: {
+        type: 'avatar',
+        avatar_id: settings.heygenAvatarId,
+        avatar_style: sc0.avatarScale === 'close' ? 'closeUp' : 'normal',
+        scale: sc0.avatarScale === 'wide' ? 0.7 : (sc0.avatarScale === 'close' ? 1.2 : 1.0),
+        offset: sc0.avatarPosition === 'left' ? { x: -0.25, y: 0 } : sc0.avatarPosition === 'right' ? { x: 0.25, y: 0 } : { x: 0, y: 0 },
+      },
+      voice: { type: 'audio', audio_asset_id: audioAssetId },
+    }];
+    const r = await loggedFetch('heygen-single-shot', proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': settings.heygenKey },
+      body: JSON.stringify({ video_inputs, dimension: dim, test: false }),
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(`HeyGen: ${JSON.stringify(data.error)}`);
+    const videoId = data?.data?.video_id;
+    if (!videoId) throw new Error(`HeyGen returned no video_id. Response: ${JSON.stringify(data).slice(0, 200)}`);
+    return {
+      jobs: [{
+        jobId: videoId,
+        sceneIds: storyboard.scenes.map(sc => sc.id),
+        provider: 'heygen',
+        singleShot: true,
+      }],
+      cost,
+    };
+  }
+
+  // FAST PATH 2 — Hedra Act-Two single-shot (slower than HeyGen but works
+  // when the user only has Hedra configured). Bundles every scene's
+  // dialogue into ONE Hedra job — 1 × queue wait instead of N.
+  const hedraEligible =
+    singleShotEnabled &&
     settings.hedraKey && settings.hedraActTwoModelId && (settings.hedraStartKeyframeId || settings.hedraStartKeyframeUrl) &&
     settings.elevenLabsKey && settings.elevenLabsVoiceId &&
-    totalDuration <= 60;
-
-  if (fastEligible) {
-    const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
-    if (!fullText) throw new Error('Storyboard has no dialogue. Cannot render.');
-    logEvent('orchestrate', 'single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
-    const audioBlob = await elevenLabsTTS({
-      settings,
-      apiKey: settings.elevenLabsKey,
-      voiceId: settings.elevenLabsVoiceId,
-      text: fullText,
-    });
+    fullText && totalDuration <= 60;
+  if (hedraEligible) {
+    logEvent('orchestrate', 'hedra_single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
+    const audioBlob = await elevenLabsTTS({ settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: fullText });
     const audioAssetId = await hedraUploadAudio(audioBlob, settings);
     const promptHint = applyCharacterBible({ visualPrompt: storyboard.scenes[0]?.visualPrompt, dialogue: fullText.slice(0, 400) }, settings);
     const body = {
       type: 'video',
       ai_model_id: settings.hedraActTwoModelId,
       audio_id: audioAssetId,
-      generated_video_inputs: {
-        text_prompt: promptHint,
-        resolution: '720p',
-        aspect_ratio: aspect,
-      },
+      generated_video_inputs: { text_prompt: promptHint, resolution: '720p', aspect_ratio: aspect },
     };
     if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
     else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
     const r = await loggedFetch('hedra-single-shot', hedraUrl(settings, '/generations'), {
-      method: 'POST',
-      headers: hedraAuthHeaders(settings),
-      body: JSON.stringify(body),
+      method: 'POST', headers: hedraAuthHeaders(settings), body: JSON.stringify(body),
     });
     const d = await r.json();
     return {
@@ -1122,9 +1171,8 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     };
   }
 
-  // FALLBACK PATH — per-scene render. Used when total duration > 60s, or
-  // when the user has explicitly opted out of single-shot, or when only
-  // some providers are configured. Each scene gets its own job.
+  // FALLBACK — per-scene render. Used when total duration > 60–120s or
+  // when single-shot is disabled or required keys are missing.
   logEvent('orchestrate', 'multi_scene_fallback', { totalDuration, sceneCount: storyboard.scenes.length });
   const groups = {};
   for (const sc of storyboard.scenes) {
