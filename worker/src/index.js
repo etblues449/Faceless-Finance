@@ -46,6 +46,7 @@ const ALLOWED_HOSTS = new Set([
   'api.hedra.com',
   'api.elevenlabs.io',
   'api.heygen.com',
+  'upload.heygen.com',         // HeyGen audio/image asset upload endpoint
   'api.anthropic.com',
   'api.pexels.com',
   // S3 presigned download URLs returned by Hedra
@@ -119,7 +120,7 @@ export default {
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
           ok: true,
-          version: '1.0.0',
+          version: '1.1.0',
           allowed_origin: env.ALLOWED_ORIGIN,
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
