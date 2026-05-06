@@ -277,11 +277,13 @@ const DEFAULT_SETTINGS = {
   // Phase 3 — multi-provider video stack
   hedraKey: '',
   hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
-  hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Configurable — Hedra has moved API URLs around
-  hedraAuthScheme: 'bearer',      // 'bearer' or 'x-api-key' — try Bearer first (more common in newer APIs)
-  hedraActTwoModelId: '',         // Hedra Act-Two model UUID — leave blank to let Hedra infer from inputs
-  hedraCharacter2ModelId: '',     // Hedra Character-2 model UUID — leave blank to let Hedra infer
-  corsProxy: '',                  // Optional URL prefix for CORS proxy — e.g. https://corsproxy.io/?url= (Hedra requires server-to-server)
+  hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Verified: hedra-labs/hedra-api-starter
+  hedraAuthScheme: 'x-api-key',   // Verified: Hedra public API ONLY accepts X-API-Key. Bearer is rejected.
+  hedraActTwoModelId: '',         // Hedra Act-Two model UUID — get via "Fetch models" in Settings
+  hedraCharacter2ModelId: '',     // Hedra Character-2 model UUID — get via "Fetch models" in Settings
+  hedraStartKeyframeUrl: '',      // Public URL to your reference photo (used as start_keyframe_url). Drop photo in Drive, share publicly, paste URL here.
+  hedraStartKeyframeId: '',       // OR upload photo to Hedra and paste asset ID here (alternative to URL)
+  corsProxy: '',                  // CORS proxy prefix (Hedra has CORS allowlist; browser direct calls are rejected)
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
@@ -686,7 +688,8 @@ class HedraActTwoProvider extends VideoProvider {
   static availability(s) {
     const missing = [];
     if (!s.hedraKey) missing.push('Hedra API key');
-    if (!s.hedraCharacterId) missing.push('Hedra Character ID');
+    if (!s.hedraActTwoModelId) missing.push('Hedra Act-Two model ID (Settings → Fetch models)');
+    if (!s.hedraStartKeyframeId && !s.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
     if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs voice (key + voice ID)');
     return { available: missing.length === 0, missing };
   }
@@ -695,40 +698,67 @@ class HedraActTwoProvider extends VideoProvider {
   static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.024, 0); }
 
   static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    if (!settings.hedraActTwoModelId) {
+      throw new Error('Hedra Act-Two model ID not set. Settings → Phase 3 → Hedra → tap "Fetch Hedra models" to populate.');
+    }
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) {
+      throw new Error('Hedra needs a reference image. Set hedraStartKeyframeUrl (public photo URL) or hedraStartKeyframeId (uploaded asset ID) in Settings.');
+    }
     const jobs = [];
     for (const sc of scenes) {
+      // 1. ElevenLabs renders dialogue → audio Blob
       const audioBlob = await elevenLabsTTS({
         apiKey: settings.elevenLabsKey,
         voiceId: settings.elevenLabsVoiceId,
         text: sc.dialogue,
       });
+      // 2. Upload audio to Hedra (two-step multipart per real API spec)
       const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+      // 3. Submit Act-Two generation (real API body shape)
+      const body = {
+        type: 'video',
+        ai_model_id: settings.hedraActTwoModelId,
+        audio_id: audioAssetId,
+        generated_video_inputs: {
+          text_prompt: sc.dialogue,
+          resolution: '720p',
+          aspect_ratio: aspect,
+        },
+      };
+      if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+      else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
       const r = await loggedFetch('hedra-act-two', hedraUrl(settings, '/generations'), {
         method: 'POST',
         headers: hedraAuthHeaders(settings),
-        body: JSON.stringify({
-          type: 'video',
-          ...(settings.hedraActTwoModelId ? { ai_model_id: settings.hedraActTwoModelId } : {}),
-          character_id: settings.hedraCharacterId,
-          audio_id: audioAssetId,
-          aspect_ratio: aspect,
-          text_prompt: sc.dialogue,
-        }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
-      jobs.push({ jobId: d.id || d.generation_id || d.asset_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
     }
     return { jobs };
   }
 
   static async pollJob({ jobId, settings }) {
     try {
-      const r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}`), {
+      // Verified endpoint: GET /generations/{id}/status (per Hedra starter)
+      const r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}/status`), {
         headers: hedraAuthHeaders(settings, null),
       });
       const d = await r.json();
-      const map = { queued: 'pending', pending: 'pending', processing: 'processing', completed: 'completed', failed: 'failed', error: 'failed' };
-      return { status: map[d.status] || d.status, videoUrl: d.video_url || d.output_url || d.url, error: d.error };
+      // Verified status values: queued | processing | finalizing | complete | error
+      const map = {
+        queued: 'pending',
+        processing: 'processing',
+        finalizing: 'processing',
+        complete: 'completed',
+        error: 'failed',
+      };
+      return {
+        status: map[d.status] || d.status,
+        videoUrl: d.download_url, // verified field name (presigned S3 URL — fetch without API key)
+        progress: d.progress,
+        error: d.error_message,
+      };
     } catch (e) {
       return { status: 'failed', error: e.message };
     }
@@ -757,7 +787,8 @@ class HedraCharacterProvider extends VideoProvider {
   static availability(s) {
     const missing = [];
     if (!s.hedraKey) missing.push('Hedra API key');
-    if (!s.hedraCharacterId) missing.push('Hedra Character ID (upload reference photos in Hedra)');
+    if (!s.hedraCharacter2ModelId) missing.push('Hedra Character-2 model ID (Settings → Fetch models)');
+    if (!s.hedraStartKeyframeId && !s.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
     return { available: missing.length === 0, missing };
   }
 
@@ -765,22 +796,33 @@ class HedraCharacterProvider extends VideoProvider {
   static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.04, 0); }
 
   static async startRender({ storyboard, scenes, settings, aspect }) {
+    if (!settings.hedraCharacter2ModelId) {
+      throw new Error('Hedra Character-2 model ID not set. Settings → Phase 3 → Hedra → tap "Fetch Hedra models".');
+    }
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) {
+      throw new Error('Hedra needs a reference image. Set hedraStartKeyframeUrl or hedraStartKeyframeId in Settings.');
+    }
     const jobs = [];
     for (const sc of scenes) {
+      const body = {
+        type: 'video',
+        ai_model_id: settings.hedraCharacter2ModelId,
+        generated_video_inputs: {
+          text_prompt: applyCharacterBible(sc, settings),
+          resolution: '720p',
+          aspect_ratio: aspect || '9:16',
+          duration_ms: (sc.durationSec || 5) * 1000,
+        },
+      };
+      if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+      else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
       const r = await loggedFetch('hedra-character', hedraUrl(settings, '/generations'), {
         method: 'POST',
         headers: hedraAuthHeaders(settings),
-        body: JSON.stringify({
-          type: 'video',
-          ...(settings.hedraCharacter2ModelId ? { ai_model_id: settings.hedraCharacter2ModelId } : {}),
-          character_id: settings.hedraCharacterId,
-          text_prompt: applyCharacterBible(sc, settings),
-          duration_ms: (sc.durationSec || 5) * 1000,
-          aspect_ratio: aspect || '9:16',
-        }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
-      jobs.push({ jobId: d.id || d.generation_id || d.asset_id, sceneIds: [sc.id], provider: 'hedra_character' });
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_character' });
     }
     return { jobs };
   }
@@ -912,52 +954,61 @@ async function elevenLabsTTS({ apiKey, voiceId, text }) {
 // can reference internally (no public URL needed — solves the blob-URL problem).
 // Hedra exposes a two-step upload (init → put) for media; we use a single
 // multipart POST which their API also accepts for short audio clips.
+// Hedra audio upload — verified two-step flow per hedra-labs/hedra-api-starter:
+//   1. POST /assets with JSON {name, type:"audio"} → response {id}
+//   2. POST /assets/{id}/upload with multipart form-data, field name "file"
+// (No presigned PUT URL for audio — that's only returned for type:"video".)
 async function hedraUploadAudio(blob, settings) {
   if (!settings.hedraKey) throw new Error('Hedra API key required for audio upload.');
-  // Two-step Hedra asset upload (newer API): create asset record → put bytes.
-  // Try this first; fall back to single-step multipart if it errors.
-  try {
-    // Step 1: create asset
-    const init = await loggedFetch('hedra-asset-init', hedraUrl(settings, '/assets'), {
-      method: 'POST',
-      headers: hedraAuthHeaders(settings),
-      body: JSON.stringify({ type: 'audio', name: 'scene_audio.mp3' }),
-    });
-    const initData = await init.json();
-    const assetId = initData.id || initData.asset_id;
-    const uploadUrl = initData.upload_url || initData.signed_url;
-    if (uploadUrl) {
-      // Step 2: PUT bytes to signed URL
-      await loggedFetch('hedra-asset-put', uploadUrl, {
-        method: 'PUT',
-        headers: { 'content-type': blob.type || 'audio/mpeg' },
-        body: blob,
-      });
-    } else if (assetId) {
-      // Some API versions accept multipart on POST /assets/{id}/content
-      const form = new FormData();
-      form.append('file', blob, 'scene_audio.mp3');
-      await loggedFetch('hedra-asset-upload', hedraUrl(settings, `/assets/${assetId}/content`), {
-        method: 'POST',
-        headers: hedraAuthHeaders(settings, null),
-        body: form,
-      });
-    }
-    return assetId;
-  } catch (e) {
-    logEvent('hedra-asset-fallback', 'two_step_failed_trying_multipart', e.message);
-    // Fallback: single-step multipart
-    const form = new FormData();
-    form.append('file', blob, 'scene_audio.mp3');
-    form.append('type', 'audio');
-    const r = await loggedFetch('hedra-asset-multipart', hedraUrl(settings, '/assets'), {
-      method: 'POST',
-      headers: hedraAuthHeaders(settings, null),
-      body: form,
-    });
-    const data = await r.json();
-    return data.id || data.asset_id || data.assetId;
-  }
+  // Step 1: create asset record
+  const init = await loggedFetch('hedra-asset-init', hedraUrl(settings, '/assets'), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings),
+    body: JSON.stringify({ name: 'scene_audio.mp3', type: 'audio' }),
+  });
+  const initData = await init.json();
+  const assetId = initData.id;
+  if (!assetId) throw new Error(`Hedra POST /assets did not return id. Response: ${JSON.stringify(initData).slice(0, 200)}`);
+  // Step 2: multipart upload to /assets/{id}/upload
+  const form = new FormData();
+  form.append('file', blob, 'scene_audio.mp3');
+  await loggedFetch('hedra-asset-upload', hedraUrl(settings, `/assets/${assetId}/upload`), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings, null), // no content-type — let browser set multipart boundary
+    body: form,
+  });
+  return assetId;
+}
+
+// Hedra image upload (for setting start_keyframe_id from a public photo URL or local Blob).
+// Used by the "Upload reference photo" helper in Settings.
+async function hedraUploadImage(blob, settings, name = 'reference.jpg') {
+  if (!settings.hedraKey) throw new Error('Hedra API key required.');
+  const init = await loggedFetch('hedra-image-init', hedraUrl(settings, '/assets'), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings),
+    body: JSON.stringify({ name, type: 'image' }),
+  });
+  const initData = await init.json();
+  const assetId = initData.id;
+  if (!assetId) throw new Error(`Hedra POST /assets did not return id. Response: ${JSON.stringify(initData).slice(0, 200)}`);
+  const form = new FormData();
+  form.append('file', blob, name);
+  await loggedFetch('hedra-image-upload', hedraUrl(settings, `/assets/${assetId}/upload`), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings, null),
+    body: form,
+  });
+  return assetId;
+}
+
+// Fetch Hedra's available AI models — returns list of {id, name, ...}
+async function hedraListModels(settings) {
+  const r = await loggedFetch('hedra-models', hedraUrl(settings, '/models'), {
+    headers: hedraAuthHeaders(settings, null),
+  });
+  const d = await r.json();
+  return d.models || d.data || d;
 }
 
 // ----------------------------------------------------------------------------
@@ -1245,20 +1296,20 @@ function checkKeys(settings) {
     if (!settings.heygenVoiceId) missing.push('HeyGen Voice ID');
   } else if (thId === 'hedra_act_two') {
     if (!settings.hedraKey) missing.push('Hedra API key');
-    if (!settings.hedraCharacterId) missing.push('Hedra Character ID');
+    if (!settings.hedraActTwoModelId) missing.push('Hedra Act-Two model ID (tap "Fetch models")');
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or uploaded asset ID)');
     if (!settings.elevenLabsKey) missing.push('ElevenLabs API key');
     if (!settings.elevenLabsVoiceId) missing.push('ElevenLabs Voice ID');
   } else if (thId === 'auto' || !thId) {
-    // Auto — at least ONE provider must have all its keys
     const hgOk = settings.heygenKey && settings.heygenAvatarId && settings.heygenVoiceId;
-    const hdOk = settings.hedraKey && settings.hedraCharacterId && settings.elevenLabsKey && settings.elevenLabsVoiceId;
+    const hdOk = settings.hedraKey && settings.hedraActTwoModelId && (settings.hedraStartKeyframeId || settings.hedraStartKeyframeUrl) && settings.elevenLabsKey && settings.elevenLabsVoiceId;
     if (!hgOk && !hdOk) missing.push('Either a complete HeyGen setup OR a complete Hedra+ElevenLabs setup');
   }
-  // Cinematic provider keys (only required if you intend to render cinematic scenes — but Claude often does)
   const cnId = settings.defaultCinematicProvider;
   if (cnId === 'hedra_character' || cnId === 'auto' || !cnId) {
     if (!settings.hedraKey) missing.push('Hedra API key (for cinematic scenes)');
-    if (!settings.hedraCharacterId) missing.push('Hedra Character ID (for cinematic scenes)');
+    if (!settings.hedraCharacter2ModelId) missing.push('Hedra Character-2 model ID (tap "Fetch models")');
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
   }
   // Dedupe
   const unique = Array.from(new Set(missing));
@@ -2190,6 +2241,78 @@ function DebugLogCard() {
   );
 }
 
+function HedraUploadPhotoButton({ settings, set }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef(null);
+  const handle = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(''); setBusy(true);
+    try {
+      const assetId = await hedraUploadImage(file, settings, file.name);
+      set({ hedraStartKeyframeId: assetId, hedraStartKeyframeUrl: '' });
+      alert(`Uploaded. Asset ID saved: ${assetId}`);
+    } catch (ex) { setErr(ex.message); alert('Upload failed: ' + ex.message); }
+    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  return (
+    <>
+      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handle} />
+      <button className="btn btn-ghost btn-sm" disabled={busy || !settings.hedraKey} onClick={() => fileRef.current?.click()}>
+        {busy ? <><span className="spin"></span> Uploading…</> : '📷 Upload reference photo'}
+      </button>
+    </>
+  );
+}
+
+function HedraFetchModelsButton({ settings, set }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [models, setModels] = useState(null);
+  const fetchModels = async () => {
+    setErr(''); setBusy(true);
+    try {
+      const list = await hedraListModels(settings);
+      setModels(list);
+      // Auto-pick: find Character-2 / Act-Two by name pattern
+      const pickByName = (substrings) => list.find(m => {
+        const n = (m.name || m.display_name || '').toLowerCase();
+        return substrings.every(s => n.includes(s));
+      });
+      const charModel = pickByName(['character']) || pickByName(['char-2']) || pickByName(['c2']);
+      const actModel = pickByName(['act']) || pickByName(['lip']);
+      const patch = {};
+      if (charModel?.id) patch.hedraCharacter2ModelId = charModel.id;
+      if (actModel?.id) patch.hedraActTwoModelId = actModel.id;
+      if (Object.keys(patch).length) set(patch);
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <button className="btn btn-sm" onClick={fetchModels} disabled={busy || !settings.hedraKey}>
+        {busy ? <><span className="spin"></span> Fetching…</> : '↻ Fetch Hedra models'}
+      </button>
+      {err && <div className="alert alert-err" style={{marginTop:6, fontSize:11}}>{err}</div>}
+      {models && (
+        <div style={{marginTop:8, fontSize:11, color:'var(--text-dim)'}}>
+          Found {models.length} model(s). Click a row to set Act-Two or Character-2 manually:
+          <div style={{maxHeight:160,overflowY:'auto',marginTop:4}}>
+            {models.map((m, i) => (
+              <div key={m.id || i} style={{padding:'4px 6px',background:'var(--card2)',borderRadius:4,marginBottom:2,display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{flex:1}}><strong>{m.name || m.display_name || 'Unnamed'}</strong> <code style={{fontSize:10}}>{(m.id||'').slice(0,16)}…</code></span>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 6px'}} onClick={() => set({ hedraActTwoModelId: m.id })}>Use as Act-Two</button>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 6px'}} onClick={() => set({ hedraCharacter2ModelId: m.id })}>Use as Character-2</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhaseThreeProvidersCard() {
   const { state, dispatch } = useStore();
   const s = state.settings;
@@ -2233,32 +2356,49 @@ function PhaseThreeProvidersCard() {
             <input type={showKeys?'text':'password'} value={s.hedraKey} onChange={e=>set({ hedraKey:e.target.value })} placeholder="hdr_..." />
             <div className="help">Hedra → Profile (E icon) → Settings → API → Create new key.</div>
           </div>
-          <div>
-            <label className="label">Hedra Character ID</label>
-            <input value={s.hedraCharacterId} onChange={e=>set({ hedraCharacterId:e.target.value })} placeholder="char_..." />
-            <div className="help">Upload 5-10 reference photos of you in Hedra → Characters. Copy the Character ID.</div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Hedra reference photo URL (start_keyframe_url)</label>
+            <input value={s.hedraStartKeyframeUrl} onChange={e=>set({ hedraStartKeyframeUrl:e.target.value })} placeholder="https://i.imgur.com/your-photo.jpg or any public URL" />
+            <div className="help">
+              Hedra's API uses an IMAGE (not a "Character") as the visual anchor. Either:
+              <ul style={{margin:'4px 0 0 16px',padding:0}}>
+                <li><strong>Quick:</strong> upload a photo of you to imgur/Drive/etc., make it public, paste URL here</li>
+                <li><strong>Or:</strong> tap "Upload reference photo" below to upload a local file → asset ID is saved automatically</li>
+              </ul>
+            </div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Hedra start_keyframe_id (uploaded asset, optional)</label>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <input value={s.hedraStartKeyframeId} onChange={e=>set({ hedraStartKeyframeId:e.target.value })} placeholder="set automatically when you upload — or paste an existing asset ID" style={{flex:1}} />
+              <HedraUploadPhotoButton settings={s} set={set} />
+            </div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <HedraFetchModelsButton settings={s} set={set} />
+            <div style={{marginTop:8,display:'grid',gap:8,gridTemplateColumns:'1fr 1fr'}}>
+              <div>
+                <label className="label">Act-Two model ID</label>
+                <input value={s.hedraActTwoModelId} onChange={e=>set({ hedraActTwoModelId:e.target.value })} placeholder="auto-populated by Fetch models" />
+              </div>
+              <div>
+                <label className="label">Character-2 model ID</label>
+                <input value={s.hedraCharacter2ModelId} onChange={e=>set({ hedraCharacter2ModelId:e.target.value })} placeholder="auto-populated by Fetch models" />
+              </div>
+            </div>
           </div>
           <div>
             <label className="label">Hedra base URL (advanced)</label>
             <input value={s.hedraBaseUrl} onChange={e=>set({ hedraBaseUrl:e.target.value })} placeholder="https://api.hedra.com/web-app/public" />
-            <div className="help">Override if Hedra's API has moved. Default: <code>api.hedra.com/web-app/public</code></div>
+            <div className="help">Verified default: <code>api.hedra.com/web-app/public</code></div>
           </div>
           <div>
             <label className="label">Hedra auth scheme</label>
-            <select value={s.hedraAuthScheme || 'bearer'} onChange={e=>set({ hedraAuthScheme:e.target.value })}>
-              <option value="bearer">Authorization: Bearer (most common)</option>
-              <option value="x-api-key">X-API-Key (legacy header)</option>
+            <select value={s.hedraAuthScheme || 'x-api-key'} onChange={e=>set({ hedraAuthScheme:e.target.value })}>
+              <option value="x-api-key">X-API-Key (verified — required)</option>
+              <option value="bearer">Authorization: Bearer (rejected by Hedra)</option>
             </select>
-            <div className="help">If renders fail with 401/403, try the other option.</div>
-          </div>
-          <div>
-            <label className="label">Hedra Act-Two model ID (advanced)</label>
-            <input value={s.hedraActTwoModelId} onChange={e=>set({ hedraActTwoModelId:e.target.value })} placeholder="leave blank — Hedra usually infers from inputs" />
-            <div className="help">Only needed if Hedra rejects with "ai_model_id required". Find via Hedra docs or model list endpoint.</div>
-          </div>
-          <div>
-            <label className="label">Hedra Character-2 model ID (advanced)</label>
-            <input value={s.hedraCharacter2ModelId} onChange={e=>set({ hedraCharacter2ModelId:e.target.value })} placeholder="leave blank — Hedra usually infers" />
+            <div className="help">Hedra public API requires X-API-Key. Bearer is rejected.</div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">CORS proxy (REQUIRED if browser direct calls fail)</label>
