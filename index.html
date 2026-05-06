@@ -1896,19 +1896,39 @@ function ApprovalPage({ go }) {
           {v.heygen?.videoUrl ? (
             <video src={v.heygen.videoUrl} controls className="preview-vid" />
           ) : (() => {
-            // Compute aggregate status from multi-provider jobs when present, else fall back to legacy v.heygen.
             const jobs = v.render?.jobs;
             const failed = jobs?.length ? jobs.filter(j => j.status === 'failed') : null;
             const isFailed = (failed?.length > 0) || v.heygen?.status === 'failed';
             const errMsg = isFailed
               ? (failed?.length ? failed.map(j => j.error).join('; ') : (v.heygen?.error || 'unknown error'))
               : '';
-            const progressText = jobs?.length
-              ? `Rendering (${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done)… auto-polls every 8s.`
-              : `Rendering (${v.heygen?.status || 'queued'})… auto-polls every 8s.`;
+            // Counts by phase so the user can tell "queued waiting on Hedra"
+            // apart from "actively rendering" apart from "stuck".
+            let breakdown = null;
+            if (jobs?.length) {
+              const done = jobs.filter(j => j.status === 'completed').length;
+              const proc = jobs.filter(j => j.status === 'processing').length;
+              const queued = jobs.filter(j => !j.status || j.status === 'pending' || j.status === 'queued').length;
+              const fail = jobs.filter(j => j.status === 'failed').length;
+              breakdown = { done, proc, queued, fail, total: jobs.length };
+            }
+            const progressText = breakdown
+              ? `${breakdown.done}/${breakdown.total} scenes complete`
+                + (breakdown.proc ? ` · ${breakdown.proc} rendering` : '')
+                + (breakdown.queued ? ` · ${breakdown.queued} queued at Hedra` : '')
+                + (breakdown.fail ? ` · ${breakdown.fail} failed` : '')
+              : `Rendering (${v.heygen?.status || 'queued'})…`;
+            const allQueued = breakdown && breakdown.queued === breakdown.total;
+            const startedAt = v.render?.startedAt;
+            const minsWaiting = startedAt ? Math.floor((Date.now() - startedAt) / 60000) : null;
             return (
               <div className="alert alert-warn">
-                {isFailed ? `Render failed: ${errMsg}` : <><span className="spin"></span> {progressText}</>}
+                {isFailed ? `Render failed: ${errMsg}` : <><span className="spin"></span> {progressText} · auto-polls every 8s.</>}
+                {!isFailed && allQueued && (
+                  <div style={{fontSize:11, color:'var(--muted)', marginTop:6, lineHeight:1.4}}>
+                    All scenes accepted by Hedra and waiting to start. Hedra Character-2 queue is typically 2–10 min depending on load{minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}. Tap 🐞 (bottom-right) to inspect raw status.
+                  </div>
+                )}
                 {isFailed
                   ? <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
                   : <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>}
