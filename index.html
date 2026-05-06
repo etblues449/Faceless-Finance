@@ -279,6 +279,8 @@ const DEFAULT_SETTINGS = {
   hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
   hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Configurable — Hedra has moved API URLs around
   hedraAuthScheme: 'bearer',      // 'bearer' or 'x-api-key' — try Bearer first (more common in newer APIs)
+  hedraActTwoModelId: '',         // Hedra Act-Two model UUID — leave blank to let Hedra infer from inputs
+  hedraCharacter2ModelId: '',     // Hedra Character-2 model UUID — leave blank to let Hedra infer
   corsProxy: '',                  // Optional URL prefix for CORS proxy — e.g. https://corsproxy.io/?url= (Hedra requires server-to-server)
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
@@ -705,8 +707,8 @@ class HedraActTwoProvider extends VideoProvider {
         method: 'POST',
         headers: hedraAuthHeaders(settings),
         body: JSON.stringify({
-          type: 'act-two',
-          ai_model_id: 'act-two',
+          type: 'video',
+          ...(settings.hedraActTwoModelId ? { ai_model_id: settings.hedraActTwoModelId } : {}),
           character_id: settings.hedraCharacterId,
           audio_id: audioAssetId,
           aspect_ratio: aspect,
@@ -769,8 +771,8 @@ class HedraCharacterProvider extends VideoProvider {
         method: 'POST',
         headers: hedraAuthHeaders(settings),
         body: JSON.stringify({
-          type: 'character-2',
-          ai_model_id: 'character-2',
+          type: 'video',
+          ...(settings.hedraCharacter2ModelId ? { ai_model_id: settings.hedraCharacter2ModelId } : {}),
           character_id: settings.hedraCharacterId,
           text_prompt: applyCharacterBible(sc, settings),
           duration_ms: (sc.durationSec || 5) * 1000,
@@ -2248,6 +2250,15 @@ function PhaseThreeProvidersCard() {
               <option value="x-api-key">X-API-Key (legacy header)</option>
             </select>
             <div className="help">If renders fail with 401/403, try the other option.</div>
+          </div>
+          <div>
+            <label className="label">Hedra Act-Two model ID (advanced)</label>
+            <input value={s.hedraActTwoModelId} onChange={e=>set({ hedraActTwoModelId:e.target.value })} placeholder="leave blank — Hedra usually infers from inputs" />
+            <div className="help">Only needed if Hedra rejects with "ai_model_id required". Find via Hedra docs or model list endpoint.</div>
+          </div>
+          <div>
+            <label className="label">Hedra Character-2 model ID (advanced)</label>
+            <input value={s.hedraCharacter2ModelId} onChange={e=>set({ hedraCharacter2ModelId:e.target.value })} placeholder="leave blank — Hedra usually infers" />
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">CORS proxy (REQUIRED if browser direct calls fail)</label>
