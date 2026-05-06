@@ -292,6 +292,7 @@ const DEFAULT_SETTINGS = {
   runwayKey: '',                  // Runway Gen-4 — stub
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
+  singleShotRender: true,         // Bundle every scene into ONE Hedra job for ~6× faster queue wait. Set false to render per-scene.
   costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
   characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
@@ -1064,9 +1065,67 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   if (settings.costCapPerVideoGBP && cost.total > settings.costCapPerVideoGBP) {
     throw new Error(`Estimated cost £${cost.total.toFixed(2)} exceeds your cap of £${settings.costCapPerVideoGBP}. Raise cap in Settings or use cheaper providers.`);
   }
-  // Group scenes by provider. Each provider is now self-contained — it does
-  // its own audio rendering / upload as needed. The orchestrator just
-  // dispatches and aggregates.
+
+  // FAST PATH — single-shot render. Bundles every scene's dialogue into ONE
+  // ElevenLabs audio file and submits ONE Hedra Act-Two generation covering
+  // the entire video. Reduces queue wait time from N × (queue + render) to
+  // 1 × (queue + render). For a 6-scene 45s video this is the difference
+  // between ~30 min and ~3 min on Hedra's standard tier.
+  //
+  // Eligibility: user has Hedra Act-Two + ElevenLabs configured, total
+  // duration <= 60s (Hedra Character-2/Act-Two single-clip limit).
+  const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
+  const fastEligible =
+    settings.singleShotRender !== false &&
+    settings.hedraKey && settings.hedraActTwoModelId && (settings.hedraStartKeyframeId || settings.hedraStartKeyframeUrl) &&
+    settings.elevenLabsKey && settings.elevenLabsVoiceId &&
+    totalDuration <= 60;
+
+  if (fastEligible) {
+    const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+    if (!fullText) throw new Error('Storyboard has no dialogue. Cannot render.');
+    logEvent('orchestrate', 'single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
+    const audioBlob = await elevenLabsTTS({
+      settings,
+      apiKey: settings.elevenLabsKey,
+      voiceId: settings.elevenLabsVoiceId,
+      text: fullText,
+    });
+    const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+    const promptHint = applyCharacterBible({ visualPrompt: storyboard.scenes[0]?.visualPrompt, dialogue: fullText.slice(0, 400) }, settings);
+    const body = {
+      type: 'video',
+      ai_model_id: settings.hedraActTwoModelId,
+      audio_id: audioAssetId,
+      generated_video_inputs: {
+        text_prompt: promptHint,
+        resolution: '720p',
+        aspect_ratio: aspect,
+      },
+    };
+    if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+    else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
+    const r = await loggedFetch('hedra-single-shot', hedraUrl(settings, '/generations'), {
+      method: 'POST',
+      headers: hedraAuthHeaders(settings),
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    return {
+      jobs: [{
+        jobId: d.id || d.generation_id,
+        sceneIds: storyboard.scenes.map(sc => sc.id),
+        provider: 'hedra_act_two',
+        singleShot: true,
+      }],
+      cost,
+    };
+  }
+
+  // FALLBACK PATH — per-scene render. Used when total duration > 60s, or
+  // when the user has explicitly opted out of single-shot, or when only
+  // some providers are configured. Each scene gets its own job.
+  logEvent('orchestrate', 'multi_scene_fallback', { totalDuration, sceneCount: storyboard.scenes.length });
   const groups = {};
   for (const sc of storyboard.scenes) {
     const P = pickProviderForScene(sc, settings);
@@ -1760,16 +1819,19 @@ function NewVideoPage({ go }) {
         <div className="card">
           <div className="card-title">Step 4 · Rendering</div>
           <div style={{fontSize:14, marginBottom:14}}>
-            Your video is rendering. Typical wait: 2–6 minutes for a 30–60s clip (Hedra cinematic + Act-Two lip-sync).<br/>
+            Your video is rendering. Single-shot mode: typical wait 1–3 min queue + 30–60s render = roughly 3 min total.<br/>
             You can leave this page — when it's done it will appear in the <strong>Approval</strong> tab.
           </div>
           {createdVideoId && (() => {
             const v = state.videos.find(x => x.id===createdVideoId);
             if (!v) return null;
             const jobs = v.render?.jobs;
-            const statusLabel = jobs?.length
-              ? `${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done`
-              : (v.heygen?.status || 'queued');
+            const isSingleShot = jobs?.length === 1 && jobs[0].singleShot;
+            const statusLabel = isSingleShot
+              ? (jobs[0].status === 'completed' ? 'rendered' : (jobs[0].status === 'processing' ? 'rendering' : 'queued at Hedra'))
+              : jobs?.length
+                ? `${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done`
+                : (v.heygen?.status || 'queued');
             return (
               <div>
                 <div style={{marginBottom:12}}>
@@ -1914,8 +1976,9 @@ function ApprovalPage({ go }) {
             const errMsg = isFailed
               ? (failed?.length ? failed.map(j => j.error).join('; ') : (v.heygen?.error || 'unknown error'))
               : '';
-            // Counts by phase so the user can tell "queued waiting on Hedra"
-            // apart from "actively rendering" apart from "stuck".
+            // Single-shot: one job covers every scene. Show different copy.
+            const isSingleShot = jobs?.length === 1 && jobs[0].singleShot;
+            const sceneCount = v.storyboard?.scenes?.length ?? jobs?.[0]?.sceneIds?.length ?? 0;
             let breakdown = null;
             if (jobs?.length) {
               const done = jobs.filter(j => j.status === 'completed').length;
@@ -1924,26 +1987,45 @@ function ApprovalPage({ go }) {
               const fail = jobs.filter(j => j.status === 'failed').length;
               breakdown = { done, proc, queued, fail, total: jobs.length };
             }
-            const progressText = breakdown
-              ? `${breakdown.done}/${breakdown.total} scenes complete`
-                + (breakdown.proc ? ` · ${breakdown.proc} rendering` : '')
-                + (breakdown.queued ? ` · ${breakdown.queued} queued at Hedra` : '')
-                + (breakdown.fail ? ` · ${breakdown.fail} failed` : '')
-              : `Rendering (${v.heygen?.status || 'queued'})…`;
+            const progressText = isSingleShot
+              ? (jobs[0].status === 'processing' ? `Rendering whole video (${sceneCount} scenes in one shot)…`
+                  : jobs[0].status === 'completed' ? `Render complete.`
+                  : jobs[0].status === 'failed' ? `Render failed.`
+                  : `Queued at Hedra (one-shot render of ${sceneCount} scenes)…`)
+              : breakdown
+                ? `${breakdown.done}/${breakdown.total} scenes complete`
+                  + (breakdown.proc ? ` · ${breakdown.proc} rendering` : '')
+                  + (breakdown.queued ? ` · ${breakdown.queued} queued at Hedra` : '')
+                  + (breakdown.fail ? ` · ${breakdown.fail} failed` : '')
+                : `Rendering (${v.heygen?.status || 'queued'})…`;
             const allQueued = breakdown && breakdown.queued === breakdown.total;
             const startedAt = v.render?.startedAt;
             const minsWaiting = startedAt ? Math.floor((Date.now() - startedAt) / 60000) : null;
+            const hint = isSingleShot && allQueued
+              ? `One job for the entire video — typical wait 1–3 min on Hedra standard tier${minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}.`
+              : (allQueued ? `All scenes accepted by Hedra and waiting to start. Per-scene fallback: queue is 2–10 min × ${breakdown?.total || ''} scenes${minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}.` : null);
+            const cancel = () => {
+              if (!confirm('Abandon this render? You can re-render from the script stage.')) return;
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage:'script',
+                render: v.render ? { ...v.render, status:'cancelled', jobs: (v.render.jobs||[]).map(j => ({ ...j, status:'failed', error:'cancelled by user' })) } : v.render,
+                heygen: { ...v.heygen, status:'failed', error:'cancelled by user' },
+              }});
+            };
             return (
               <div className="alert alert-warn">
                 {isFailed ? `Render failed: ${errMsg}` : <><span className="spin"></span> {progressText} · auto-polls every 8s.</>}
-                {!isFailed && allQueued && (
+                {!isFailed && hint && (
                   <div style={{fontSize:11, color:'var(--muted)', marginTop:6, lineHeight:1.4}}>
-                    All scenes accepted by Hedra and waiting to start. Hedra Character-2 queue is typically 2–10 min depending on load{minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}. Tap 🐞 (bottom-right) to inspect raw status.
+                    {hint} Tap 🐞 (bottom-right) to inspect raw status.
                   </div>
                 )}
                 {isFailed
                   ? <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
-                  : <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>}
+                  : <>
+                      <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>
+                      <button className="btn btn-ghost btn-sm" style={{marginLeft:6, color:'var(--danger)'}} onClick={cancel}>× Abandon</button>
+                    </>}
               </div>
             );
           })()}
@@ -2623,6 +2705,15 @@ function PhaseThreeProvidersCard() {
             <label className="label">Cost cap per video (£)</label>
             <input type="number" min="0" step="0.50" value={s.costCapPerVideoGBP} onChange={e=>set({ costCapPerVideoGBP: parseFloat(e.target.value) || 0 })} />
             <div className="help">Render refuses if estimated cost exceeds this. 0 = unlimited.</div>
+          </div>
+          <div style={{gridColumn:'1 / -1'}}>
+            <label className="label" style={{display:'flex', alignItems:'center', gap:8}}>
+              <input type="checkbox" checked={s.singleShotRender !== false} onChange={e=>set({ singleShotRender: e.target.checked })} style={{width:'auto'}} />
+              <span>Single-shot render (recommended)</span>
+            </label>
+            <div className="help">
+              Bundle every scene into ONE Hedra Act-Two job. Reduces queue wait from N&times;(queue+render) to 1&times;(queue+render) — roughly 6&times; faster on a 6-scene video. Active when total duration ≤ 60s and Hedra+ElevenLabs are configured. Uncheck only if you specifically want per-scene cinematic intercuts (and are willing to wait 20–40 min per render).
+            </div>
           </div>
           <div>
             <button className="btn btn-ghost btn-sm" onClick={()=>setShowKeys(v=>!v)}>{showKeys ? 'Hide' : 'Show'} provider keys</button>
