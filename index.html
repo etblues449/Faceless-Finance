@@ -281,9 +281,9 @@ const DEFAULT_SETTINGS = {
   hedraAuthScheme: 'x-api-key',   // Verified: Hedra public API ONLY accepts X-API-Key. Bearer is rejected.
   hedraActTwoModelId: '',         // Hedra Act-Two model UUID — get via "Fetch models" in Settings
   hedraCharacter2ModelId: '',     // Hedra Character-2 model UUID — get via "Fetch models" in Settings
-  hedraStartKeyframeUrl: '',      // Public URL to your reference photo (used as start_keyframe_url). Drop photo in Drive, share publicly, paste URL here.
+  hedraStartKeyframeUrl: '',      // Public URL to your reference photo (used as start_keyframe_url)
   hedraStartKeyframeId: '',       // OR upload photo to Hedra and paste asset ID here (alternative to URL)
-  corsProxy: '',                  // CORS proxy prefix (Hedra has CORS allowlist; browser direct calls are rejected)
+  workerUrl: '',                  // FinCast Cloudflare Worker URL — handles CORS + multipart for ALL providers. One-click deploy from worker/ folder.
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
@@ -339,9 +339,9 @@ function reducer(state, action) {
 // API HELPERS
 // ============================================================================
 
-async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, maxTokens=2400 }) {
+async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, maxTokens=2400, settings = {} }) {
   if (!apiKey) throw new Error('Missing Anthropic API key. Add it in Settings.');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  const r = await fetch(proxiedUrl('https://api.anthropic.com/v1/messages', settings), {
     method:'POST',
     headers: {
       'content-type':'application/json',
@@ -363,7 +363,7 @@ async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, max
   return data.content?.[0]?.text || '';
 }
 
-async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0, pitch=0 }) {
+async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0, pitch=0, settings = {} }) {
   if (!apiKey) throw new Error('Missing HeyGen API key. Add it in Settings.');
   if (!avatarId || !voiceId) throw new Error('Missing HeyGen avatar or voice ID. Add them in Settings.');
   const dim = aspect==='16:9' ? { width:1920, height:1080 } : { width:1080, height:1920 };
@@ -377,7 +377,7 @@ async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9
     dimension: dim,
     test: false,
   };
-  const r = await fetch('https://api.heygen.com/v2/video/generate', {
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
     method:'POST',
     headers:{ 'content-type':'application/json', 'x-api-key': apiKey },
     body: JSON.stringify(body),
@@ -391,8 +391,8 @@ async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9
   return data.data?.video_id;
 }
 
-async function heygenStatus({ apiKey, videoId }) {
-  const r = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, {
+async function heygenStatus({ apiKey, videoId, settings = {} }) {
+  const r = await fetch(proxiedUrl(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, settings), {
     headers:{ 'x-api-key': apiKey },
   });
   if (!r.ok) throw new Error(`HeyGen status ${r.status}`);
@@ -400,9 +400,9 @@ async function heygenStatus({ apiKey, videoId }) {
   return data.data || {};
 }
 
-async function heygenListAvatars({ apiKey }) {
+async function heygenListAvatars({ apiKey, settings = {} }) {
   if (!apiKey) throw new Error('Missing HeyGen API key.');
-  const r = await fetch('https://api.heygen.com/v2/avatars', { headers:{ 'x-api-key': apiKey } });
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/avatars', settings), { headers:{ 'x-api-key': apiKey } });
   if (!r.ok) throw new Error(`HeyGen avatars ${r.status}: ${(await r.text()).slice(0,200)}`);
   const j = await r.json();
   const avatars = j.data?.avatars || [];
@@ -413,9 +413,9 @@ async function heygenListAvatars({ apiKey }) {
   ];
 }
 
-async function heygenListVoices({ apiKey }) {
+async function heygenListVoices({ apiKey, settings = {} }) {
   if (!apiKey) throw new Error('Missing HeyGen API key.');
-  const r = await fetch('https://api.heygen.com/v2/voices', { headers:{ 'x-api-key': apiKey } });
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/voices', settings), { headers:{ 'x-api-key': apiKey } });
   if (!r.ok) throw new Error(`HeyGen voices ${r.status}: ${(await r.text()).slice(0,200)}`);
   const j = await r.json();
   return (j.data?.voices || []).map(v => ({
@@ -429,9 +429,9 @@ async function heygenListVoices({ apiKey }) {
   }));
 }
 
-async function pexelsSearch({ apiKey, query, perPage=8 }) {
+async function pexelsSearch({ apiKey, query, perPage=8, settings = {} }) {
   if (!apiKey) return { videos: [] };
-  const r = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, {
+  const r = await fetch(proxiedUrl(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, settings), {
     headers: { Authorization: apiKey },
   });
   if (!r.ok) throw new Error(`Pexels ${r.status}`);
@@ -579,16 +579,21 @@ function hedraAuthHeaders(settings, contentType = 'application/json') {
 function hedraUrl(settings, path) {
   const base = (settings.hedraBaseUrl || 'https://api.hedra.com/web-app/public').replace(/\/+$/, '');
   const fullUrl = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
-  // If a CORS proxy is configured, prepend it. Supports two patterns:
-  //   1. Prefix style: "https://corsproxy.io/?url=" → proxy + encodeURIComponent(fullUrl)
-  //   2. Wrap style:   "https://my-worker.workers.dev/proxy?url=" → same as above
-  // Heuristic: if proxy ends with "?url=" or "=" or "?", we URL-encode the target.
-  // Otherwise we just concatenate.
-  const proxy = (settings.corsProxy || '').trim();
-  if (!proxy) return fullUrl;
-  if (proxy.endsWith('=') || proxy.endsWith('?url=')) return proxy + encodeURIComponent(fullUrl);
-  if (proxy.endsWith('/')) return proxy + fullUrl.replace(/^https?:\/\//, '');
-  return proxy + '/' + fullUrl.replace(/^https?:\/\//, '');
+  return proxiedUrl(fullUrl, settings);
+}
+
+// Routes any provider URL through the FinCast Worker if configured.
+// Worker provides CORS-busting + multipart-friendly proxy for any provider.
+// Pattern: workerUrl + "/proxy/" + host + path
+//   in:  https://api.hedra.com/web-app/public/generations
+//   out: https://my-worker.workers.dev/proxy/api.hedra.com/web-app/public/generations
+// If no workerUrl set, returns original URL (browser-direct call — works for Anthropic/Pexels but
+// NOT Hedra/ElevenLabs/HeyGen which have CORS allowlists).
+function proxiedUrl(originalUrl, settings) {
+  const worker = (settings?.workerUrl || '').trim().replace(/\/+$/, '');
+  if (!worker) return originalUrl;
+  const u = new URL(originalUrl);
+  return `${worker}/proxy/${u.host}${u.pathname}${u.search}`;
 }
 
 function storyboardDuration(storyboard) {
@@ -707,7 +712,7 @@ class HedraActTwoProvider extends VideoProvider {
     const jobs = [];
     for (const sc of scenes) {
       // 1. ElevenLabs renders dialogue → audio Blob
-      const audioBlob = await elevenLabsTTS({
+      const audioBlob = await elevenLabsTTS({ settings,
         apiKey: settings.elevenLabsKey,
         voiceId: settings.elevenLabsVoiceId,
         text: sc.dialogue,
@@ -935,9 +940,9 @@ function estimateStoryboardCost(storyboard, settings) {
 // ElevenLabs direct audio (provider-agnostic voice track for Hedra/Veo/etc.)
 // ----------------------------------------------------------------------------
 
-async function elevenLabsTTS({ apiKey, voiceId, text }) {
+async function elevenLabsTTS({ apiKey, voiceId, text, settings = {} }) {
   if (!apiKey || !voiceId) throw new Error('ElevenLabs key + voice ID required.');
-  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
+  const r = await fetch(proxiedUrl(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, settings), {
     method: 'POST',
     headers: { 'xi-api-key': apiKey, 'content-type': 'application/json', 'accept': 'audio/mpeg' },
     body: JSON.stringify({
@@ -1448,6 +1453,7 @@ function NewVideoPage({ go }) {
         system: ideaSystemPrompt(state.settings),
         user: topic ? `Generate 6 ideas focused on: ${topic}` : 'Generate 6 fresh ideas now.',
         maxTokens: 1400,
+        settings: state.settings,
       });
       const parsed = tryParseJSON(out);
       if (!Array.isArray(parsed)) throw new Error('Could not parse ideas. Raw: ' + out.slice(0,200));
@@ -1465,6 +1471,7 @@ function NewVideoPage({ go }) {
         system: scriptSystemPrompt(state.settings, tone, platform, mood),
         user: `Write the script for this idea:\nTitle: ${idea.title}\nHook: ${idea.hook}\nAngle: ${idea.angle}`,
         maxTokens: 3200,
+        settings: state.settings,
       });
       const parsed = tryParseJSON(out);
       // New format: parsed.scenes[]. Old format: parsed.script (string). Accept either.
@@ -1567,11 +1574,12 @@ function NewVideoPage({ go }) {
         scriptText: sampleText,
         aspect: PLATFORMS[platform].aspect,
         speed: heygenSpeed, pitch: heygenPitch,
+        settings: state.settings,
       });
       // Poll
       for (let i = 0; i < 40; i++) {
         await new Promise(r => setTimeout(r, 5000));
-        const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: id });
+        const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: id, settings: state.settings });
         if (r.status === 'completed' && r.video_url) { setSampleUrl(r.video_url); break; }
         if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
       }
@@ -1761,7 +1769,7 @@ function ApprovalPage({ go }) {
   const checkNow = async (v) => {
     if (!v.heygen?.videoId) return;
     try {
-      const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: v.heygen.videoId });
+      const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: v.heygen.videoId, settings: state.settings });
       if (r.status === 'completed' && r.video_url) {
         dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
           stage:'approval',
@@ -1894,6 +1902,7 @@ function RerenderControls({ video, onClose }) {
         scriptText: script,
         aspect: video.heygen?.aspect || PLATFORMS[video.idea?.platform || 'tiktok'].aspect,
         speed, pitch,
+        settings: state.settings,
       });
       dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{
         stage:'render',
@@ -2075,7 +2084,7 @@ function BrollSearch({ queries, pexelsKey }) {
   useEffect(() => {
     if (!pexelsKey || !active) { setResults([]); return; }
     setLoading(true); setErr('');
-    pexelsSearch({ apiKey: pexelsKey, query: active })
+    pexelsSearch({ apiKey: pexelsKey, query: active, settings: state.settings })
       .then(r => setResults(r.videos || []))
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
@@ -2400,16 +2409,18 @@ function PhaseThreeProvidersCard() {
             </select>
             <div className="help">Hedra public API requires X-API-Key. Bearer is rejected.</div>
           </div>
-          <div style={{gridColumn:'1/-1'}}>
-            <label className="label">CORS proxy (REQUIRED if browser direct calls fail)</label>
-            <input value={s.corsProxy} onChange={e=>set({ corsProxy:e.target.value })} placeholder="https://corsproxy.io/?url=" />
-            <div className="help">
-              Hedra's API requires server-to-server calls (browsers can't call it directly — that's the "Failed to fetch" you saw). Two options:
-              <ul style={{margin:'6px 0 0 16px',padding:0}}>
-                <li><strong>Quick test:</strong> paste <code>https://corsproxy.io/?url=</code> (free public proxy, OK for testing, unreliable for production)</li>
-                <li><strong>Production:</strong> deploy the FinCast Cloudflare Worker (free, reliable). Paste your worker URL ending with <code>/proxy?url=</code></li>
-              </ul>
-              Leave blank if you have a server-side setup.
+          <div style={{gridColumn:'1/-1', padding:10, background:'rgba(155,180,255,0.08)', borderRadius:8, marginTop:6}}>
+            <label className="label" style={{fontWeight:600, fontSize:13}}>FinCast Worker URL · REQUIRED for Hedra + ElevenLabs</label>
+            <input value={s.workerUrl} onChange={e=>set({ workerUrl:e.target.value })} placeholder="https://fincast-worker.your-account.workers.dev" />
+            <div className="help" style={{marginTop:8}}>
+              Why: Hedra and ElevenLabs both have CORS allowlists — browsers can't call them directly. The FinCast Worker is a free Cloudflare proxy that solves this for ALL providers in one move.
+              <br /><br />
+              <strong>Deploy in 5 minutes (mobile-friendly):</strong>
+              <ol style={{margin:'4px 0 0 18px',padding:0}}>
+                <li>Tap <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/etblues449/Faceless-Finance/tree/Faceless-Finance-App/worker" target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'underline',fontWeight:600}}>Deploy to Cloudflare</a> (one-click; sign in with email; deploys for free)</li>
+                <li>Cloudflare gives you a URL like <code>https://fincast-worker.you.workers.dev</code></li>
+                <li>Paste it above — no trailing slash needed</li>
+              </ol>
             </div>
           </div>
         </div>
@@ -2534,13 +2545,13 @@ function SettingsPage() {
 
   const fetchAvatars = async () => {
     setFetching('avatars'); setFetchErr('');
-    try { setAvatars(await heygenListAvatars({ apiKey: s.heygenKey })); }
+    try { setAvatars(await heygenListAvatars({ apiKey: s.heygenKey, settings: s })); }
     catch (e) { setFetchErr(e.message); }
     finally { setFetching(''); }
   };
   const fetchVoices = async () => {
     setFetching('voices'); setFetchErr('');
-    try { setVoices(await heygenListVoices({ apiKey: s.heygenKey })); }
+    try { setVoices(await heygenListVoices({ apiKey: s.heygenKey, settings: s })); }
     catch (e) { setFetchErr(e.message); }
     finally { setFetching(''); }
   };
@@ -2550,12 +2561,12 @@ function SettingsPage() {
     try {
       const id = await heygenGenerate({
         apiKey: s.heygenKey, avatarId: s.heygenAvatarId, voiceId: s.heygenVoiceId,
-        scriptText: testText, aspect:'9:16', speed: 1.0, pitch: 0,
+        scriptText: testText, aspect:'9:16', speed: 1.0, pitch: 0, settings: s,
       });
       // Poll until complete
       for (let i = 0; i < 60; i++) {
         await new Promise(r => setTimeout(r, 5000));
-        const r = await heygenStatus({ apiKey: s.heygenKey, videoId: id });
+        const r = await heygenStatus({ apiKey: s.heygenKey, videoId: id, settings: s });
         if (r.status === 'completed' && r.video_url) { setTestUrl(r.video_url); break; }
         if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
       }
@@ -2821,7 +2832,7 @@ function App() {
         // LEGACY PATH: old videos with v.heygen.videoId, no render.jobs
         if (v.heygen?.videoId && s.settings.heygenKey) {
           try {
-            const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId });
+            const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId, settings: s.settings });
             if (r.status === 'completed' && r.video_url) {
               dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
                 stage:'approval',
