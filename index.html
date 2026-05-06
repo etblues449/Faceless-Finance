@@ -794,6 +794,7 @@ class HedraCharacterProvider extends VideoProvider {
     if (!s.hedraKey) missing.push('Hedra API key');
     if (!s.hedraCharacter2ModelId) missing.push('Hedra Character-2 model ID (Settings → Fetch models)');
     if (!s.hedraStartKeyframeId && !s.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
+    if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs voice (key + voice ID) — Hedra Character-2 requires audio input');
     return { available: missing.length === 0, missing };
   }
 
@@ -807,11 +808,21 @@ class HedraCharacterProvider extends VideoProvider {
     if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) {
       throw new Error('Hedra needs a reference image. Set hedraStartKeyframeUrl or hedraStartKeyframeId in Settings.');
     }
+    if (!settings.elevenLabsKey || !settings.elevenLabsVoiceId) {
+      throw new Error('Hedra Character-2 requires audio input. Set ElevenLabs key + voice ID in Settings.');
+    }
     const jobs = [];
     for (const sc of scenes) {
+      const audioBlob = await elevenLabsTTS({ settings,
+        apiKey: settings.elevenLabsKey,
+        voiceId: settings.elevenLabsVoiceId,
+        text: sc.dialogue,
+      });
+      const audioAssetId = await hedraUploadAudio(audioBlob, settings);
       const body = {
         type: 'video',
         ai_model_id: settings.hedraCharacter2ModelId,
+        audio_id: audioAssetId,
         generated_video_inputs: {
           text_prompt: applyCharacterBible(sc, settings),
           resolution: '720p',
