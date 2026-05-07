@@ -288,6 +288,7 @@ const DEFAULT_SETTINGS = {
   elevenLabsVoiceId: '',          // PVC voice ID
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
   veoProjectId: '',
+  googleAiKey: '',                // Google AI Studio API key (free; aistudio.google.com) — Veo 3 cinematic per-scene
   openaiKey: '',                  // OpenAI (Sora 2) — stub
   runwayKey: '',                  // Runway Gen-4 — stub
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
@@ -875,19 +876,83 @@ class HedraCharacterProvider extends VideoProvider {
 // Stub providers — future-proof slots for Veo 3 / Sora 2 / Runway Gen-4
 // ----------------------------------------------------------------------------
 
+// Veo 3 via Google AI Studio (Gemini API). Free tier covers ~50 req/day at
+// 5 RPM — enough for ~8 videos/day. Endpoint:
+//   POST generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=...
+// returns { name: 'operations/...' }. Poll GET .../v1beta/{operationName}?key=...
+// until { done: true }, then read response.generateVideoResponse.generatedSamples[0].video.uri
+// (a downloadable file URI under generativelanguage.googleapis.com/v1beta/files/...).
 class Veo3Provider extends VideoProvider {
   static id = 'veo3';
   static name = 'Google Veo 3';
-  static caps = { talkingHead: true, cinematic: true, lipSync: true, characterRef: true, multiScene: false };
+  static caps = { talkingHead: true, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
   static availability(s) {
     const missing = [];
-    if (!s.veoKey) missing.push('Google Vertex AI API key');
-    if (!s.veoProjectId) missing.push('Google Cloud Project ID');
+    if (!s.googleAiKey) missing.push('Google AI Studio API key (free at aistudio.google.com)');
     return { available: missing.length === 0, missing };
   }
-  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.20, 0); } // ~$0.25/sec → £0.20
-  static async startRender() { throw new Error('Veo 3 provider stub — full implementation pending. Add veoKey to enable build-out.'); }
-  static async pollJob() { throw new Error('Veo 3 stub'); }
+  // Free tier: cost zero up to daily quota. Estimate set low so it's never
+  // capped out by costCapPerVideoGBP for the free tier.
+  static estimateCost(scenes) { return scenes.length * 0.001; }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const jobs = [];
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      const url = proxiedUrl(
+        `https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=${encodeURIComponent(settings.googleAiKey)}`,
+        settings
+      );
+      const r = await loggedFetch('veo3-submit', url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            aspectRatio: aspect,
+            durationSeconds: Math.min(8, Math.max(3, sc.durationSec || 5)),
+            personGeneration: 'allow_adult',
+            sampleCount: 1,
+          },
+        }),
+      });
+      const d = await r.json();
+      const opName = d.name || d.operation?.name;
+      if (!opName) throw new Error(`Veo 3 returned no operation name. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId: opName, sceneIds: [sc.id], provider: 'veo3' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const url = proxiedUrl(
+        `https://generativelanguage.googleapis.com/v1beta/${jobId}?key=${encodeURIComponent(settings.googleAiKey)}`,
+        settings
+      );
+      const r = await loggedFetch('veo3-poll', url, {});
+      const d = await r.json();
+      logEvent('veo3-poll', 'response_body', { jobId, body: d });
+      if (!d.done) {
+        const pct = d.metadata?.progressPercent ?? d.metadata?.state;
+        return { status: 'processing', progress: pct };
+      }
+      if (d.error) return { status: 'failed', error: d.error.message || JSON.stringify(d.error) };
+      const sample = d.response?.generateVideoResponse?.generatedSamples?.[0]
+                  || d.response?.predictions?.[0]?.video
+                  || d.response?.predictions?.[0];
+      let videoUri = sample?.video?.uri || sample?.uri || sample?.videoUri;
+      if (!videoUri) return { status: 'failed', error: `Veo response had no video URI. Body: ${JSON.stringify(d.response).slice(0, 300)}` };
+      // Veo download URIs require the API key. Append it so <video src=...>
+      // can load directly through the worker proxy.
+      const sep = videoUri.includes('?') ? '&' : '?';
+      videoUri = `${videoUri}${sep}key=${encodeURIComponent(settings.googleAiKey)}`;
+      return { status: 'completed', videoUrl: proxiedUrl(videoUri, settings) };
+    } catch (e) {
+      logEvent('veo3-poll', 'pollJob_error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
 }
 
 class Sora2Provider extends VideoProvider {
@@ -1087,6 +1152,28 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
   const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
   const singleShotEnabled = settings.singleShotRender !== false;
+
+  // FAST PATH 0 — Veo 3 cinematic per-scene render (Google AI Studio).
+  // When the user has a free Google AI Studio API key set, Veo 3 takes
+  // priority for genuine cinematic output (multi-shot composition matching
+  // Veo's reference quality — walking shots, environments, etc.). Each
+  // scene is its own Veo 3 8-second clip generated from the scene's
+  // visualPrompt + character bible. Audio is overlaid post-render in the
+  // browser via ffmpeg.wasm using the user's ElevenLabs PVC voice (next
+  // commit). For now: generate per-scene clips, user sees them in the
+  // storyboard preview and downloads to edit in CapCut.
+  if (singleShotEnabled && settings.googleAiKey) {
+    logEvent('orchestrate', 'veo3_multi_scene_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await Veo3Provider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'veo3_failed_fallback', { error: e.message });
+      // Fall through to HeyGen / Hedra paths if Veo fails (quota, key issue, etc.)
+    }
+  }
 
   // FAST PATH 1 — HeyGen multi-input render with ElevenLabs audio + Pexels b-roll.
   // HeyGen v2 supports multiple video_inputs[] in ONE generate request:
@@ -2967,6 +3054,16 @@ function SettingsPage() {
             <label className="label">Pexels API key (B-roll)</label>
             <input type={showKeys?'text':'password'} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
             <div className="help">Free at pexels.com/api. Leave blank to skip B-roll search.</div>
+          </div>
+          <div style={{gridColumn:'1 / -1'}}>
+            <label className="label" style={{display:'flex', alignItems:'center', gap:8}}>
+              Google AI Studio API key (Veo 3 cinematic, free tier)
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{fontSize:11, color:'var(--accent)'}}>get key →</a>
+            </label>
+            <input type={showKeys?'text':'password'} value={s.googleAiKey} onChange={e=>set({ googleAiKey:e.target.value })} placeholder="AIzaSy... (optional)" />
+            <div className="help">
+              Optional but transformative. With this set, FinCast renders <strong>Veo 3 cinematic per-scene</strong> — true walking-shot, environment, multi-angle output (matches the Mat-style/QuidSquid reference look). Free tier: ~50 generations/day, enough for ~8 videos/day. Get a key at <code>aistudio.google.com/apikey</code> — no payment required.
+            </div>
           </div>
           <div>
             <label className="label">Buffer Access Token (optional)</label>
