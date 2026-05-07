@@ -2094,10 +2094,16 @@ function StoryboardPreview({ storyboard, jobs = [], settings }) {
   const cost = useMemo(() => settings ? estimateStoryboardCost(storyboard, settings) : null, [storyboard, settings]);
   const jobBySceneId = {};
   for (const j of jobs || []) for (const sid of (j.sceneIds || [])) jobBySceneId[sid] = j;
+  // Single-shot detection — when one job covers every scene, the rendered
+  // output is ONE continuous video, not N separate clips. The main player
+  // on the Approval card already shows it; we suppress per-scene playback
+  // here to avoid duplicating the same video N times in the storyboard.
+  const isSingleShot = jobs.length === 1 && jobs[0]?.singleShot;
   return (
     <details open style={{marginTop:10, marginBottom:10}}>
       <summary>Scenes ({storyboard.scenes.length}) · {storyboardDuration(storyboard)}s
         {cost ? <span style={{color:'var(--muted)', marginLeft:8}}>· est £{cost.total.toFixed(2)} via {Object.values(cost.byProvider).map(p=>p.name).join(' + ') || '—'}</span> : null}
+        {isSingleShot ? <span style={{color:'var(--muted)', marginLeft:8}}>· single-shot render (one continuous video; player above)</span> : null}
       </summary>
       <div style={{display:'grid', gap:8, marginTop:8}}>
         {storyboard.scenes.map((sc, i) => {
@@ -2126,7 +2132,7 @@ function StoryboardPreview({ storyboard, jobs = [], settings }) {
                   <strong>Error:</strong> {job.error}
                 </div>
               )}
-              {job?.videoUrl && (
+              {job?.videoUrl && !isSingleShot && (
                 <video src={job.videoUrl} controls className="preview-vid" style={{marginTop:8, maxHeight:200}} />
               )}
             </div>
