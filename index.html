@@ -3167,6 +3167,82 @@ function SettingsPage() {
 // APP ROOT
 // ============================================================================
 
+// ============================================================================
+// CINEMATIC STITCHING — concat per-scene Veo clips + overlay PVC voice
+// ----------------------------------------------------------------------------
+// Loads ffmpeg.wasm on first use (one-time ~30 MB CDN download), runs entirely
+// client-side. After Veo 3 finishes per-scene cinematic clips, this stitches
+// them into one MP4 with the user's ElevenLabs voice as the audio track.
+// ============================================================================
+
+let __ffmpegInstance = null;
+let __ffmpegLoading = null;
+async function loadFFmpeg() {
+  if (__ffmpegInstance) return __ffmpegInstance;
+  if (__ffmpegLoading) return __ffmpegLoading;
+  __ffmpegLoading = (async () => {
+    if (!window.FFmpegWASM) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load ffmpeg.wasm UMD bundle'));
+        document.head.appendChild(s);
+      });
+    }
+    const { FFmpeg } = window.FFmpegWASM;
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.js',
+      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.wasm',
+    });
+    __ffmpegInstance = ffmpeg;
+    return ffmpeg;
+  })();
+  return __ffmpegLoading;
+}
+
+async function fetchToBytes(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Stitch fetch failed ${r.status}: ${url.slice(0, 120)}`);
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+// Concatenates per-scene videos (drops their audio) and muxes a single
+// audio track over the combined output. Returns a blob URL for <video src>.
+async function stitchVeoCinematic({ videoUrls, audioBlob, onProgress }) {
+  const ffmpeg = await loadFFmpeg();
+  logEvent('stitch', 'start', { sceneCount: videoUrls.length });
+  onProgress?.({ stage: 'fetching', progress: 0 });
+  for (let i = 0; i < videoUrls.length; i++) {
+    const bytes = await fetchToBytes(videoUrls[i]);
+    await ffmpeg.writeFile(`scene${i}.mp4`, bytes);
+    onProgress?.({ stage: 'fetching', progress: (i + 1) / videoUrls.length });
+  }
+  const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
+  await ffmpeg.writeFile('voice.mp3', audioBytes);
+  const list = videoUrls.map((_, i) => `file 'scene${i}.mp4'`).join('\n');
+  await ffmpeg.writeFile('list.txt', new TextEncoder().encode(list));
+  // Concat (no audio) — videos may have differing codecs, so re-encode
+  // (slower than -c copy but bulletproof for varied Veo outputs).
+  onProgress?.({ stage: 'concat', progress: 0.0 });
+  await ffmpeg.exec([
+    '-f', 'concat', '-safe', '0', '-i', 'list.txt',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-an', 'concat.mp4',
+  ]);
+  onProgress?.({ stage: 'mux', progress: 0.5 });
+  await ffmpeg.exec([
+    '-i', 'concat.mp4', '-i', 'voice.mp3',
+    '-c:v', 'copy', '-c:a', 'aac', '-shortest', 'output.mp4',
+  ]);
+  const data = await ffmpeg.readFile('output.mp4');
+  const blob = new Blob([data.buffer], { type: 'video/mp4' });
+  const url = URL.createObjectURL(blob);
+  logEvent('stitch', 'done', { bytes: data.byteLength });
+  onProgress?.({ stage: 'done', progress: 1.0 });
+  return url;
+}
+
 function App() {
   const [state, dispatch] = useReducer(reducer, null, loadState);
   const [page, setPage] = useState('pipeline');
@@ -3214,13 +3290,48 @@ function App() {
           if (allDone) {
             const successful = updatedJobs.filter(j => j.status === 'completed');
             if (successful.length === updatedJobs.length) {
-              // For now, single-job renders use that one URL. Multi-job renders concat later (Commit 2 — stitching).
               const primaryUrl = successful[0].videoUrl;
               dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
                 stage: 'approval',
                 render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
                 heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
               }});
+              // Auto-stitch multi-scene Veo 3 renders into a single video
+              // with the user's ElevenLabs PVC voice. Runs in the background
+              // so the Approval card shows the first scene immediately and
+              // swaps to the stitched final once complete.
+              const isVeoMulti = updatedJobs.length > 1
+                && updatedJobs[0]?.provider === 'veo3'
+                && !v.render?.stitchedUrl;
+              if (isVeoMulti && s.settings.elevenLabsKey && s.settings.elevenLabsVoiceId) {
+                (async () => {
+                  try {
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...v.render, status: 'stitching', jobs: updatedJobs, stitchProgress: { stage: 'starting', progress: 0 } },
+                    }});
+                    const fullText = v.storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+                    const audioBlob = await elevenLabsTTS({
+                      settings: s.settings, apiKey: s.settings.elevenLabsKey, voiceId: s.settings.elevenLabsVoiceId, text: fullText,
+                    });
+                    const stitchedUrl = await stitchVeoCinematic({
+                      videoUrls: updatedJobs.map(j => j.videoUrl),
+                      audioBlob,
+                      onProgress: (p) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                        render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, stitchProgress: p },
+                      }}),
+                    });
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status: 'stitched', stitchedUrl, stitchProgress: { stage: 'done', progress: 1 } },
+                      heygen: { ...stateRef.current.videos.find(x => x.id === v.id)?.heygen, videoUrl: stitchedUrl },
+                    }});
+                  } catch (e) {
+                    logEvent('stitch', 'failed', { error: e.message });
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status: 'completed', stitchError: e.message },
+                    }});
+                  }
+                })();
+              }
             } else if (anyFailed) {
               const errs = updatedJobs.filter(j => j.status === 'failed').map(j => j.error).join('; ');
               dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
