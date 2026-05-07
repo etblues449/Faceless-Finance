@@ -911,8 +911,11 @@ class Veo3Provider extends VideoProvider {
           parameters: {
             aspectRatio: aspect,
             durationSeconds: Math.min(8, Math.max(4, sc.durationSec || 5)),
-            personGeneration: 'allow_adult',
             sampleCount: 1,
+            // personGeneration intentionally omitted — Veo 3's accepted values
+            // are region/account-dependent and 'allow_adult' returns
+            // INVALID_ARGUMENT in many setups. Letting Veo use its default
+            // works across regions.
           },
         }),
       });
