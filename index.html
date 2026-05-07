@@ -910,7 +910,7 @@ class Veo3Provider extends VideoProvider {
           instances: [{ prompt }],
           parameters: {
             aspectRatio: aspect,
-            durationSeconds: Math.min(8, Math.max(3, sc.durationSec || 5)),
+            durationSeconds: Math.min(8, Math.max(4, sc.durationSec || 5)),
             personGeneration: 'allow_adult',
             sampleCount: 1,
           },
