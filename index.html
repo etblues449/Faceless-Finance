@@ -1088,34 +1088,76 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
   const singleShotEnabled = settings.singleShotRender !== false;
 
-  // FAST PATH 1 — HeyGen single-shot with ElevenLabs audio.
-  // HeyGen API tier renders 30–60s clips in 2–4 min. Accepts external audio
-  // natively (voice.type:"audio" + audio_asset_id). This is the *fastest*
-  // route to a finished video for users who have HeyGen configured.
-  // Per May 2026 HeyGen v2 docs: POST /v2/video/generate with
-  // voice:{type:"audio", audio_asset_id} + character:{type:"avatar"}.
+  // FAST PATH 1 — HeyGen multi-input render with ElevenLabs audio + Pexels b-roll.
+  // HeyGen v2 supports multiple video_inputs[] in ONE generate request:
+  // each entry gets its own character (avatar position/scale), its own voice
+  // audio (a different ElevenLabs audio segment per scene), and optionally
+  // its own background (image OR video — we pull cinematic Pexels b-roll
+  // matched to each scene's visualPrompt). HeyGen concatenates them into a
+  // single output video.
+  //
+  // This produces visual variety across the video (different b-roll behind
+  // the avatar per scene) at the same speed as single-shot (~3-5 min total
+  // for the full render — ONE queue wait, not N).
   const heygenEligible =
     singleShotEnabled &&
     settings.heygenKey && settings.heygenAvatarId &&
     settings.elevenLabsKey && settings.elevenLabsVoiceId &&
     fullText && totalDuration <= 120;
   if (heygenEligible) {
-    logEvent('orchestrate', 'heygen_single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
-    const audioBlob = await elevenLabsTTS({ settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: fullText });
-    const audioAssetId = await heygenUploadAudio(audioBlob, settings);
+    logEvent('orchestrate', 'heygen_multi_input_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length, hasPexels: !!settings.pexelsKey });
     const dim = aspect === '16:9' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
-    const sc0 = storyboard.scenes[0] || {};
-    const video_inputs = [{
-      character: {
+    const video_inputs = [];
+    for (let i = 0; i < storyboard.scenes.length; i++) {
+      const sc = storyboard.scenes[i];
+      if (!sc.dialogue?.trim()) continue;
+      // 1. Per-scene voice synthesis with the user's PVC voice.
+      const audioBlob = await elevenLabsTTS({
+        settings,
+        apiKey: settings.elevenLabsKey,
+        voiceId: settings.elevenLabsVoiceId,
+        text: sc.dialogue,
+      });
+      const audioAssetId = await heygenUploadAudio(audioBlob, settings);
+      // 2. Optional Pexels b-roll background, matched to the scene's
+      //    visualPrompt. Falls back to no background (HeyGen default) on
+      //    any failure so one bad search doesn't kill the whole render.
+      let background = null;
+      if (settings.pexelsKey && sc.visualPrompt) {
+        try {
+          const pex = await pexelsSearch({ apiKey: settings.pexelsKey, query: sc.visualPrompt, perPage: 3, settings });
+          const vid = pex?.videos?.[0];
+          // Pick the smallest portrait file ≥ 720p high to keep render fast.
+          const file = vid?.video_files?.find(f => f.width >= 720 && f.height >= f.width) || vid?.video_files?.[0];
+          if (file?.link) {
+            background = { type: 'video', url: file.link, fit: 'cover', play_style: 'loop' };
+            logEvent('orchestrate', 'broll_matched', { scene: i, query: sc.visualPrompt.slice(0, 80), pexelsId: vid.id });
+          }
+        } catch (e) {
+          logEvent('orchestrate', 'broll_skipped', { scene: i, error: e.message });
+        }
+      }
+      // 3. Per-scene avatar framing from storyboard intent (talking-head
+      //    scenes use closer framing, cinematic scenes pull back).
+      const isCinematic = sc.type === 'cinematic';
+      const character = {
         type: 'avatar',
         avatar_id: settings.heygenAvatarId,
-        avatar_style: sc0.avatarScale === 'close' ? 'closeUp' : 'normal',
-        scale: sc0.avatarScale === 'wide' ? 0.7 : (sc0.avatarScale === 'close' ? 1.2 : 1.0),
-        offset: sc0.avatarPosition === 'left' ? { x: -0.25, y: 0 } : sc0.avatarPosition === 'right' ? { x: 0.25, y: 0 } : { x: 0, y: 0 },
-      },
-      voice: { type: 'audio', audio_asset_id: audioAssetId },
-    }];
-    const r = await loggedFetch('heygen-single-shot', proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
+        avatar_style: sc.avatarScale === 'close' ? 'closeUp' : 'normal',
+        scale: isCinematic ? 0.6 : (sc.avatarScale === 'wide' ? 0.7 : sc.avatarScale === 'close' ? 1.2 : 1.0),
+        offset: sc.avatarPosition === 'left' ? { x: -0.3, y: 0 }
+              : sc.avatarPosition === 'right' ? { x: 0.3, y: 0 }
+              : { x: 0, y: 0 },
+      };
+      video_inputs.push({
+        character,
+        voice: { type: 'audio', audio_asset_id: audioAssetId },
+        ...(background ? { background } : {}),
+      });
+    }
+    if (!video_inputs.length) throw new Error('No renderable scenes — every scene had empty dialogue.');
+    // 4. Single HeyGen submit covering every scene.
+    const r = await loggedFetch('heygen-multi-input', proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': settings.heygenKey },
       body: JSON.stringify({ video_inputs, dimension: dim, test: false }),
@@ -1130,6 +1172,8 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
         sceneIds: storyboard.scenes.map(sc => sc.id),
         provider: 'heygen',
         singleShot: true,
+        sceneCount: video_inputs.length,
+        hasBackgrounds: video_inputs.some(v => v.background),
       }],
       cost,
     };
