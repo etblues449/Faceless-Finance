@@ -51,9 +51,10 @@ const ALLOWED_HOSTS = new Set([
   'api.pexels.com',
   // S3 presigned download URLs returned by Hedra
   's3.us-east-1.amazonaws.com', 's3.us-west-2.amazonaws.com',
-  // OpenAI / Google / Runway when those land
+  // OpenAI / Google / Runway
   'api.openai.com',
   'aiplatform.googleapis.com',
+  'generativelanguage.googleapis.com',  // Google AI Studio (Veo 3 via Gemini API)
   'api.runwayml.com',
 ]);
 
@@ -120,7 +121,7 @@ export default {
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
           ok: true,
-          version: '1.1.0',
+          version: '1.2.0',
           allowed_origin: env.ALLOWED_ORIGIN,
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
