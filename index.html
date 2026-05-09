@@ -903,21 +903,22 @@ class Veo3Provider extends VideoProvider {
         `https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=${encodeURIComponent(settings.googleAiKey)}`,
         settings
       );
+      // Veo 3's accepted parameters in the Gemini API have shifted across
+      // releases. We send the minimal known-good set and let Veo use defaults
+      // for everything else. If the API rejects, we log the body so the next
+      // diagnostic pass has ground truth.
+      const requestBody = {
+        instances: [{ prompt }],
+        parameters: {
+          aspectRatio: aspect,
+          sampleCount: 1,
+        },
+      };
+      logEvent('veo3-submit', 'request_body', { sceneId: sc.id, body: requestBody });
       const r = await loggedFetch('veo3-submit', url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            aspectRatio: aspect,
-            durationSeconds: Math.min(8, Math.max(4, sc.durationSec || 5)),
-            sampleCount: 1,
-            // personGeneration intentionally omitted — Veo 3's accepted values
-            // are region/account-dependent and 'allow_adult' returns
-            // INVALID_ARGUMENT in many setups. Letting Veo use its default
-            // works across regions.
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
       const d = await r.json();
       const opName = d.name || d.operation?.name;
