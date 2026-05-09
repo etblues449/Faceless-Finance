@@ -11,11 +11,22 @@
 <meta name="theme-color" content="#0A0A0F" />
 <style>
   :root {
+    --bg:#F7F8FA; --surface:#F0F2F6; --card:#FFFFFF; --card2:#E5E8EE;
+    --border:#DDE1E7; --border2:#C5C9D2;
+    --accent:#00A878; --accent-dim:rgba(0,168,120,.10); --accent-hover:#00C490;
+    --gold:#B8860B; --danger:#DC2626; --warn:#D97706;
+    --text:#0F1419; --text-dim:#4B5563; --muted:#6B7280;
+    --shadow:0 1px 2px rgba(15,20,25,0.04), 0 1px 3px rgba(15,20,25,0.05);
+    --shadow-modal:0 20px 60px rgba(15,20,25,0.18);
+  }
+  [data-theme="dark"] {
     --bg:#0A0A0F; --surface:#12121A; --card:#1A1A26; --card2:#22222F;
     --border:#2A2A3E; --border2:#3A3A52;
     --accent:#00E5A0; --accent-dim:rgba(0,229,160,.12); --accent-hover:#00FFB3;
     --gold:#FFD166; --danger:#FF6B6B; --warn:#FFA94D;
     --text:#E8E8F0; --text-dim:#9898B8; --muted:#6B6B8A;
+    --shadow:none;
+    --shadow-modal:0 20px 60px rgba(0,0,0,0.6);
   }
   *,*::before,*::after { box-sizing:border-box; }
   html,body,#root { height:100%; margin:0; }
@@ -28,7 +39,7 @@
   ::-webkit-scrollbar { width:10px; height:10px; }
   ::-webkit-scrollbar-thumb { background:var(--border); border-radius:6px; }
   ::-webkit-scrollbar-thumb:hover { background:var(--border2); }
-  .app { display:flex; height:100vh; }
+  .app { display:flex; height:100vh; height:100dvh; }
   .side { width:230px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
   .brand { padding:20px 18px; border-bottom:1px solid var(--border); }
   .brand-name { font-size:18px; font-weight:700; color:var(--accent); display:flex; align-items:center; gap:8px; }
@@ -47,7 +58,7 @@
   .col { flex:1; min-width:0; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; box-shadow:var(--shadow); }
   .card-title { font-size:11px; font-weight:700; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:12px; }
   .label { font-size:12px; color:var(--text-dim); margin-bottom:6px; display:block; font-weight:500; }
   .help { font-size:11px; color:var(--muted); margin-top:5px; line-height:1.4; }
@@ -71,9 +82,12 @@
   .pill { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:99px; font-size:11px; background:var(--card2); color:var(--text-dim); }
   .empty { padding:32px 16px; text-align:center; color:var(--muted); font-size:13px; border:1px dashed var(--border); border-radius:10px; }
   .alert { padding:12px 14px; border-radius:8px; font-size:12px; line-height:1.5; }
-  .alert-warn { background:rgba(255,169,77,.1); border:1px solid rgba(255,169,77,.3); color:var(--warn); }
-  .alert-err { background:rgba(255,107,107,.08); border:1px solid rgba(255,107,107,.3); color:var(--danger); }
-  .alert-ok { background:var(--accent-dim); border:1px solid rgba(0,229,160,.3); color:var(--accent); }
+  .alert-warn { background:rgba(217,119,6,.08); border:1px solid rgba(217,119,6,.25); color:var(--warn); }
+  .alert-err { background:rgba(220,38,38,.06); border:1px solid rgba(220,38,38,.25); color:var(--danger); }
+  .alert-ok { background:var(--accent-dim); border:1px solid rgba(0,168,120,.3); color:var(--accent); }
+  [data-theme="dark"] .alert-warn { background:rgba(255,169,77,.1); border-color:rgba(255,169,77,.3); }
+  [data-theme="dark"] .alert-err { background:rgba(255,107,107,.08); border-color:rgba(255,107,107,.3); }
+  [data-theme="dark"] .alert-ok { border-color:rgba(0,229,160,.3); }
   .stage-col { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px; min-height:60px; }
   .stage-col-h { font-size:11px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; padding:4px 6px 10px; display:flex; justify-content:space-between; align-items:center; }
   .vcard { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; cursor:pointer; transition:border-color .1s; }
@@ -81,7 +95,7 @@
   .vcard-title { font-size:13px; font-weight:500; line-height:1.35; margin-bottom:6px; }
   .vcard-meta { display:flex; gap:6px; flex-wrap:wrap; font-size:10px; color:var(--muted); }
   .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; }
-  .modal { background:var(--card); border:1px solid var(--border); border-radius:14px; max-width:720px; width:100%; max-height:90vh; overflow-y:auto; }
+  .modal { background:var(--card); border:1px solid var(--border); border-radius:14px; max-width:720px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:var(--shadow-modal); }
   .modal-h { padding:18px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
   .modal-b { padding:22px; }
   .modal-f { padding:14px 22px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
@@ -200,11 +214,24 @@ const PLATFORMS = {
 
 const STAGES = ['idea','script','render','approval','approved','published'];
 
+const MOOD_PRESETS = {
+  neutral:       { label:'Neutral / educational', desc:'Balanced framing, no special angle.', hint:'' },
+  dataDriven:    { label:'Data-driven',           desc:'Lead with hard numbers and comparisons.',
+                   hint:'Lead with a precise £ figure in the first 5 words. Use 2-3 specific numerical comparisons in the body. Pose the punchline as a calculation: "X minus Y equals £Z in your pocket."' },
+  personalStory: { label:'Personal story',        desc:'Open with a character/scenario. Walk through their decision.',
+                   hint:'Open with a one-sentence character: "A 35-year-old PAYE earner on £80k..." Track that person through the body. End with what the listener should do given they are like that character.' },
+  hype:          { label:'Hype / urgent',         desc:'High-energy. Hard CTA. Time-bound.',
+                   hint:'Maximum energy. Sentences as short as 3-4 words. Repeat the CTA twice. Anchor urgency to a real UK tax date ("before April 5", "this tax year").' },
+  investigative: { label:'Investigative',         desc:'Expose a hidden cost or trap most people miss.',
+                   hint:'Frame as exposing a hidden truth. Use "most people miss this" or "what your payslip hides" once (not more). Walk through the trap, then the fix.' },
+};
+
 const TONE_PRESETS = {
   matStyle: {
     label: 'Mat-style (QuidSquid)',
     desc: 'Punchy. 6–10 word sentences. Brutal hook. £-saved on screen. Sub-30 sec.',
-    speed: 1.05,
+    speed: 1.0,
+    pitch: 0,
     wpmTarget: 165,
     promptStyle: `Tone reference: like UK creator "QuidSquid" (Mat).
 - Open with a sharp hook in the first 3 seconds. No setup, no greeting.
@@ -218,6 +245,7 @@ const TONE_PRESETS = {
     label: 'Rebecca-style (chartered accountant)',
     desc: 'Warm, technical-but-clear, slower educational pace, defines terms.',
     speed: 0.95,
+    pitch: 0,
     wpmTarget: 135,
     promptStyle: `Tone reference: like UK creator "Rebecca's Finance Channel".
 - Calm, qualified-accountant register but warm and accessible.
@@ -231,6 +259,7 @@ const TONE_PRESETS = {
     label: 'Neutral / educational',
     desc: 'Clear, mid-pace, balanced.',
     speed: 1.0,
+    pitch: 0,
     wpmTarget: 150,
     promptStyle: `Tone: clear, neutral, educational. No clickbait. Define terms briefly. 45-60 seconds spoken.`,
   },
@@ -245,6 +274,30 @@ const DEFAULT_SETTINGS = {
   heygenVoiceId: '',
   pexelsKey: '',
   bufferToken: '',
+  // Phase 3 — multi-provider video stack
+  hedraKey: '',
+  hedraCharacterId: '',           // Saved Character in Hedra (uploaded reference photos)
+  hedraBaseUrl: 'https://api.hedra.com/web-app/public',  // Verified: hedra-labs/hedra-api-starter
+  hedraAuthScheme: 'x-api-key',   // Verified: Hedra public API ONLY accepts X-API-Key. Bearer is rejected.
+  hedraActTwoModelId: '',         // Hedra Act-Two model UUID — get via "Fetch models" in Settings
+  hedraCharacter2ModelId: '',     // Hedra Character-2 model UUID — get via "Fetch models" in Settings
+  hedraStartKeyframeUrl: '',      // Public URL to your reference photo (used as start_keyframe_url)
+  hedraStartKeyframeId: '',       // OR upload photo to Hedra and paste asset ID here (alternative to URL)
+  workerUrl: '',                  // FinCast Cloudflare Worker URL — handles CORS + multipart for ALL providers. One-click deploy from worker/ folder.
+  elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
+  elevenLabsVoiceId: '',          // PVC voice ID
+  higgsfieldKey: '',              // Higgsfield AI (Seedance 2.0 + Cinema Studio 3.5) — $9/mo Basic, cinematic quality
+  higgsfieldModel: 'seedance-2-ultra', // Seedance 2.0 Ultra for best quality; 'cinema-3-5' for Cinema Studio 3.5
+  veoKey: '',                     // Google Vertex AI (Veo 3) — stub
+  veoProjectId: '',
+  googleAiKey: '',                // Google AI Studio API key (free; aistudio.google.com) — Veo 3 cinematic per-scene
+  openaiKey: '',                  // OpenAI (Sora 2) — stub
+  runwayKey: '',                  // Runway Gen-4 — stub
+  defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
+  defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
+  singleShotRender: true,         // Bundle every scene into ONE Hedra job for ~6× faster queue wait. Set false to render per-scene.
+  costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
+  characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
   audience: 'UK PAYE earners earning between minimum wage and £125,140. Particular relevance to those approaching or in the £100k–£125,140 personal-allowance taper zone.',
   channelHandle: '',
@@ -252,6 +305,7 @@ const DEFAULT_SETTINGS = {
   defaultPlatforms: ['tiktok','reels','shorts'],
   disclaimer: FCA_DISCLAIMER,
   llmModel: 'claude-sonnet-4-6',
+  theme: 'light',
 };
 
 // ============================================================================
@@ -289,9 +343,9 @@ function reducer(state, action) {
 // API HELPERS
 // ============================================================================
 
-async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, maxTokens=2400 }) {
+async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, maxTokens=2400, settings = {} }) {
   if (!apiKey) throw new Error('Missing Anthropic API key. Add it in Settings.');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  const r = await fetch(proxiedUrl('https://api.anthropic.com/v1/messages', settings), {
     method:'POST',
     headers: {
       'content-type':'application/json',
@@ -313,19 +367,21 @@ async function callClaude({ apiKey, model='claude-sonnet-4-6', system, user, max
   return data.content?.[0]?.text || '';
 }
 
-async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0 }) {
+async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9:16', speed=1.0, pitch=0, settings = {} }) {
   if (!apiKey) throw new Error('Missing HeyGen API key. Add it in Settings.');
   if (!avatarId || !voiceId) throw new Error('Missing HeyGen avatar or voice ID. Add them in Settings.');
   const dim = aspect==='16:9' ? { width:1920, height:1080 } : { width:1080, height:1920 };
+  const voice = { type:'text', input_text: scriptText, voice_id: voiceId, speed };
+  if (pitch && Number(pitch) !== 0) voice.pitch = Number(pitch);
   const body = {
     video_inputs: [{
       character: { type:'avatar', avatar_id: avatarId, avatar_style:'normal' },
-      voice: { type:'text', input_text: scriptText, voice_id: voiceId, speed },
+      voice,
     }],
     dimension: dim,
     test: false,
   };
-  const r = await fetch('https://api.heygen.com/v2/video/generate', {
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
     method:'POST',
     headers:{ 'content-type':'application/json', 'x-api-key': apiKey },
     body: JSON.stringify(body),
@@ -339,8 +395,8 @@ async function heygenGenerate({ apiKey, avatarId, voiceId, scriptText, aspect='9
   return data.data?.video_id;
 }
 
-async function heygenStatus({ apiKey, videoId }) {
-  const r = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, {
+async function heygenStatus({ apiKey, videoId, settings = {} }) {
+  const r = await fetch(proxiedUrl(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`, settings), {
     headers:{ 'x-api-key': apiKey },
   });
   if (!r.ok) throw new Error(`HeyGen status ${r.status}`);
@@ -348,13 +404,1039 @@ async function heygenStatus({ apiKey, videoId }) {
   return data.data || {};
 }
 
-async function pexelsSearch({ apiKey, query, perPage=8 }) {
+async function heygenListAvatars({ apiKey, settings = {} }) {
+  if (!apiKey) throw new Error('Missing HeyGen API key.');
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/avatars', settings), { headers:{ 'x-api-key': apiKey } });
+  if (!r.ok) throw new Error(`HeyGen avatars ${r.status}: ${(await r.text()).slice(0,200)}`);
+  const j = await r.json();
+  const avatars = j.data?.avatars || [];
+  const talking = j.data?.talking_photos || [];
+  return [
+    ...avatars.map(a => ({ id: a.avatar_id, name: a.avatar_name, gender: a.gender, preview: a.preview_image_url, kind: 'avatar' })),
+    ...talking.map(a => ({ id: a.talking_photo_id, name: a.talking_photo_name, preview: a.preview_image_url, kind: 'talking_photo' })),
+  ];
+}
+
+async function heygenListVoices({ apiKey, settings = {} }) {
+  if (!apiKey) throw new Error('Missing HeyGen API key.');
+  const r = await fetch(proxiedUrl('https://api.heygen.com/v2/voices', settings), { headers:{ 'x-api-key': apiKey } });
+  if (!r.ok) throw new Error(`HeyGen voices ${r.status}: ${(await r.text()).slice(0,200)}`);
+  const j = await r.json();
+  return (j.data?.voices || []).map(v => ({
+    id: v.voice_id,
+    name: v.name || v.display_name || v.voice_id,
+    language: v.language || v.locale,
+    gender: v.gender,
+    preview: v.preview_audio,
+    type: v.support_pause ? 'premium' : (v.is_clone ? 'cloned' : 'standard'),
+    isClone: !!v.is_clone,
+  }));
+}
+
+async function pexelsSearch({ apiKey, query, perPage=8, settings = {} }) {
   if (!apiKey) return { videos: [] };
-  const r = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, {
+  const r = await fetch(proxiedUrl(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, settings), {
     headers: { Authorization: apiKey },
   });
   if (!r.ok) throw new Error(`Pexels ${r.status}`);
   return r.json();
+}
+
+// ============================================================================
+// PHASE 3 — STORYBOARD SCHEMA + VIDEO PROVIDER ABSTRACTION
+// ============================================================================
+//
+// A Storyboard is the provider-agnostic source of truth for a video. Any
+// provider (HeyGen, Hedra, Veo, Sora, Runway, future) can render it.
+//
+// Storyboard {
+//   version: 2,
+//   title, hook,
+//   scenes: [
+//     {
+//       id, dialogue, durationSec,
+//       type: 'talking-head' | 'cinematic',
+//       visualPrompt,           // text prompt for cinematic; background hint for talking-head
+//       brollKeywords: [str],
+//       avatarPosition?: 'left'|'center'|'right',
+//       avatarScale?: 'close'|'medium'|'wide',
+//       textOverlay?,
+//       transition?: 'cut'|'fade'|'slide',
+//       providerOverride?,      // force a specific provider for this scene
+//     }
+//   ],
+//   captions, hashtags, broll,
+//   totalDurationSec
+// }
+
+const STORYBOARD_VERSION = 2;
+
+// Build a storyboard from a flat script (backward-compat for old videos).
+function migrateScriptToStoryboard(scriptObj) {
+  if (!scriptObj) return null;
+  if (scriptObj.scenes && Array.isArray(scriptObj.scenes)) return scriptObj; // already a storyboard
+  const fullText = scriptObj.script || scriptObj.text || '';
+  // Split on em-dashes/double-line-breaks/full stops at scene-like boundaries
+  const sentences = fullText.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  const sceneCount = Math.max(1, Math.min(6, Math.ceil(sentences.length / 3)));
+  const perScene = Math.ceil(sentences.length / sceneCount);
+  const scenes = [];
+  for (let i = 0; i < sceneCount; i++) {
+    const dialogue = sentences.slice(i * perScene, (i + 1) * perScene).join(' ').trim();
+    if (!dialogue) continue;
+    const wpm = 150;
+    const wordCount = dialogue.split(/\s+/).length;
+    scenes.push({
+      id: 'scene_' + i,
+      dialogue,
+      durationSec: Math.round((wordCount / wpm) * 60),
+      type: 'talking-head',
+      visualPrompt: '',
+      brollKeywords: scriptObj.broll?.[i] ? [scriptObj.broll[i]] : [],
+      avatarPosition: 'center',
+      avatarScale: 'medium',
+      textOverlay: '',
+      transition: 'cut',
+    });
+  }
+  return {
+    version: STORYBOARD_VERSION,
+    title: scriptObj.title || '',
+    hook: scriptObj.hook || '',
+    scenes,
+    captions: scriptObj.captions || {},
+    hashtags: scriptObj.hashtags || {},
+    broll: scriptObj.broll || [],
+    totalDurationSec: scenes.reduce((s, sc) => s + sc.durationSec, 0),
+  };
+}
+
+function storyboardToFlatScript(storyboard) {
+  if (!storyboard?.scenes) return '';
+  // Filter out scenes where the dialogue looks like a visual prompt
+  // (cinematic-only scenes can have empty dialogue, or dialogue that
+  // duplicates the visualPrompt — only include real spoken lines).
+  return storyboard.scenes
+    .filter(s => {
+      const d = (s.dialogue || '').trim();
+      if (!d) return false;
+      // Heuristic: if dialogue starts with "A close-up", "A wide shot",
+      // "Camera tracks", etc., it's a visual direction not voiceover
+      const visualMarkers = /^(a (close[\- ]up|wide|medium|tight|low|high|tracking|aerial|drone|dolly|slow|fast)|camera (tracks|pans|zooms|pushes)|cut to|fade (to|from)|close[\- ]up of|wide shot of|tracking shot|cinematic shot|interior|exterior|setting:|scene:)\b/i;
+      return !visualMarkers.test(d);
+    })
+    .map(s => s.dialogue.trim())
+    .join('\n\n');
+}
+
+// ============================================================================
+// IN-APP DEBUG LOG — captures every provider request/response
+// ============================================================================
+const __debugLog = [];
+const MAX_DEBUG_ENTRIES = 100;
+function logEvent(provider, action, detail) {
+  const entry = { ts: Date.now(), provider, action, detail: typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 600) };
+  __debugLog.unshift(entry);
+  if (__debugLog.length > MAX_DEBUG_ENTRIES) __debugLog.length = MAX_DEBUG_ENTRIES;
+  // Also log to browser console for desktop devtools
+  console.log(`[${provider}] ${action}:`, detail);
+}
+function getDebugLog() { return [...__debugLog]; }
+function clearDebugLog() { __debugLog.length = 0; }
+window.__fincastDebugLog = getDebugLog; // allow `window.__fincastDebugLog()` from console
+
+// Wrapped fetch that logs every request, every response, every error.
+// All provider code should use this instead of raw fetch.
+async function loggedFetch(provider, url, opts = {}) {
+  const startedAt = Date.now();
+  logEvent(provider, 'request', { url, method: opts.method || 'GET' });
+  try {
+    const r = await fetch(url, opts);
+    const durationMs = Date.now() - startedAt;
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      logEvent(provider, 'response_error', { url, status: r.status, body: text.slice(0, 400), durationMs });
+      throw new Error(`${provider} ${r.status} (${durationMs}ms): ${text.slice(0, 300)}`);
+    }
+    logEvent(provider, 'response_ok', { url, status: r.status, durationMs });
+    return r;
+  } catch (e) {
+    const durationMs = Date.now() - startedAt;
+    if (e.message?.includes(provider)) throw e;
+    logEvent(provider, 'fetch_error', { url, error: e.message, durationMs, hint: 'Likely CORS, DNS, or network. Check provider base URL in Settings.' });
+    throw new Error(`${provider} fetch failed (${durationMs}ms): ${e.message}. URL: ${url}. Likely CORS/DNS issue — try changing the base URL in Settings.`);
+  }
+}
+
+// Build Hedra auth headers from settings — tries Bearer or x-api-key per user pref.
+function hedraAuthHeaders(settings, contentType = 'application/json') {
+  const h = {};
+  if (settings.hedraAuthScheme === 'bearer') {
+    h['Authorization'] = `Bearer ${settings.hedraKey}`;
+  } else {
+    h['X-API-Key'] = settings.hedraKey;
+  }
+  if (contentType) h['content-type'] = contentType;
+  return h;
+}
+
+function hedraUrl(settings, path) {
+  const base = (settings.hedraBaseUrl || 'https://api.hedra.com/web-app/public').replace(/\/+$/, '');
+  const fullUrl = `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  return proxiedUrl(fullUrl, settings);
+}
+
+// Routes any provider URL through the FinCast Worker if configured.
+// Worker provides CORS-busting + multipart-friendly proxy for any provider.
+// Pattern: workerUrl + "/proxy/" + host + path
+//   in:  https://api.hedra.com/web-app/public/generations
+//   out: https://my-worker.workers.dev/proxy/api.hedra.com/web-app/public/generations
+// If no workerUrl set, returns original URL (browser-direct call — works for Anthropic/Pexels but
+// NOT Hedra/ElevenLabs/HeyGen which have CORS allowlists).
+function proxiedUrl(originalUrl, settings) {
+  const worker = (settings?.workerUrl || '').trim().replace(/\/+$/, '');
+  if (!worker) return originalUrl;
+  const u = new URL(originalUrl);
+  return `${worker}/proxy/${u.host}${u.pathname}${u.search}`;
+}
+
+function storyboardDuration(storyboard) {
+  if (!storyboard?.scenes) return 0;
+  return storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 0), 0);
+}
+
+// ----------------------------------------------------------------------------
+// VideoProvider — base interface every provider implements
+// ----------------------------------------------------------------------------
+
+class VideoProvider {
+  static id = 'base';
+  static name = 'Base';
+  static caps = { talkingHead: false, cinematic: false, lipSync: false, characterRef: false, multiScene: false };
+
+  // Returns { available: bool, missing: [strings] }
+  static availability(settings) { return { available: false, missing: ['Override availability()'] }; }
+
+  // Returns estimated GBP cost for the scenes assigned to this provider
+  static estimateCost(scenes) { return 0; }
+
+  // Kicks off a render. Returns { jobs: [{ jobId, sceneIds }] } — jobs may map to one scene or many
+  static async startRender({ storyboard, scenes, settings, audioUrl, aspect }) {
+    throw new Error('Override startRender()');
+  }
+
+  // Polls a job. Returns { status, videoUrl?, error?, progress? }
+  static async pollJob({ jobId, settings }) { throw new Error('Override pollJob()'); }
+}
+
+// ----------------------------------------------------------------------------
+// HeyGenProvider — wraps existing HeyGen logic
+// ----------------------------------------------------------------------------
+
+class HeyGenProvider extends VideoProvider {
+  static id = 'heygen';
+  static name = 'HeyGen';
+  static caps = { talkingHead: true, cinematic: false, lipSync: true, characterRef: false, multiScene: true };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.heygenKey) missing.push('HeyGen API key');
+    if (!s.heygenAvatarId) missing.push('HeyGen Avatar ID');
+    if (!s.heygenVoiceId) missing.push('HeyGen Voice ID');
+    return { available: missing.length === 0, missing };
+  }
+
+  // HeyGen ~$0.10–0.30/min depending on plan; we model £0.05/scene flat
+  static estimateCost(scenes) { return Math.max(0.05, scenes.reduce((s, sc) => s + (sc.durationSec || 5) / 60 * 0.20, 0)); }
+
+  static async startRender({ storyboard, scenes, settings, aspect }) {
+    const { heygenKey, heygenAvatarId, heygenVoiceId } = settings;
+    const dim = aspect === '16:9' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+    // HeyGen supports multi-scene via video_inputs[]. One entry per scene.
+    const video_inputs = scenes.map(sc => ({
+      character: {
+        type: 'avatar',
+        avatar_id: heygenAvatarId,
+        avatar_style: sc.avatarScale === 'close' ? 'closeUp' : 'normal',
+        scale: sc.avatarScale === 'wide' ? 0.7 : (sc.avatarScale === 'close' ? 1.2 : 1.0),
+        offset: sc.avatarPosition === 'left' ? { x: -0.25, y: 0 } : sc.avatarPosition === 'right' ? { x: 0.25, y: 0 } : { x: 0, y: 0 },
+      },
+      voice: { type: 'text', input_text: sc.dialogue, voice_id: heygenVoiceId },
+      ...(sc.textOverlay ? { caption: { text: sc.textOverlay } } : {}),
+    }));
+    const r = await fetch('https://api.heygen.com/v2/video/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': heygenKey },
+      body: JSON.stringify({ video_inputs, dimension: dim, test: false }),
+    });
+    if (!r.ok) throw new Error(`HeyGen ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const data = await r.json();
+    if (data.error) throw new Error(`HeyGen: ${JSON.stringify(data.error)}`);
+    return { jobs: [{ jobId: data.data?.video_id, sceneIds: scenes.map(s => s.id), provider: 'heygen' }] };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    const r = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${encodeURIComponent(jobId)}`, {
+      headers: { 'x-api-key': settings.heygenKey },
+    });
+    if (!r.ok) return { status: 'failed', error: `HeyGen status ${r.status}` };
+    const d = (await r.json()).data || {};
+    return { status: d.status, videoUrl: d.video_url, error: d.error?.message, progress: d.progress };
+  }
+}
+
+// ----------------------------------------------------------------------------
+// HedraActTwoProvider — talking-head via Hedra Act-Two (character image + audio)
+// ----------------------------------------------------------------------------
+
+class HedraActTwoProvider extends VideoProvider {
+  static id = 'hedra_act_two';
+  static name = 'Hedra Act-Two';
+  static caps = { talkingHead: true, cinematic: false, lipSync: true, characterRef: true, multiScene: false };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.hedraKey) missing.push('Hedra API key');
+    if (!s.hedraActTwoModelId) missing.push('Hedra Act-Two model ID (Settings → Fetch models)');
+    if (!s.hedraStartKeyframeId && !s.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
+    if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs voice (key + voice ID)');
+    return { available: missing.length === 0, missing };
+  }
+
+  // Hedra Act-Two ~30 credits/sec at ~$0.001/credit ≈ $0.03/sec → £0.024/sec
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.024, 0); }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    if (!settings.hedraActTwoModelId) {
+      throw new Error('Hedra Act-Two model ID not set. Settings → Phase 3 → Hedra → tap "Fetch Hedra models" to populate.');
+    }
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) {
+      throw new Error('Hedra needs a reference image. Set hedraStartKeyframeUrl (public photo URL) or hedraStartKeyframeId (uploaded asset ID) in Settings.');
+    }
+    const jobs = [];
+    for (const sc of scenes) {
+      // 1. ElevenLabs renders dialogue → audio Blob
+      const audioBlob = await elevenLabsTTS({ settings,
+        apiKey: settings.elevenLabsKey,
+        voiceId: settings.elevenLabsVoiceId,
+        text: sc.dialogue,
+      });
+      // 2. Upload audio to Hedra (two-step multipart per real API spec)
+      const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+      // 3. Submit Act-Two generation (real API body shape)
+      const body = {
+        type: 'video',
+        ai_model_id: settings.hedraActTwoModelId,
+        audio_id: audioAssetId,
+        generated_video_inputs: {
+          text_prompt: sc.dialogue,
+          resolution: '720p',
+          aspect_ratio: aspect,
+        },
+      };
+      if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+      else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
+      const r = await loggedFetch('hedra-act-two', hedraUrl(settings, '/generations'), {
+        method: 'POST',
+        headers: hedraAuthHeaders(settings),
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_act_two' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    // Retry once on transient 'Failed to fetch' — Chrome occasionally fails
+    // a fetch when reusing a stale HTTP/2 connection to workers.dev. The
+    // failure is fast (sub-10ms) and fully recoverable on the next attempt.
+    let r;
+    try {
+      try {
+        r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}/status`), {
+          headers: hedraAuthHeaders(settings, null),
+        });
+      } catch (e) {
+        if (!/Failed to fetch|fetch failed|network/i.test(e.message)) throw e;
+        await new Promise(res => setTimeout(res, 800));
+        r = await loggedFetch('hedra-poll', hedraUrl(settings, `/generations/${jobId}/status`), {
+          headers: hedraAuthHeaders(settings, null),
+          cache: 'no-store',
+        });
+      }
+      const d = await r.json();
+      // Always log the full response shape so users can see ground truth in the
+      // debug panel when polling appears stuck.
+      logEvent('hedra-poll', 'response_body', { jobId, body: d });
+      // Permissive status map — covers every variant Hedra has used historically.
+      // Any unrecognized value defaults to 'processing' so we never falsely
+      // mark a job as completed/failed and never wedge it in an unmapped state.
+      const RAW = String(d.status || '').toLowerCase();
+      const map = {
+        queued: 'pending', pending: 'pending', submitted: 'pending', in_queue: 'pending', waiting: 'pending',
+        processing: 'processing', running: 'processing', in_progress: 'processing',
+        finalizing: 'processing', encoding: 'processing', uploading: 'processing',
+        complete: 'completed', completed: 'completed', done: 'completed', success: 'completed', succeeded: 'completed',
+        error: 'failed', failed: 'failed', cancelled: 'failed', canceled: 'failed',
+      };
+      const status = map[RAW] || 'processing';
+      // Look for a download URL under any common field name. Hedra has used
+      // download_url, video_url, output_url at various points.
+      const videoUrl = d.download_url || d.video_url || d.output_url || d.url;
+      return {
+        status,
+        videoUrl,
+        progress: d.progress ?? d.percent_complete,
+        error: d.error_message || d.error || (RAW && !map[RAW] ? `Hedra returned unmapped status: ${RAW}` : ''),
+        raw: d,
+      };
+    } catch (e) {
+      logEvent('hedra-poll', 'pollJob_error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
+}
+
+// Builds the final cinematic prompt by prepending the Character Bible.
+// Centralised so EVERY cinematic provider (Hedra, Veo, Sora, Runway) gets
+// the same locked persona description — regardless of which one renders.
+function applyCharacterBible(scene, settings) {
+  const bible = (settings?.characterBible || '').trim();
+  const scenePrompt = (scene.visualPrompt || scene.dialogue || '').trim();
+  if (!bible) return scenePrompt;
+  return `Subject reference (must match across all scenes): ${bible}\n\nScene: ${scenePrompt}`;
+}
+
+// ----------------------------------------------------------------------------
+// HedraCharacterProvider — cinematic via Hedra Character-2
+// ----------------------------------------------------------------------------
+
+class HedraCharacterProvider extends VideoProvider {
+  static id = 'hedra_character';
+  static name = 'Hedra Character-2';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+
+  static availability(s) {
+    const missing = [];
+    if (!s.hedraKey) missing.push('Hedra API key');
+    if (!s.hedraCharacter2ModelId) missing.push('Hedra Character-2 model ID (Settings → Fetch models)');
+    if (!s.hedraStartKeyframeId && !s.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
+    if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs voice (key + voice ID) — Hedra Character-2 requires audio input');
+    return { available: missing.length === 0, missing };
+  }
+
+  // Character-2 ~50 credits/sec at ~$0.001/credit ≈ $0.05/sec → £0.04/sec
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.04, 0); }
+
+  static async startRender({ storyboard, scenes, settings, aspect }) {
+    if (!settings.hedraCharacter2ModelId) {
+      throw new Error('Hedra Character-2 model ID not set. Settings → Phase 3 → Hedra → tap "Fetch Hedra models".');
+    }
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) {
+      throw new Error('Hedra needs a reference image. Set hedraStartKeyframeUrl or hedraStartKeyframeId in Settings.');
+    }
+    if (!settings.elevenLabsKey || !settings.elevenLabsVoiceId) {
+      throw new Error('Hedra Character-2 requires audio input. Set ElevenLabs key + voice ID in Settings.');
+    }
+    const jobs = [];
+    for (const sc of scenes) {
+      const audioBlob = await elevenLabsTTS({ settings,
+        apiKey: settings.elevenLabsKey,
+        voiceId: settings.elevenLabsVoiceId,
+        text: sc.dialogue,
+      });
+      const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+      const body = {
+        type: 'video',
+        ai_model_id: settings.hedraCharacter2ModelId,
+        audio_id: audioAssetId,
+        generated_video_inputs: {
+          text_prompt: applyCharacterBible(sc, settings),
+          resolution: '720p',
+          aspect_ratio: aspect || '9:16',
+          duration_ms: (sc.durationSec || 5) * 1000,
+        },
+      };
+      if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+      else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
+      const r = await loggedFetch('hedra-character', hedraUrl(settings, '/generations'), {
+        method: 'POST',
+        headers: hedraAuthHeaders(settings),
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      jobs.push({ jobId: d.id || d.generation_id, sceneIds: [sc.id], provider: 'hedra_character' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) { return HedraActTwoProvider.pollJob({ jobId, settings }); }
+}
+
+// ----------------------------------------------------------------------------
+// Stub providers — future-proof slots for Veo 3 / Sora 2 / Runway Gen-4
+// ----------------------------------------------------------------------------
+
+// Veo 3 via Google AI Studio (Gemini API). Free tier covers ~50 req/day at
+// 5 RPM — enough for ~8 videos/day. Endpoint:
+//   POST generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=...
+// returns { name: 'operations/...' }. Poll GET .../v1beta/{operationName}?key=...
+// until { done: true }, then read response.generateVideoResponse.generatedSamples[0].video.uri
+// (a downloadable file URI under generativelanguage.googleapis.com/v1beta/files/...).
+class Veo3Provider extends VideoProvider {
+  static id = 'veo3';
+  static name = 'Google Veo 3';
+  static caps = { talkingHead: true, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
+  static availability(s) {
+    const missing = [];
+    if (!s.googleAiKey) missing.push('Google AI Studio API key (free at aistudio.google.com)');
+    return { available: missing.length === 0, missing };
+  }
+  // Free tier: cost zero up to daily quota. Estimate set low so it's never
+  // capped out by costCapPerVideoGBP for the free tier.
+  static estimateCost(scenes) { return scenes.length * 0.001; }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const jobs = [];
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      const url = proxiedUrl(
+        `https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=${encodeURIComponent(settings.googleAiKey)}`,
+        settings
+      );
+      // Veo 3's accepted parameters in the Gemini API have shifted across
+      // releases. We send the minimal known-good set and let Veo use defaults
+      // for everything else. If the API rejects, we log the body so the next
+      // diagnostic pass has ground truth.
+      const requestBody = {
+        instances: [{ prompt }],
+        parameters: {
+          aspectRatio: aspect,
+          sampleCount: 1,
+        },
+      };
+      logEvent('veo3-submit', 'request_body', { sceneId: sc.id, body: requestBody });
+      const r = await loggedFetch('veo3-submit', url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+      const d = await r.json();
+      const opName = d.name || d.operation?.name;
+      if (!opName) throw new Error(`Veo 3 returned no operation name. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId: opName, sceneIds: [sc.id], provider: 'veo3' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const url = proxiedUrl(
+        `https://generativelanguage.googleapis.com/v1beta/${jobId}?key=${encodeURIComponent(settings.googleAiKey)}`,
+        settings
+      );
+      const r = await loggedFetch('veo3-poll', url, {});
+      const d = await r.json();
+      logEvent('veo3-poll', 'response_body', { jobId, body: d });
+      if (!d.done) {
+        const pct = d.metadata?.progressPercent ?? d.metadata?.state;
+        return { status: 'processing', progress: pct };
+      }
+      if (d.error) return { status: 'failed', error: d.error.message || JSON.stringify(d.error) };
+      const sample = d.response?.generateVideoResponse?.generatedSamples?.[0]
+                  || d.response?.predictions?.[0]?.video
+                  || d.response?.predictions?.[0];
+      let videoUri = sample?.video?.uri || sample?.uri || sample?.videoUri;
+      if (!videoUri) return { status: 'failed', error: `Veo response had no video URI. Body: ${JSON.stringify(d.response).slice(0, 300)}` };
+      // Veo download URIs require the API key. Append it so <video src=...>
+      // can load directly through the worker proxy.
+      const sep = videoUri.includes('?') ? '&' : '?';
+      videoUri = `${videoUri}${sep}key=${encodeURIComponent(settings.googleAiKey)}`;
+      return { status: 'completed', videoUrl: proxiedUrl(videoUri, settings) };
+    } catch (e) {
+      logEvent('veo3-poll', 'pollJob_error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
+}
+
+// Higgsfield AI — Seedance 2.0 Ultra / Cinema Studio 3.5
+// API reference: https://api.higgsfield.ai (REST, Bearer auth)
+// Plans: Basic $9/mo. Model names passed as the 'model' field.
+// Talking-head: not supported (no lip-sync / avatar). Cinematic only.
+//
+// Submit: POST /v1/video/generate → { id, status }
+// Poll:   GET  /v1/video/{id}     → { id, status, video_url }
+// Status values: queued | processing | completed | failed
+class HiggsfieldProvider extends VideoProvider {
+  static id = 'higgsfield';
+  static name = 'Higgsfield (Seedance 2.0)';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
+  static availability(s) {
+    const missing = [];
+    if (!s.higgsfieldKey) missing.push('Higgsfield API key (higgsfield.ai → API)');
+    return { available: missing.length === 0, missing };
+  }
+  // Seedance 2.0 Ultra costs ~$0.05/sec on the Basic plan ($9/mo).
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.05, 0); }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const jobs = [];
+    const model = settings.higgsfieldModel || 'seedance-2-ultra';
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      const durationSec = Math.min(Math.max(Math.round(sc.durationSec || 5), 5), 10);
+      const requestBody = {
+        model,
+        prompt,
+        aspect_ratio: aspect,
+        duration: durationSec,
+        resolution: '1080p',
+      };
+      logEvent('higgsfield-submit', 'request_body', { sceneId: sc.id, body: requestBody });
+      const r = await loggedFetch('higgsfield-submit',
+        proxiedUrl('https://api.higgsfield.ai/v1/video/generate', settings),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'authorization': `Bearer ${settings.higgsfieldKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      const d = await r.json();
+      logEvent('higgsfield-submit', 'response_body', { sceneId: sc.id, body: d });
+      if (!r.ok || d.error) throw new Error(`Higgsfield: ${d.error?.message || d.message || JSON.stringify(d).slice(0, 200)}`);
+      const jobId = d.id || d.generation_id || d.data?.id;
+      if (!jobId) throw new Error(`Higgsfield returned no job ID. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId, sceneIds: [sc.id], provider: 'higgsfield' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const r = await loggedFetch('higgsfield-poll',
+        proxiedUrl(`https://api.higgsfield.ai/v1/video/${jobId}`, settings),
+        { headers: { 'authorization': `Bearer ${settings.higgsfieldKey}` } }
+      );
+      const d = await r.json();
+      logEvent('higgsfield-poll', 'response_body', { jobId, body: d });
+      const status = (d.status || '').toLowerCase();
+      if (status === 'completed' || status === 'succeeded' || status === 'done') {
+        const videoUrl = d.video_url || d.result?.url || d.output?.url || d.url || d.data?.video_url;
+        if (!videoUrl) return { status: 'failed', error: `Higgsfield completed but no video_url. Body: ${JSON.stringify(d).slice(0,300)}` };
+        return { status: 'completed', videoUrl: proxiedUrl(videoUrl, settings) };
+      }
+      if (status === 'failed' || status === 'error') {
+        return { status: 'failed', error: d.error?.message || d.message || JSON.stringify(d).slice(0, 200) };
+      }
+      const progress = d.progress ?? d.percent_complete ?? d.metadata?.progress ?? null;
+      return { status: 'processing', progress };
+    } catch (e) {
+      logEvent('higgsfield-poll', 'error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
+}
+
+class Sora2Provider extends VideoProvider {
+  static id = 'sora2';
+  static name = 'OpenAI Sora 2';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+  static availability(s) { return { available: !!s.openaiKey, missing: s.openaiKey ? [] : ['OpenAI API key'] }; }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.16, 0); } // ~$0.20/sec
+  static async startRender() { throw new Error('Sora 2 provider stub — pending API maturity. Add openaiKey to enable build-out.'); }
+  static async pollJob() { throw new Error('Sora 2 stub'); }
+}
+
+class RunwayGen4Provider extends VideoProvider {
+  static id = 'runway_gen4';
+  static name = 'Runway Gen-4';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
+  static availability(s) { return { available: !!s.runwayKey, missing: s.runwayKey ? [] : ['Runway API key'] }; }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.32, 0); } // ~$0.40/sec
+  static async startRender() { throw new Error('Runway Gen-4 provider stub. Add runwayKey to enable build-out.'); }
+  static async pollJob() { throw new Error('Runway stub'); }
+}
+
+// ----------------------------------------------------------------------------
+// Provider Registry + Picker
+// ----------------------------------------------------------------------------
+
+const PROVIDERS = {
+  heygen: HeyGenProvider,
+  hedra_act_two: HedraActTwoProvider,
+  hedra_character: HedraCharacterProvider,
+  higgsfield: HiggsfieldProvider,
+  veo3: Veo3Provider,
+  sora2: Sora2Provider,
+  runway_gen4: RunwayGen4Provider,
+};
+
+function listProvidersFor(sceneType, settings) {
+  const cap = sceneType === 'cinematic' ? 'cinematic' : 'talkingHead';
+  return Object.values(PROVIDERS).filter(p => p.caps[cap]).map(p => ({
+    P: p,
+    id: p.id,
+    name: p.name,
+    available: p.availability(settings).available,
+    missing: p.availability(settings).missing,
+  }));
+}
+
+function pickProviderForScene(scene, settings) {
+  // 1. Manual override on the scene
+  if (scene.providerOverride && PROVIDERS[scene.providerOverride]) {
+    const P = PROVIDERS[scene.providerOverride];
+    if (P.availability(settings).available) return P;
+  }
+  // 2. User's default for this scene type
+  const defaultId = scene.type === 'cinematic'
+    ? settings.defaultCinematicProvider
+    : settings.defaultTalkingHeadProvider;
+  if (defaultId && defaultId !== 'auto' && PROVIDERS[defaultId]) {
+    const P = PROVIDERS[defaultId];
+    if (P.availability(settings).available) return P;
+  }
+  // 3. Auto: cheapest available provider with the required capability
+  const candidates = listProvidersFor(scene.type, settings).filter(c => c.available);
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => a.P.estimateCost([scene]) - b.P.estimateCost([scene]));
+  return candidates[0].P;
+}
+
+function estimateStoryboardCost(storyboard, settings) {
+  if (!storyboard?.scenes) return { total: 0, byProvider: {}, unrenderableScenes: [] };
+  const byProvider = {};
+  const unrenderable = [];
+  for (const sc of storyboard.scenes) {
+    const P = pickProviderForScene(sc, settings);
+    if (!P) { unrenderable.push(sc.id); continue; }
+    byProvider[P.id] = byProvider[P.id] || { name: P.name, scenes: [], cost: 0 };
+    byProvider[P.id].scenes.push(sc);
+  }
+  for (const id of Object.keys(byProvider)) {
+    byProvider[id].cost = PROVIDERS[id].estimateCost(byProvider[id].scenes);
+  }
+  const total = Object.values(byProvider).reduce((s, p) => s + p.cost, 0);
+  return { total, byProvider, unrenderableScenes: unrenderable };
+}
+
+// ----------------------------------------------------------------------------
+// ElevenLabs direct audio (provider-agnostic voice track for Hedra/Veo/etc.)
+// ----------------------------------------------------------------------------
+
+async function elevenLabsTTS({ apiKey, voiceId, text, settings = {} }) {
+  if (!apiKey || !voiceId) throw new Error('ElevenLabs key + voice ID required.');
+  const r = await fetch(proxiedUrl(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, settings), {
+    method: 'POST',
+    headers: { 'xi-api-key': apiKey, 'content-type': 'application/json', 'accept': 'audio/mpeg' },
+    body: JSON.stringify({
+      text,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.4, use_speaker_boost: true },
+    }),
+  });
+  if (!r.ok) throw new Error(`ElevenLabs ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  return r.blob(); // returns audio/mpeg Blob — caller decides what to do with it
+}
+
+// Upload an audio Blob to Hedra's assets endpoint. Returns an asset id Hedra
+// can reference internally (no public URL needed — solves the blob-URL problem).
+// Hedra exposes a two-step upload (init → put) for media; we use a single
+// multipart POST which their API also accepts for short audio clips.
+// Hedra audio upload — verified two-step flow per hedra-labs/hedra-api-starter:
+//   1. POST /assets with JSON {name, type:"audio"} → response {id}
+//   2. POST /assets/{id}/upload with multipart form-data, field name "file"
+// (No presigned PUT URL for audio — that's only returned for type:"video".)
+async function hedraUploadAudio(blob, settings) {
+  if (!settings.hedraKey) throw new Error('Hedra API key required for audio upload.');
+  // Step 1: create asset record
+  const init = await loggedFetch('hedra-asset-init', hedraUrl(settings, '/assets'), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings),
+    body: JSON.stringify({ name: 'scene_audio.mp3', type: 'audio' }),
+  });
+  const initData = await init.json();
+  const assetId = initData.id;
+  if (!assetId) throw new Error(`Hedra POST /assets did not return id. Response: ${JSON.stringify(initData).slice(0, 200)}`);
+  // Step 2: multipart upload to /assets/{id}/upload
+  const form = new FormData();
+  form.append('file', blob, 'scene_audio.mp3');
+  await loggedFetch('hedra-asset-upload', hedraUrl(settings, `/assets/${assetId}/upload`), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings, null), // no content-type — let browser set multipart boundary
+    body: form,
+  });
+  return assetId;
+}
+
+// Hedra image upload (for setting start_keyframe_id from a public photo URL or local Blob).
+// Used by the "Upload reference photo" helper in Settings.
+async function hedraUploadImage(blob, settings, name = 'reference.jpg') {
+  if (!settings.hedraKey) throw new Error('Hedra API key required.');
+  const init = await loggedFetch('hedra-image-init', hedraUrl(settings, '/assets'), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings),
+    body: JSON.stringify({ name, type: 'image' }),
+  });
+  const initData = await init.json();
+  const assetId = initData.id;
+  if (!assetId) throw new Error(`Hedra POST /assets did not return id. Response: ${JSON.stringify(initData).slice(0, 200)}`);
+  const form = new FormData();
+  form.append('file', blob, name);
+  await loggedFetch('hedra-image-upload', hedraUrl(settings, `/assets/${assetId}/upload`), {
+    method: 'POST',
+    headers: hedraAuthHeaders(settings, null),
+    body: form,
+  });
+  return assetId;
+}
+
+// Fetch Hedra's available AI models — returns list of {id, name, ...}
+async function hedraListModels(settings) {
+  const r = await loggedFetch('hedra-models', hedraUrl(settings, '/models'), {
+    headers: hedraAuthHeaders(settings, null),
+  });
+  const d = await r.json();
+  return d.models || d.data || d;
+}
+
+// ----------------------------------------------------------------------------
+// Render orchestrator — takes a storyboard, picks providers per scene,
+// dispatches renders, returns job handles for polling.
+// ----------------------------------------------------------------------------
+
+// HeyGen audio asset upload — used for single-shot renders that pair an
+// external ElevenLabs voice track with a HeyGen avatar. Returns the
+// asset_id that goes into video_inputs[0].voice.audio_asset_id.
+// Endpoint: POST https://upload.heygen.com/v1/asset (separate host from API).
+async function heygenUploadAudio(blob, settings) {
+  if (!settings.heygenKey) throw new Error('HeyGen API key required for audio upload.');
+  const url = proxiedUrl('https://upload.heygen.com/v1/asset', settings);
+  const r = await loggedFetch('heygen-upload-audio', url, {
+    method: 'POST',
+    headers: { 'content-type': blob.type || 'audio/mpeg', 'x-api-key': settings.heygenKey },
+    body: blob,
+  });
+  const d = await r.json();
+  const id = d?.data?.id || d?.id;
+  if (!id) throw new Error(`HeyGen upload returned no asset id. Response: ${JSON.stringify(d).slice(0, 200)}`);
+  return id;
+}
+
+async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
+  const cost = estimateStoryboardCost(storyboard, settings);
+  if (cost.unrenderableScenes.length) {
+    throw new Error(`No available provider for scene(s): ${cost.unrenderableScenes.join(', ')}. Configure a provider in Settings.`);
+  }
+  if (settings.costCapPerVideoGBP && cost.total > settings.costCapPerVideoGBP) {
+    throw new Error(`Estimated cost £${cost.total.toFixed(2)} exceeds your cap of £${settings.costCapPerVideoGBP}. Raise cap in Settings or use cheaper providers.`);
+  }
+
+  const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
+  const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+  const singleShotEnabled = settings.singleShotRender !== false;
+
+  // FAST PATH 0 — Higgsfield (Seedance 2.0 Ultra / Cinema Studio 3.5).
+  // Cinematic quality at ~$9/mo (Basic plan). Per-scene clips are generated
+  // from each scene's visualPrompt + character bible. Each clip renders in
+  // ~30–90s; clips are stitched + ElevenLabs audio muxed in-browser via
+  // ffmpeg.wasm. Result matches the Veo 3 cinematic reference quality.
+  // Takes priority over all other providers when higgsfieldKey is set.
+  if (settings.higgsfieldKey) {
+    logEvent('orchestrate', 'higgsfield_multi_scene_start', { totalDuration, sceneCount: storyboard.scenes.length, model: settings.higgsfieldModel || 'seedance-2-ultra' });
+    try {
+      const { jobs } = await HiggsfieldProvider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'higgsfield_failed_fallback', { error: e.message });
+      // Fall through to Veo 3 / HeyGen / Hedra if Higgsfield fails
+    }
+  }
+
+  // FAST PATH 1 — Veo 3 cinematic per-scene render (Google AI Studio).
+  // When the user has a free Google AI Studio API key set, Veo 3 takes
+  // priority for genuine cinematic output (multi-shot composition matching
+  // Veo's reference quality — walking shots, environments, etc.). Each
+  // scene is its own Veo 3 8-second clip generated from the scene's
+  // visualPrompt + character bible. Audio is overlaid post-render in the
+  // browser via ffmpeg.wasm using the user's ElevenLabs PVC voice (next
+  // commit). For now: generate per-scene clips, user sees them in the
+  // storyboard preview and downloads to edit in CapCut.
+  if (singleShotEnabled && settings.googleAiKey) {
+    logEvent('orchestrate', 'veo3_multi_scene_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await Veo3Provider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'veo3_failed_fallback', { error: e.message });
+      // Fall through to HeyGen / Hedra paths if Veo fails (quota, key issue, etc.)
+    }
+  }
+
+  // FAST PATH 2 — HeyGen multi-input render with ElevenLabs audio + Pexels b-roll.
+  // HeyGen v2 supports multiple video_inputs[] in ONE generate request:
+  // each entry gets its own character (avatar position/scale), its own voice
+  // audio (a different ElevenLabs audio segment per scene), and optionally
+  // its own background (image OR video — we pull cinematic Pexels b-roll
+  // matched to each scene's visualPrompt). HeyGen concatenates them into a
+  // single output video.
+  //
+  // This produces visual variety across the video (different b-roll behind
+  // the avatar per scene) at the same speed as single-shot (~3-5 min total
+  // for the full render — ONE queue wait, not N).
+  const heygenEligible =
+    singleShotEnabled &&
+    settings.heygenKey && settings.heygenAvatarId &&
+    settings.elevenLabsKey && settings.elevenLabsVoiceId &&
+    fullText && totalDuration <= 120;
+  if (heygenEligible) {
+    logEvent('orchestrate', 'heygen_multi_input_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length, hasPexels: !!settings.pexelsKey });
+    try {
+      const dim = aspect === '16:9' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
+      const video_inputs = [];
+      for (let i = 0; i < storyboard.scenes.length; i++) {
+        const sc = storyboard.scenes[i];
+        if (!sc.dialogue?.trim()) continue;
+        const audioBlob = await elevenLabsTTS({
+          settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: sc.dialogue,
+        });
+        const audioAssetId = await heygenUploadAudio(audioBlob, settings);
+        let background = null;
+        if (settings.pexelsKey && sc.visualPrompt) {
+          try {
+            const pex = await pexelsSearch({ apiKey: settings.pexelsKey, query: sc.visualPrompt, perPage: 3, settings });
+            const vid = pex?.videos?.[0];
+            const file = vid?.video_files?.find(f => f.width >= 720 && f.height >= f.width) || vid?.video_files?.[0];
+            if (file?.link) {
+              background = { type: 'video', url: file.link, fit: 'cover', play_style: 'loop' };
+              logEvent('orchestrate', 'broll_matched', { scene: i, query: sc.visualPrompt.slice(0, 80), pexelsId: vid.id });
+            }
+          } catch (e) { logEvent('orchestrate', 'broll_skipped', { scene: i, error: e.message }); }
+        }
+        const isCinematic = sc.type === 'cinematic';
+        const character = {
+          type: 'avatar',
+          avatar_id: settings.heygenAvatarId,
+          avatar_style: sc.avatarScale === 'close' ? 'closeUp' : 'normal',
+          scale: isCinematic ? 0.6 : (sc.avatarScale === 'wide' ? 0.7 : sc.avatarScale === 'close' ? 1.2 : 1.0),
+          offset: sc.avatarPosition === 'left' ? { x: -0.3, y: 0 } : sc.avatarPosition === 'right' ? { x: 0.3, y: 0 } : { x: 0, y: 0 },
+        };
+        video_inputs.push({
+          character, voice: { type: 'audio', audio_asset_id: audioAssetId },
+          ...(background ? { background } : {}),
+        });
+      }
+      if (!video_inputs.length) throw new Error('No renderable scenes — every scene had empty dialogue.');
+      const r = await loggedFetch('heygen-multi-input', proxiedUrl('https://api.heygen.com/v2/video/generate', settings), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': settings.heygenKey },
+        body: JSON.stringify({ video_inputs, dimension: dim, test: false }),
+      });
+      const data = await r.json();
+      if (data.error) throw new Error(`HeyGen: ${JSON.stringify(data.error)}`);
+      const videoId = data?.data?.video_id;
+      if (!videoId) throw new Error(`HeyGen returned no video_id. Response: ${JSON.stringify(data).slice(0, 200)}`);
+      return {
+        jobs: [{
+          jobId: videoId, sceneIds: storyboard.scenes.map(sc => sc.id),
+          provider: 'heygen', singleShot: true,
+          sceneCount: video_inputs.length, hasBackgrounds: video_inputs.some(v => v.background),
+        }],
+        cost,
+      };
+    } catch (e) {
+      // HeyGen credit exhaustion → fall through to next path. Any other
+      // HeyGen error (network, malformed response, etc.) is real and we
+      // re-throw so the user sees it.
+      if (/insufficient credit|out of quota|quota exceeded|api credits|trial.*ended/i.test(e.message)) {
+        logEvent('orchestrate', 'heygen_credits_exhausted_fallback', { error: e.message });
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  // FAST PATH 3 — Hedra Act-Two single-shot (slower than HeyGen but works
+  // when the user only has Hedra configured). Bundles every scene's
+  // dialogue into ONE Hedra job — 1 × queue wait instead of N.
+  const hedraEligible =
+    singleShotEnabled &&
+    settings.hedraKey && settings.hedraActTwoModelId && (settings.hedraStartKeyframeId || settings.hedraStartKeyframeUrl) &&
+    settings.elevenLabsKey && settings.elevenLabsVoiceId &&
+    fullText && totalDuration <= 60;
+  if (hedraEligible) {
+    logEvent('orchestrate', 'hedra_single_shot_start', { totalDuration, sceneCount: storyboard.scenes.length, charCount: fullText.length });
+    const audioBlob = await elevenLabsTTS({ settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: fullText });
+    const audioAssetId = await hedraUploadAudio(audioBlob, settings);
+    const promptHint = applyCharacterBible({ visualPrompt: storyboard.scenes[0]?.visualPrompt, dialogue: fullText.slice(0, 400) }, settings);
+    const body = {
+      type: 'video',
+      ai_model_id: settings.hedraActTwoModelId,
+      audio_id: audioAssetId,
+      generated_video_inputs: { text_prompt: promptHint, resolution: '720p', aspect_ratio: aspect },
+    };
+    if (settings.hedraStartKeyframeId) body.start_keyframe_id = settings.hedraStartKeyframeId;
+    else body.start_keyframe_url = settings.hedraStartKeyframeUrl;
+    const r = await loggedFetch('hedra-single-shot', hedraUrl(settings, '/generations'), {
+      method: 'POST', headers: hedraAuthHeaders(settings), body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    return {
+      jobs: [{
+        jobId: d.id || d.generation_id,
+        sceneIds: storyboard.scenes.map(sc => sc.id),
+        provider: 'hedra_act_two',
+        singleShot: true,
+      }],
+      cost,
+    };
+  }
+
+  // FALLBACK — per-scene render. Used when total duration > 60–120s or
+  // when single-shot is disabled or required keys are missing.
+  logEvent('orchestrate', 'multi_scene_fallback', { totalDuration, sceneCount: storyboard.scenes.length });
+  const groups = {};
+  for (const sc of storyboard.scenes) {
+    const P = pickProviderForScene(sc, settings);
+    groups[P.id] = groups[P.id] || { P, scenes: [] };
+    groups[P.id].scenes.push(sc);
+  }
+  const allJobs = [];
+  for (const { P, scenes } of Object.values(groups)) {
+    const { jobs } = await P.startRender({ storyboard, scenes, settings, aspect });
+    allJobs.push(...jobs);
+  }
+  return { jobs: allJobs, cost };
+}
+
+async function pollAllJobs({ jobs, settings, onProgress }) {
+  const results = jobs.map(j => ({ ...j, status: 'pending', videoUrl: null }));
+  let pending = results.length;
+  const maxAttempts = 120; // 10 min @ 5s
+  for (let i = 0; i < maxAttempts && pending > 0; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    for (const r of results) {
+      if (r.status === 'completed' || r.status === 'failed') continue;
+      try {
+        const P = PROVIDERS[r.provider];
+        const upd = await P.pollJob({ jobId: r.jobId, settings });
+        if (upd.status === 'completed') { r.status = 'completed'; r.videoUrl = upd.videoUrl; pending--; }
+        else if (upd.status === 'failed') { r.status = 'failed'; r.error = upd.error; pending--; }
+        else { r.progress = upd.progress; }
+      } catch (e) { r.status = 'failed'; r.error = e.message; pending--; }
+    }
+    onProgress?.(results);
+  }
+  return results;
 }
 
 // Buffer compose URL — phase 1 (no backend). Opens Buffer with prefilled text + media URL.
@@ -388,9 +1470,10 @@ Return ONLY a JSON array of 6 idea objects with this exact shape:
 No prose, no markdown fences, just the JSON array.`;
 }
 
-function scriptSystemPrompt(settings, tone, platform) {
+function scriptSystemPrompt(settings, tone, platform, mood='neutral') {
   const t = TONE_PRESETS[tone] || TONE_PRESETS.matStyle;
   const p = PLATFORMS[platform] || PLATFORMS.tiktok;
+  const m = MOOD_PRESETS[mood] || MOOD_PRESETS.neutral;
   const targetSec = Math.round((p.ideal[0] + p.ideal[1]) / 2);
   return `You are writing a UK personal-finance short-form video script for ${p.name} (aspect ${p.aspect}, target ${targetSec}s).
 
@@ -399,6 +1482,7 @@ Audience: ${settings.audience}
 
 ${t.promptStyle}
 
+${m.hint ? `Mood angle (overlay on tone):\n${m.hint}\n` : ''}
 Hard rules:
 - UK only. Use £, HMRC, ISA, SIPP, PAYE, Personal Allowance, etc. Use 2025/26 tax thresholds.
 - Educational framing only. Never recommend a specific product. No "you should buy/invest in X."
@@ -408,12 +1492,47 @@ Hard rules:
 - Approx ${t.wpmTarget} words per minute → aim for ${Math.round(t.wpmTarget * targetSec / 60)} words.
 - Do NOT include the disclaimer in the spoken script — it will be added separately to captions.
 
+PROSODY rules (CRITICAL — without these the TTS sounds robotic):
+- Use commas every 5–8 words to mark micro-pauses. Even where written grammar wouldn't strictly need one.
+- Use em-dashes ( — ) to insert dramatic mid-sentence pauses where you'd take a breath.
+- Use ellipses (…) sparingly for dramatic effect (max once or twice per script).
+- Vary sentence length: never have more than 2 short sentences in a row before a longer one.
+- Front-load filler beats that real speech uses: "Look,", "Right,", "Here's the thing —", "OK so —" (use 1–2 of these per script, not more).
+- Stress key numbers by isolating them: "That's £20… in your pocket… every year." rather than "That's £20 in your pocket every year."
+- Spell out tricky numbers if HeyGen mispronounces them: "twelve five seventy" instead of "12,570" if rendering says it wrong (only spell out if you're confident TTS will mispronounce).
+
+SCENE BREAKDOWN (CRITICAL):
+- Break the script into 3–6 short scenes (one per beat: hook, problem, lever, proof, payoff).
+- Each scene gets its own DIALOGUE (the spoken words, voiceover) AND a VISUALPROMPT (what's on screen) AND a TYPE.
+- type 'talking-head' = avatar in frame speaking. Use for explanation, hook, CTA.
+- type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Voiceover plays over it. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
+- CRITICAL DISTINCTION:
+  * The dialogue field is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
+  * The visualPrompt field is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here.
+  * Both fields are REQUIRED for both scene types. A cinematic scene STILL has spoken voiceover dialogue — just no avatar in frame.
+- Mix types. A typical 50s video might be: cinematic hook (5s) → talking-head explanation (15s) → cinematic illustration (5s) → talking-head proof (15s) → cinematic payoff (5s) → talking-head CTA (5s).
+- For talking-head scenes, set avatarPosition (left/center/right) and avatarScale (close/medium/wide) for visual variety.
+- For cinematic scenes, write visualPrompt as a vivid one-sentence description suitable for an AI video model (e.g. Veo 3, Hedra Character-2). Be specific about location, action, mood, time of day.
+
 Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
 {
   "title": "video title (max 60 chars, hook + benefit)",
   "hook": "first 3 seconds, verbatim",
-  "script": "the FULL spoken script as one continuous string of sentences",
-  "estimatedDurationSec": <integer>,
+  "scenes": [
+    {
+      "id": "scene_1",
+      "dialogue": "the spoken text for this scene (1-3 sentences)",
+      "durationSec": 5,
+      "type": "talking-head" | "cinematic",
+      "visualPrompt": "for cinematic: vivid description for AI video model. for talking-head: short hint about background/B-roll",
+      "brollKeywords": ["keyword1","keyword2"],
+      "avatarPosition": "left" | "center" | "right",
+      "avatarScale": "close" | "medium" | "wide",
+      "textOverlay": "optional on-screen text caption (8 words max) — empty string if none",
+      "transition": "cut" | "fade" | "slide"
+    }
+  ],
+  "estimatedDurationSec": <sum of scene durations>,
   "captions": {
     "tiktok": "caption for TikTok, hook + 1-2 lines + CTA, no hashtags",
     "reels":  "caption for Reels, similar",
@@ -427,8 +1546,21 @@ Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
     "long":   ["#..."]
   },
   "youtubeTitle": "title optimised for YouTube Shorts (max 100 chars)",
-  "broll": ["3-5 short search queries for Pexels stock footage relevant to the script"]
+  "broll": ["3-5 short search queries for Pexels stock footage relevant to the script (used as fallback)"]
 }`;
+}
+
+// ============================================================================
+// PRE-FLIGHT
+// ============================================================================
+
+function preflightRender(settings, scriptText) {
+  const missing = [];
+  if (!settings.heygenKey) missing.push('HeyGen API key (Settings)');
+  if (!settings.heygenAvatarId) missing.push('HeyGen Avatar ID (Settings)');
+  if (!settings.heygenVoiceId) missing.push('HeyGen Voice ID (Settings)');
+  if (!scriptText || !scriptText.trim()) missing.push('Script text');
+  return missing;
 }
 
 // ============================================================================
@@ -529,9 +1661,40 @@ function Sidebar({ page, setPage, state }) {
   );
 }
 
+function checkKeys(settings) {
+  // Provider-aware keys check. Returns { ok, missing[] }.
+  if (!settings.anthropicKey) return { ok: false, missing: ['Anthropic API key (script generation)'] };
+  const missing = [];
+  // Talking-head provider keys
+  const thId = settings.defaultTalkingHeadProvider;
+  if (thId === 'heygen') {
+    if (!settings.heygenKey) missing.push('HeyGen API key');
+    if (!settings.heygenAvatarId) missing.push('HeyGen Avatar ID');
+    if (!settings.heygenVoiceId) missing.push('HeyGen Voice ID');
+  } else if (thId === 'hedra_act_two') {
+    if (!settings.hedraKey) missing.push('Hedra API key');
+    if (!settings.hedraActTwoModelId) missing.push('Hedra Act-Two model ID (tap "Fetch models")');
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or uploaded asset ID)');
+    if (!settings.elevenLabsKey) missing.push('ElevenLabs API key');
+    if (!settings.elevenLabsVoiceId) missing.push('ElevenLabs Voice ID');
+  } else if (thId === 'auto' || !thId) {
+    const hgOk = settings.heygenKey && settings.heygenAvatarId && settings.heygenVoiceId;
+    const hdOk = settings.hedraKey && settings.hedraActTwoModelId && (settings.hedraStartKeyframeId || settings.hedraStartKeyframeUrl) && settings.elevenLabsKey && settings.elevenLabsVoiceId;
+    if (!hgOk && !hdOk) missing.push('Either a complete HeyGen setup OR a complete Hedra+ElevenLabs setup');
+  }
+  const cnId = settings.defaultCinematicProvider;
+  if (cnId === 'hedra_character' || cnId === 'auto' || !cnId) {
+    if (!settings.hedraKey) missing.push('Hedra API key (for cinematic scenes)');
+    if (!settings.hedraCharacter2ModelId) missing.push('Hedra Character-2 model ID (tap "Fetch models")');
+    if (!settings.hedraStartKeyframeId && !settings.hedraStartKeyframeUrl) missing.push('Hedra reference photo (URL or asset ID)');
+  }
+  // Dedupe
+  const unique = Array.from(new Set(missing));
+  return { ok: unique.length === 0, missing: unique };
+}
+
 function KeyStatus({ state }) {
-  const { anthropicKey, heygenKey, heygenAvatarId, heygenVoiceId } = state.settings;
-  const ok = anthropicKey && heygenKey && heygenAvatarId && heygenVoiceId;
+  const { ok } = checkKeys(state.settings);
   return <span className="key-status"><span className={`dot ${ok?'ok':'bad'}`}></span>{ok?'Keys OK':'Keys missing'}</span>;
 }
 
@@ -638,6 +1801,7 @@ function NewVideoPage({ go }) {
   const [step, setStep] = useState(1);
   const [tone, setTone] = useState(state.settings.defaultTone || 'matStyle');
   const [platform, setPlatform] = useState('tiktok');
+  const [mood, setMood] = useState('neutral');
   const [ideas, setIdeas] = useState([]);
   const [topic, setTopic] = useState('');
   const [generating, setGenerating] = useState(false);
@@ -646,8 +1810,11 @@ function NewVideoPage({ go }) {
   const [scriptObj, setScriptObj] = useState(null);
   const [renderId, setRenderId] = useState(null);
   const [heygenSpeed, setHeygenSpeed] = useState(TONE_PRESETS[tone].speed);
-  const [polling, setPolling] = useState(false);
+  const [heygenPitch, setHeygenPitch] = useState(TONE_PRESETS[tone].pitch || 0);
   const [createdVideoId, setCreatedVideoId] = useState(null);
+  const [sampleUrl, setSampleUrl] = useState('');
+  const [sampling, setSampling] = useState(false);
+  const [sampleErr, setSampleErr] = useState('');
 
   const generateIdeas = async () => {
     setError(''); setGenerating(true);
@@ -658,6 +1825,7 @@ function NewVideoPage({ go }) {
         system: ideaSystemPrompt(state.settings),
         user: topic ? `Generate 6 ideas focused on: ${topic}` : 'Generate 6 fresh ideas now.',
         maxTokens: 1400,
+        settings: state.settings,
       });
       const parsed = tryParseJSON(out);
       if (!Array.isArray(parsed)) throw new Error('Could not parse ideas. Raw: ' + out.slice(0,200));
@@ -672,13 +1840,20 @@ function NewVideoPage({ go }) {
       const out = await callClaude({
         apiKey: state.settings.anthropicKey,
         model: state.settings.llmModel,
-        system: scriptSystemPrompt(state.settings, tone, platform),
+        system: scriptSystemPrompt(state.settings, tone, platform, mood),
         user: `Write the script for this idea:\nTitle: ${idea.title}\nHook: ${idea.hook}\nAngle: ${idea.angle}`,
-        maxTokens: 2400,
+        maxTokens: 3200,
+        settings: state.settings,
       });
       const parsed = tryParseJSON(out);
-      if (!parsed || !parsed.script) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
-      setScriptObj(parsed);
+      // New format: parsed.scenes[]. Old format: parsed.script (string). Accept either.
+      if (!parsed || (!parsed.scenes && !parsed.script)) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
+      // If LLM returned old format, migrate inline
+      const storyboard = parsed.scenes
+        ? { version: STORYBOARD_VERSION, ...parsed }
+        : migrateScriptToStoryboard(parsed);
+      // Stash combined object: storyboard + legacy fields for any code still reading them
+      setScriptObj({ ...parsed, storyboard, script: storyboardToFlatScript(storyboard) });
       setPicked(idea);
       setStep(3);
     } catch (e) { setError(e.message); }
@@ -686,15 +1861,24 @@ function NewVideoPage({ go }) {
   };
 
   const startRender = async () => {
+    if (!scriptObj?.storyboard) { setError('No storyboard. Regenerate the script.'); return; }
     setError(''); setGenerating(true);
     try {
-      // Persist video first as 'render' stage
+      // Pre-flight via cost estimator (also surfaces missing providers)
+      const cost = estimateStoryboardCost(scriptObj.storyboard, state.settings);
+      if (cost.unrenderableScenes.length) {
+        throw new Error(`No provider available for scene(s): ${cost.unrenderableScenes.join(', ')}. Configure a provider in Settings.`);
+      }
+
+      // Persist video first
       const id = uid();
+      const flatScript = storyboardToFlatScript(scriptObj.storyboard);
       const video = {
         id, createdAt:Date.now(), updatedAt:Date.now(),
         stage: 'render',
         idea: { ...picked, platform },
-        script: { text: scriptObj.script, durationSec: scriptObj.estimatedDurationSec, generatedAt: Date.now(), tone },
+        script: { text: flatScript, durationSec: storyboardDuration(scriptObj.storyboard), generatedAt: Date.now(), tone },
+        storyboard: scriptObj.storyboard,
         platforms: {
           tiktok:  { caption: scriptObj.captions?.tiktok || '', hashtags: scriptObj.hashtags?.tiktok || [], posted:false, postUrl:'', scheduledAt:null },
           reels:   { caption: scriptObj.captions?.reels  || '', hashtags: scriptObj.hashtags?.reels  || [], posted:false, postUrl:'', scheduledAt:null },
@@ -702,68 +1886,85 @@ function NewVideoPage({ go }) {
           long:    { caption: scriptObj.captions?.long   || '', hashtags: scriptObj.hashtags?.long   || [], posted:false, postUrl:'', scheduledAt:null, title: scriptObj.title || '' },
         },
         broll: scriptObj.broll || [],
-        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', speed: heygenSpeed, aspect: PLATFORMS[platform].aspect },
+        render: {
+          status: 'queued',
+          jobs: [],
+          estimatedCostGBP: cost.total,
+          providersUsed: Object.keys(cost.byProvider),
+          aspect: PLATFORMS[platform].aspect,
+          startedAt: Date.now(),
+        },
+        // Legacy field for backward-compat with existing UI code
+        heygen: { videoId:'', status:'queued', videoUrl:'', thumbnailUrl:'', error:'', aspect: PLATFORMS[platform].aspect },
       };
       dispatch({ type:'CREATE_VIDEO', video });
       setCreatedVideoId(id);
 
-      const videoId = await heygenGenerate({
-        apiKey: state.settings.heygenKey,
-        avatarId: state.settings.heygenAvatarId,
-        voiceId: state.settings.heygenVoiceId,
-        scriptText: scriptObj.script,
+      // Orchestrate
+      const { jobs } = await orchestrateRender({
+        storyboard: scriptObj.storyboard,
+        settings: state.settings,
         aspect: PLATFORMS[platform].aspect,
-        speed: heygenSpeed,
       });
-      dispatch({ type:'UPDATE_VIDEO', id, patch:{ heygen: { ...video.heygen, videoId, status:'processing' } } });
-      setRenderId(videoId);
+
+      // Only mirror jobId into the legacy v.heygen.videoId field when the
+      // first job is actually a HeyGen render — otherwise we'd pollute it
+      // with Hedra/Veo/Sora UUIDs and break legacy code paths (the
+      // "↗ HeyGen" deep-link, the legacy poll fallback, etc.).
+      const isHeyGenJob = jobs[0]?.provider === 'heygen';
+      dispatch({ type:'UPDATE_VIDEO', id, patch:{
+        render: { ...video.render, status: 'processing', jobs },
+        heygen: { ...video.heygen, videoId: isHeyGenJob ? (jobs[0]?.jobId || '') : '', status: 'processing' },
+      } });
+      setRenderId(jobs[0]?.jobId);
       setStep(4);
-      setPolling(true);
     } catch (e) {
       setError(e.message);
       if (createdVideoId) {
-        dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{ heygen:{ status:'failed', error:e.message } } });
+        dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
+          render: { status: 'failed', error: e.message },
+          heygen: { status: 'failed', error: e.message },
+        } });
       }
     } finally { setGenerating(false); }
   };
 
-  // Poll HeyGen status
-  useEffect(() => {
-    if (!polling || !renderId || !createdVideoId) return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const s = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: renderId });
-        if (cancelled) return;
-        const status = s.status;
-        if (status === 'completed') {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            stage:'approval',
-            heygen:{ videoId: renderId, status:'completed', videoUrl: s.video_url, thumbnailUrl: s.thumbnail_url, duration: s.duration, error:'' },
-          }});
-          setPolling(false);
-        } else if (status === 'failed') {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            heygen:{ videoId: renderId, status:'failed', error: s.error?.message || 'render failed', videoUrl:'', thumbnailUrl:'' },
-          }});
-          setPolling(false);
-        } else {
-          dispatch({ type:'UPDATE_VIDEO', id:createdVideoId, patch:{
-            heygen:{ videoId: renderId, status, error:'' },
-          }});
-        }
-      } catch (e) { console.warn(e); }
-    };
-    tick();
-    const iv = setInterval(tick, 8000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [polling, renderId, createdVideoId]);
-
   const reset = () => {
-    setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setPolling(false); setError('');
+    setStep(1); setIdeas([]); setTopic(''); setPicked(null); setScriptObj(null); setRenderId(null); setCreatedVideoId(null); setError('');
+    setSampleUrl(''); setSampleErr('');
   };
 
-  const keysOk = state.settings.anthropicKey && state.settings.heygenKey && state.settings.heygenAvatarId && state.settings.heygenVoiceId;
+  const renderSample = async () => {
+    if (!scriptObj?.script) return;
+    const missing = preflightRender(state.settings, scriptObj.script);
+    if (missing.length) { setSampleErr('Missing: ' + missing.join(', ')); return; }
+    setSampleErr(''); setSampleUrl(''); setSampling(true);
+    try {
+      // Take first ~30 words for a ~10-second sample
+      const words = scriptObj.script.split(/\s+/);
+      const sampleText = words.slice(0, 30).join(' ') + (words.length > 30 ? '…' : '');
+      const id = await heygenGenerate({
+        apiKey: state.settings.heygenKey,
+        avatarId: state.settings.heygenAvatarId,
+        voiceId: state.settings.heygenVoiceId,
+        scriptText: sampleText,
+        aspect: PLATFORMS[platform].aspect,
+        speed: heygenSpeed, pitch: heygenPitch,
+        settings: state.settings,
+      });
+      // Poll
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: id, settings: state.settings });
+        if (r.status === 'completed' && r.video_url) { setSampleUrl(r.video_url); break; }
+        if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
+      }
+    } catch (e) { setSampleErr(e.message); }
+    finally { setSampling(false); }
+  };
+
+  const keys = checkKeys(state.settings);
+  const keysOk = keys.ok;
 
   return (
     <div>
@@ -777,7 +1978,10 @@ function NewVideoPage({ go }) {
 
       {!keysOk && (
         <div className="alert alert-warn" style={{marginBottom:16}}>
-          API keys missing. Open <strong>Settings</strong> and add your Anthropic key, HeyGen key, avatar ID and voice ID before continuing.
+          <strong>Keys missing — check Settings:</strong>
+          <ul style={{margin:'6px 0 0 16px', padding:0, fontSize:13}}>
+            {keys.missing.map((m, i) => <li key={i}>{m}</li>)}
+          </ul>
         </div>
       )}
 
@@ -805,6 +2009,13 @@ function NewVideoPage({ go }) {
               </select>
               <div className="help">Script length and caption rules adapt to this. Other platforms get adapted captions automatically.</div>
             </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label className="label">Mood / angle</label>
+            <select value={mood} onChange={e=>setMood(e.target.value)}>
+              {Object.entries(MOOD_PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <div className="help">{MOOD_PRESETS[mood].desc}</div>
           </div>
           <button className="btn" onClick={() => setStep(2)} disabled={!keysOk}>Next: Pick an idea →</button>
         </div>
@@ -851,11 +2062,31 @@ function NewVideoPage({ go }) {
           <div style={{marginBottom:14}}>
             <label className="label">HeyGen voice speed: <strong>{heygenSpeed.toFixed(2)}x</strong></label>
             <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={heygenSpeed} onChange={e=>setHeygenSpeed(parseFloat(e.target.value))} />
-            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x. Slow for explainer, fast for hook-driven.</div>
+            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x.</div>
           </div>
+          <div style={{marginBottom:14}}>
+            <label className="label">HeyGen voice pitch: <strong>{heygenPitch > 0 ? '+' : ''}{heygenPitch}</strong></label>
+            <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
+            <div className="help">0 = neutral. Negative = deeper, positive = higher. Most cloned voices sound best at 0; only adjust if your clone is consistently too high or low.</div>
+          </div>
+          {state.settings.defaultTalkingHeadProvider === 'heygen' && (
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+              <button className="btn btn-outline btn-sm" onClick={renderSample} disabled={sampling || generating}>
+                {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s sample (1 credit)'}
+              </button>
+              <span className="help" style={{fontSize:11}}>Legacy HeyGen-only test. Skip — use full render.</span>
+            </div>
+          )}
+          {sampleErr && <div className="alert alert-err" style={{marginBottom:10}}>{sampleErr}</div>}
+          {sampleUrl && (
+            <div style={{marginBottom:14}}>
+              <video src={sampleUrl} controls style={{width:'100%',maxHeight:360,borderRadius:8,background:'#000'}} />
+              <div className="help" style={{marginTop:6}}>If the voice is wrong, try a different Voice ID in Settings, or adjust speed/pitch above and sample again.</div>
+            </div>
+          )}
           <div style={{display:'flex',gap:8}}>
-            <button className="btn" onClick={startRender} disabled={generating}>
-              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render with HeyGen'}
+            <button className="btn" onClick={startRender} disabled={generating || sampling}>
+              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render full video'}
             </button>
             <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
           </div>
@@ -866,16 +2097,23 @@ function NewVideoPage({ go }) {
         <div className="card">
           <div className="card-title">Step 4 · Rendering</div>
           <div style={{fontSize:14, marginBottom:14}}>
-            HeyGen is rendering your video. Typical wait: 1–4 minutes for 30–60 seconds.<br/>
+            Your video is rendering. Single-shot mode: typical wait 1–3 min queue + 30–60s render = roughly 3 min total.<br/>
             You can leave this page — when it's done it will appear in the <strong>Approval</strong> tab.
           </div>
           {createdVideoId && (() => {
             const v = state.videos.find(x => x.id===createdVideoId);
             if (!v) return null;
+            const jobs = v.render?.jobs;
+            const isSingleShot = jobs?.length === 1 && jobs[0].singleShot;
+            const statusLabel = isSingleShot
+              ? (jobs[0].status === 'completed' ? 'rendered' : (jobs[0].status === 'processing' ? 'rendering' : 'queued at Hedra'))
+              : jobs?.length
+                ? `${jobs.filter(j => j.status === 'completed').length}/${jobs.length} scenes done`
+                : (v.heygen?.status || 'queued');
             return (
               <div>
                 <div style={{marginBottom:12}}>
-                  Status: <span className="pill"><span className="spin" style={{marginRight:6}}></span>{v.heygen?.status || 'queued'}</span>
+                  Status: <span className="pill"><span className="spin" style={{marginRight:6}}></span>{statusLabel}</span>
                 </div>
                 {v.heygen?.videoUrl && (
                   <>
@@ -903,6 +2141,7 @@ function NewVideoPage({ go }) {
 
 function ApprovalPage({ go }) {
   const { state, dispatch } = useStore();
+  const [rerenderingId, setRerenderingId] = useState(null);
   const items = state.videos.filter(v => v.stage === 'approval' || v.stage === 'render');
 
   const approve = (v) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved' } });
@@ -910,6 +2149,70 @@ function ApprovalPage({ go }) {
     if (!confirm('Send back to script stage? You can edit and re-render.')) return;
     dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' } });
   };
+  const checkNow = async (v) => {
+    // NEW PATH: provider-aware polling for any multi-provider render
+    if (v.render?.jobs?.length) {
+      let updatedJobs = [...v.render.jobs];
+      let allDone = true, anyFailed = false;
+      for (let i = 0; i < updatedJobs.length; i++) {
+        const job = updatedJobs[i];
+        if (job.status === 'completed' || job.status === 'failed') continue;
+        const P = PROVIDERS[job.provider];
+        if (!P) { allDone = false; continue; }
+        try {
+          const upd = await P.pollJob({ jobId: job.jobId, settings: state.settings });
+          if (upd.status === 'completed' && upd.videoUrl) {
+            updatedJobs[i] = { ...job, status: 'completed', videoUrl: upd.videoUrl };
+          } else if (upd.status === 'failed') {
+            updatedJobs[i] = { ...job, status: 'failed', error: upd.error };
+            anyFailed = true;
+          } else {
+            updatedJobs[i] = { ...job, status: upd.status || 'processing' };
+            allDone = false;
+          }
+        } catch (e) {
+          updatedJobs[i] = { ...job, status: 'failed', error: e.message };
+          anyFailed = true;
+        }
+      }
+      if (allDone) {
+        const successful = updatedJobs.filter(j => j.status === 'completed');
+        if (successful.length === updatedJobs.length) {
+          const primaryUrl = successful[0].videoUrl;
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            stage: 'approval',
+            render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
+            heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
+          }});
+        } else if (anyFailed) {
+          const errs = updatedJobs.filter(j => j.status === 'failed').map(j => j.error).join('; ');
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            render: { ...v.render, status: 'failed', jobs: updatedJobs, error: errs },
+            heygen: { ...v.heygen, status: 'failed', error: errs },
+          }});
+        }
+      } else {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render: { ...v.render, jobs: updatedJobs } } });
+      }
+      return;
+    }
+    // LEGACY PATH: only true-legacy videos (no v.render) with a real HeyGen jobId
+    if (!v.heygen?.videoId || !state.settings.heygenKey) return;
+    try {
+      const r = await heygenStatus({ apiKey: state.settings.heygenKey, videoId: v.heygen.videoId, settings: state.settings });
+      if (r.status === 'completed' && r.video_url) {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+          stage:'approval',
+          heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
+        }});
+      } else if (r.status === 'failed') {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status:'failed', error: r.error?.message || 'render failed' } } });
+      } else if (r.status) {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+      }
+    } catch (e) { alert('Status check failed: ' + e.message); }
+  };
+  const del = (v) => { if (confirm(`Delete "${v.idea?.title || 'this video'}"? Cannot be undone.`)) dispatch({ type:'DELETE_VIDEO', id:v.id }); };
 
   return (
     <div>
@@ -929,31 +2232,207 @@ function ApprovalPage({ go }) {
                 <span className={stageBadgeCls(v.stage)}>{v.stage}</span> · {v.idea?.platform || '—'} · {v.script?.tone || '—'} · {fmt(v.updatedAt)}
               </div>
             </div>
-            {v.stage === 'approval' && (
-              <div style={{display:'flex',gap:8}}>
+            <div style={{display:'flex',gap:8, flexWrap:'wrap'}}>
+              {v.stage === 'approval' && <>
+                <button className="btn btn-ghost btn-sm" onClick={() => setRerenderingId(rerenderingId===v.id?null:v.id)}>↻ Re-render</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => reject(v)}>Send back</button>
                 <button className="btn btn-sm" onClick={() => approve(v)}>✓ Approve</button>
-              </div>
-            )}
+              </>}
+              {v.heygen?.videoId && (!v.render || v.render.jobs?.[0]?.provider === 'heygen') && (
+                <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${v.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>
+              )}
+              <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => del(v)}>× Delete</button>
+            </div>
           </div>
+          {rerenderingId === v.id && <RerenderControls video={v} onClose={()=>setRerenderingId(null)} />}
           {v.heygen?.videoUrl ? (
             <video src={v.heygen.videoUrl} controls className="preview-vid" />
-          ) : (
-            <div className="alert alert-warn">
-              {v.heygen?.status === 'failed'
-                ? `Render failed: ${v.heygen.error || 'unknown error'}`
-                : <><span className="spin"></span> Rendering ({v.heygen?.status || 'queued'})… polls every 8 seconds.</>}
-              {v.heygen?.status === 'failed' && (
-                <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
-              )}
-            </div>
-          )}
+          ) : (() => {
+            const jobs = v.render?.jobs;
+            const failed = jobs?.length ? jobs.filter(j => j.status === 'failed') : null;
+            const isFailed = (failed?.length > 0) || v.heygen?.status === 'failed';
+            const errMsg = isFailed
+              ? (failed?.length ? failed.map(j => j.error).join('; ') : (v.heygen?.error || 'unknown error'))
+              : '';
+            // Single-shot: one job covers every scene. Show different copy.
+            const isSingleShot = jobs?.length === 1 && jobs[0].singleShot;
+            const sceneCount = v.storyboard?.scenes?.length ?? jobs?.[0]?.sceneIds?.length ?? 0;
+            let breakdown = null;
+            if (jobs?.length) {
+              const done = jobs.filter(j => j.status === 'completed').length;
+              const proc = jobs.filter(j => j.status === 'processing').length;
+              const queued = jobs.filter(j => !j.status || j.status === 'pending' || j.status === 'queued').length;
+              const fail = jobs.filter(j => j.status === 'failed').length;
+              breakdown = { done, proc, queued, fail, total: jobs.length };
+            }
+            const progressText = isSingleShot
+              ? (jobs[0].status === 'processing' ? `Rendering whole video (${sceneCount} scenes in one shot)…`
+                  : jobs[0].status === 'completed' ? `Render complete.`
+                  : jobs[0].status === 'failed' ? `Render failed.`
+                  : `Queued at Hedra (one-shot render of ${sceneCount} scenes)…`)
+              : breakdown
+                ? `${breakdown.done}/${breakdown.total} scenes complete`
+                  + (breakdown.proc ? ` · ${breakdown.proc} rendering` : '')
+                  + (breakdown.queued ? ` · ${breakdown.queued} queued at Hedra` : '')
+                  + (breakdown.fail ? ` · ${breakdown.fail} failed` : '')
+                : `Rendering (${v.heygen?.status || 'queued'})…`;
+            const allQueued = breakdown && breakdown.queued === breakdown.total;
+            const startedAt = v.render?.startedAt;
+            const minsWaiting = startedAt ? Math.floor((Date.now() - startedAt) / 60000) : null;
+            const hint = isSingleShot && allQueued
+              ? `One job for the entire video — typical wait 1–3 min on Hedra standard tier${minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}.`
+              : (allQueued ? `All scenes accepted by Hedra and waiting to start. Per-scene fallback: queue is 2–10 min × ${breakdown?.total || ''} scenes${minsWaiting != null ? ` · waiting ${minsWaiting} min` : ''}.` : null);
+            const cancel = () => {
+              if (!confirm('Abandon this render? You can re-render from the script stage.')) return;
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage:'script',
+                render: v.render ? { ...v.render, status:'cancelled', jobs: (v.render.jobs||[]).map(j => ({ ...j, status:'failed', error:'cancelled by user' })) } : v.render,
+                heygen: { ...v.heygen, status:'failed', error:'cancelled by user' },
+              }});
+            };
+            return (
+              <div className="alert alert-warn">
+                {isFailed ? `Render failed: ${errMsg}` : <><span className="spin"></span> {progressText} · auto-polls every 8s.</>}
+                {!isFailed && hint && (
+                  <div style={{fontSize:11, color:'var(--muted)', marginTop:6, lineHeight:1.4}}>
+                    {hint} Tap 🐞 (bottom-right) to inspect raw status.
+                  </div>
+                )}
+                {isFailed
+                  ? <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => dispatch({type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' }})}>Back to script</button>
+                  : <>
+                      <button className="btn btn-ghost btn-sm" style={{marginLeft:10}} onClick={() => checkNow(v)}>↻ Check now</button>
+                      <button className="btn btn-ghost btn-sm" style={{marginLeft:6, color:'var(--danger)'}} onClick={cancel}>× Abandon</button>
+                    </>}
+              </div>
+            );
+          })()}
+          {v.storyboard?.scenes?.length ? (
+            <StoryboardPreview storyboard={v.storyboard} jobs={v.render?.jobs} settings={state.settings} />
+          ) : null}
           <details>
-            <summary>View script ({wordCount(v.script?.text)} words)</summary>
+            <summary>View flat script ({wordCount(v.script?.text)} words)</summary>
             <pre className="script-text" style={{marginTop:8}}>{v.script?.text}</pre>
           </details>
         </div>
       ))}
+    </div>
+  );
+}
+
+function StoryboardPreview({ storyboard, jobs = [], settings }) {
+  const cost = useMemo(() => settings ? estimateStoryboardCost(storyboard, settings) : null, [storyboard, settings]);
+  const jobBySceneId = {};
+  for (const j of jobs || []) for (const sid of (j.sceneIds || [])) jobBySceneId[sid] = j;
+  // Single-shot detection — when one job covers every scene, the rendered
+  // output is ONE continuous video, not N separate clips. The main player
+  // on the Approval card already shows it; we suppress per-scene playback
+  // here to avoid duplicating the same video N times in the storyboard.
+  const isSingleShot = jobs.length === 1 && jobs[0]?.singleShot;
+  return (
+    <details open style={{marginTop:10, marginBottom:10}}>
+      <summary>Scenes ({storyboard.scenes.length}) · {storyboardDuration(storyboard)}s
+        {cost ? <span style={{color:'var(--muted)', marginLeft:8}}>· est £{cost.total.toFixed(2)} via {Object.values(cost.byProvider).map(p=>p.name).join(' + ') || '—'}</span> : null}
+        {isSingleShot ? <span style={{color:'var(--muted)', marginLeft:8}}>· single-shot render (one continuous video; player above)</span> : null}
+      </summary>
+      <div style={{display:'grid', gap:8, marginTop:8}}>
+        {storyboard.scenes.map((sc, i) => {
+          const job = jobBySceneId[sc.id];
+          const provider = sc.providerOverride
+            ? PROVIDERS[sc.providerOverride]?.name
+            : (settings ? pickProviderForScene(sc, settings)?.name : null);
+          return (
+            <div key={sc.id} style={{padding:10, background:'var(--card2)', borderRadius:8, fontSize:12}}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                <span className="pill" style={{background: sc.type==='cinematic' ? 'rgba(255,169,77,0.18)' : 'rgba(155,180,255,0.15)', color: sc.type==='cinematic' ? 'var(--warn)' : '#9BB4FF'}}>{i+1}. {sc.type}</span>
+                <span style={{color:'var(--muted)'}}>{sc.durationSec}s</span>
+                {provider && <span style={{color:'var(--muted)'}}>→ {provider}</span>}
+                {job?.status && (
+                  <span className="pill" style={{marginLeft:'auto', background: job.status === 'failed' ? 'rgba(232,77,82,0.15)' : (job.status === 'completed' ? 'rgba(45,194,107,0.15)' : 'rgba(255,255,255,0.06)'), color: job.status === 'failed' ? 'var(--danger)' : (job.status === 'completed' ? 'var(--success,#2DC26B)' : 'var(--muted)')}}>{job.status}</span>
+                )}
+              </div>
+              <div style={{marginBottom:4}}><strong>Dialogue:</strong> {sc.dialogue}</div>
+              {sc.visualPrompt && <div style={{color:'var(--text-dim)', marginBottom:4}}><strong>Visual:</strong> {sc.visualPrompt}</div>}
+              {sc.textOverlay && <div style={{color:'var(--text-dim)'}}><strong>Overlay:</strong> "{sc.textOverlay}"</div>}
+              {(sc.avatarPosition || sc.avatarScale) && sc.type === 'talking-head' && (
+                <div style={{color:'var(--muted)', fontSize:11, marginTop:4}}>position: {sc.avatarPosition || 'center'} · scale: {sc.avatarScale || 'medium'}</div>
+              )}
+              {job?.error && (
+                <div style={{marginTop:6, padding:6, borderRadius:6, background:'rgba(232,77,82,0.08)', color:'var(--danger)', fontSize:11}}>
+                  <strong>Error:</strong> {job.error}
+                </div>
+              )}
+              {job?.videoUrl && !isSingleShot && (
+                <video src={job.videoUrl} controls className="preview-vid" style={{marginTop:8, maxHeight:200}} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+function RerenderControls({ video, onClose }) {
+  const { state, dispatch } = useStore();
+  const [speed, setSpeed] = useState(video.heygen?.speed ?? 1.0);
+  const [pitch, setPitch] = useState(video.heygen?.pitch ?? 0);
+  const [voiceId, setVoiceId] = useState(state.settings.heygenVoiceId);
+  const [script, setScript] = useState(video.script?.text || '');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+
+  const start = async () => {
+    const missing = preflightRender({ ...state.settings, heygenVoiceId: voiceId }, script);
+    if (missing.length) { setErr('Missing: ' + missing.join(', ')); return; }
+    setErr(''); setSubmitting(true);
+    try {
+      const newVideoId = await heygenGenerate({
+        apiKey: state.settings.heygenKey,
+        avatarId: state.settings.heygenAvatarId,
+        voiceId,
+        scriptText: script,
+        aspect: video.heygen?.aspect || PLATFORMS[video.idea?.platform || 'tiktok'].aspect,
+        speed, pitch,
+        settings: state.settings,
+      });
+      dispatch({ type:'UPDATE_VIDEO', id:video.id, patch:{
+        stage:'render',
+        script: { ...video.script, text: script, updatedAt: Date.now() },
+        heygen: { videoId: newVideoId, status:'processing', videoUrl:'', thumbnailUrl:'', error:'', speed, pitch, aspect: video.heygen?.aspect },
+      }});
+      onClose();
+    } catch (e) { setErr(e.message); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <div style={{marginTop:12, padding:14, border:'1px dashed var(--border)', borderRadius:8, background:'var(--card2)'}}>
+      <div className="card-title">Re-render with new settings</div>
+      <div className="grid2" style={{marginBottom:10}}>
+        <div>
+          <label className="label">Speed: {speed.toFixed(2)}x</label>
+          <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={speed} onChange={e=>setSpeed(parseFloat(e.target.value))} />
+        </div>
+        <div>
+          <label className="label">Pitch: {pitch>0?'+':''}{pitch}</label>
+          <input type="range" className="slider" min="-50" max="50" step="5" value={pitch} onChange={e=>setPitch(parseInt(e.target.value))} />
+        </div>
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">Voice ID (override)</label>
+        <input value={voiceId} onChange={e=>setVoiceId(e.target.value)} placeholder="Leave as Settings default or paste a different voice ID" />
+      </div>
+      <div style={{marginBottom:10}}>
+        <label className="label">Script (edit in place)</label>
+        <textarea value={script} onChange={e=>setScript(e.target.value)} style={{minHeight:140}} />
+      </div>
+      {err && <div className="alert alert-err" style={{marginBottom:10}}>{err}</div>}
+      <div style={{display:'flex',gap:8}}>
+        <button className="btn btn-sm" onClick={start} disabled={submitting}>{submitting?<><span className="spin"></span> Sending…</>:'→ Re-render'}</button>
+        <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+      </div>
+      <div className="help" style={{marginTop:8}}>This burns another HeyGen credit. Original video will be replaced when the new render finishes.</div>
     </div>
   );
 }
@@ -1012,12 +2491,14 @@ function PublishCard({ video }) {
             {video.heygen?.aspect && <> · {video.heygen.aspect}</>}
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {video.heygen?.videoUrl && (
             <button className="btn btn-ghost btn-sm" onClick={() => downloadRemote(video.heygen.videoUrl, `${video.idea?.title?.slice(0,40).replace(/[^a-z0-9]+/gi,'_') || 'video'}.mp4`)}>
               ⬇ Download MP4
             </button>
           )}
+          {video.heygen?.videoId && <a className="btn btn-ghost btn-sm" href={`https://app.heygen.com/videos/${video.heygen.videoId}`} target="_blank" rel="noopener">↗ HeyGen</a>}
+          <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} onClick={() => { if(confirm(`Delete "${video.idea?.title || 'this video'}"? Cannot be undone.`)) dispatch({ type:'DELETE_VIDEO', id:video.id }); }}>× Delete</button>
         </div>
       </div>
 
@@ -1061,7 +2542,7 @@ function PublishCard({ video }) {
 
         <details style={{marginBottom:10}}>
           <summary>Preview full post (with disclaimer)</summary>
-          <pre className="script-text" style={{marginTop:8, padding:10, background:'var(--surface)', borderRadius:6}}>{fullCaption}</pre>
+          <pre className="script-text" style={{marginTop:8, padding:10, background:'var(--card2)', borderRadius:6}}>{fullCaption}</pre>
         </details>
 
         <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
@@ -1095,7 +2576,7 @@ function BrollSearch({ queries, pexelsKey }) {
   useEffect(() => {
     if (!pexelsKey || !active) { setResults([]); return; }
     setLoading(true); setErr('');
-    pexelsSearch({ apiKey: pexelsKey, query: active })
+    pexelsSearch({ apiKey: pexelsKey, query: active, settings: state.settings })
       .then(r => setResults(r.videos || []))
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
@@ -1180,7 +2661,7 @@ function CalendarPage() {
               </div>
               {dayItems.length===0 && <div style={{fontSize:11, color:'var(--muted)'}}>—</div>}
               {dayItems.map(({video, platform, time}, i) => (
-                <div key={i} style={{fontSize:11, padding:6, background:'var(--surface)', borderRadius:6, marginBottom:6, lineHeight:1.4}}>
+                <div key={i} style={{fontSize:11, padding:6, background:'var(--card2)', borderRadius:6, marginBottom:6, lineHeight:1.4}}>
                   <div style={{color:'var(--accent)', fontWeight:600}}>{PLATFORMS[platform].name}</div>
                   <div>{new Date(time).toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}</div>
                   <div style={{color:'var(--text-dim)', marginTop:3}}>{video.idea?.title?.slice(0,40)}…</div>
@@ -1220,11 +2701,407 @@ function CalendarPage() {
 // PAGE: SETTINGS
 // ============================================================================
 
+function DebugLogCard() {
+  const [tick, setTick] = useState(0);
+  const [auto, setAuto] = useState(true);
+  useEffect(() => {
+    if (!auto) return;
+    const iv = setInterval(() => setTick(t => t + 1), 2000);
+    return () => clearInterval(iv);
+  }, [auto]);
+  const log = getDebugLog();
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">🐞 Debug Log (last {log.length} provider calls)</div>
+      <div className="help" style={{marginBottom:10}}>
+        Every API call FinCast makes shows here in real-time. If a render fails, the error appears below — copy it and send to support. Auto-refreshes every 2s.
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAuto(a => !a)}>{auto ? '⏸ Pause' : '▶ Resume'} auto-refresh</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { clearDebugLog(); setTick(t => t + 1); }}>🗑 Clear log</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(JSON.stringify(log, null, 2)); }}>📋 Copy log as JSON</button>
+      </div>
+      {log.length === 0 ? (
+        <div className="empty" style={{textAlign:'center', padding:20, fontSize:12, color:'var(--muted)'}}>No log entries yet. Trigger a render to see calls land here.</div>
+      ) : (
+        <div style={{maxHeight:400, overflowY:'auto', fontFamily:'ui-monospace,monospace', fontSize:11}}>
+          {log.map((e, i) => {
+            const isError = e.action.includes('error') || e.action.includes('failed');
+            return (
+              <div key={i} style={{padding:'6px 8px', background: isError ? 'rgba(255,80,80,0.08)' : 'var(--card2)', borderRadius:6, marginBottom:4, borderLeft: isError ? '3px solid var(--danger)' : '3px solid transparent'}}>
+                <div style={{color: isError ? 'var(--danger)' : 'var(--text-dim)'}}>
+                  <strong>{new Date(e.ts).toLocaleTimeString()}</strong> · <strong>{e.provider}</strong> · {e.action}
+                </div>
+                <div style={{color:'var(--text)', wordBreak:'break-all', whiteSpace:'pre-wrap', marginTop:2}}>{e.detail}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HedraUploadPhotoButton({ settings, set }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef(null);
+  const handle = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setErr(''); setBusy(true);
+    try {
+      const assetId = await hedraUploadImage(file, settings, file.name);
+      set({ hedraStartKeyframeId: assetId, hedraStartKeyframeUrl: '' });
+      alert(`Uploaded. Asset ID saved: ${assetId}`);
+    } catch (ex) { setErr(ex.message); alert('Upload failed: ' + ex.message); }
+    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  return (
+    <>
+      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={handle} />
+      <button className="btn btn-ghost btn-sm" disabled={busy || !settings.hedraKey} onClick={() => fileRef.current?.click()}>
+        {busy ? <><span className="spin"></span> Uploading…</> : '📷 Upload reference photo'}
+      </button>
+    </>
+  );
+}
+
+function HedraFetchModelsButton({ settings, set }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [models, setModels] = useState(null);
+  const fetchModels = async () => {
+    setErr(''); setBusy(true);
+    try {
+      const list = await hedraListModels(settings);
+      setModels(list);
+      // Auto-pick: find Character-2 / Act-Two by name pattern
+      const pickByName = (substrings) => list.find(m => {
+        const n = (m.name || m.display_name || '').toLowerCase();
+        return substrings.every(s => n.includes(s));
+      });
+      const charModel = pickByName(['character']) || pickByName(['char-2']) || pickByName(['c2']);
+      const actModel = pickByName(['act']) || pickByName(['lip']);
+      const patch = {};
+      if (charModel?.id) patch.hedraCharacter2ModelId = charModel.id;
+      if (actModel?.id) patch.hedraActTwoModelId = actModel.id;
+      if (Object.keys(patch).length) set(patch);
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <button className="btn btn-sm" onClick={fetchModels} disabled={busy || !settings.hedraKey}>
+        {busy ? <><span className="spin"></span> Fetching…</> : '↻ Fetch Hedra models'}
+      </button>
+      {err && <div className="alert alert-err" style={{marginTop:6, fontSize:11}}>{err}</div>}
+      {models && (
+        <div style={{marginTop:8, fontSize:11, color:'var(--text-dim)'}}>
+          Found {models.length} model(s). Click a row to set Act-Two or Character-2 manually:
+          <div style={{maxHeight:160,overflowY:'auto',marginTop:4}}>
+            {models.map((m, i) => (
+              <div key={m.id || i} style={{padding:'4px 6px',background:'var(--card2)',borderRadius:4,marginBottom:2,display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{flex:1}}><strong>{m.name || m.display_name || 'Unnamed'}</strong> <code style={{fontSize:10}}>{(m.id||'').slice(0,16)}…</code></span>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 6px'}} onClick={() => set({ hedraActTwoModelId: m.id })}>Use as Act-Two</button>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:10,padding:'2px 6px'}} onClick={() => set({ hedraCharacter2ModelId: m.id })}>Use as Character-2</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhaseThreeProvidersCard() {
+  const { state, dispatch } = useStore();
+  const s = state.settings;
+  const set = (patch) => dispatch({ type: 'SET_SETTINGS', patch });
+  const [showKeys, setShowKeys] = useState(false);
+
+  const allProviders = Object.values(PROVIDERS).map(P => ({ P, avail: P.availability(s) }));
+  const talkingProviders = allProviders.filter(({ P }) => P.caps.talkingHead);
+  const cinematicProviders = allProviders.filter(({ P }) => P.caps.cinematic);
+
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">Phase 3 · Multi-Provider Video Stack</div>
+      <div className="help" style={{marginBottom:14}}>
+        FinCast routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
+      </div>
+
+      {/* Higgsfield — top priority cinematic provider */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: s.higgsfieldKey ? '1.5px solid var(--accent)' : '1.5px solid transparent'}}>
+        <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
+          🎬 Higgsfield · Seedance 2.0 Ultra
+          {s.higgsfieldKey && <span style={{fontSize:11, background:'var(--accent)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · TOP PRIORITY</span>}
+        </div>
+        <div className="help" style={{marginBottom:10}}>
+          Cinematic-quality AI video at <strong>$9/mo</strong> — the cheapest path to walking-shot, environment, multi-angle renders matching the Veo 3 reference quality. When your key is set here, FinCast routes all cinematic scenes through Higgsfield first, before any other provider.
+          <br />
+          <strong>Get your key:</strong> <a href="https://higgsfield.ai" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>higgsfield.ai</a> → Dashboard → API Keys
+        </div>
+        <div className="grid2">
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Higgsfield API key</label>
+            <input type={showKeys?'text':'password'} value={s.higgsfieldKey} onChange={e=>set({ higgsfieldKey:e.target.value })} placeholder="hf_... or sk_..." />
+            <div className="help">Paste your key — FinCast immediately routes renders through Higgsfield.</div>
+          </div>
+          <div>
+            <label className="label">Model</label>
+            <select value={s.higgsfieldModel || 'seedance-2-ultra'} onChange={e=>set({ higgsfieldModel:e.target.value })}>
+              <option value="seedance-2-ultra">Seedance 2.0 Ultra (recommended)</option>
+              <option value="seedance-2">Seedance 2.0 Standard</option>
+              <option value="cinema-3-5">Cinema Studio 3.5</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ElevenLabs (provider-agnostic voice) */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🎙️ ElevenLabs (voice — used by all video providers)</div>
+        <div className="grid2">
+          <div>
+            <label className="label">ElevenLabs API key</label>
+            <input type={showKeys?'text':'password'} value={s.elevenLabsKey} onChange={e=>set({ elevenLabsKey:e.target.value })} placeholder="sk_..." />
+            <div className="help">elevenlabs.io → Profile → API Keys.</div>
+          </div>
+          <div>
+            <label className="label">ElevenLabs Voice ID (your PVC)</label>
+            <input value={s.elevenLabsVoiceId} onChange={e=>set({ elevenLabsVoiceId:e.target.value })} placeholder="21m00Tcm4TlvDq8ikWAM" />
+            <div className="help">From Voice Lab → your trained voice → copy ID under name.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hedra */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🎬 Hedra (talking-head + cinematic) — recommended primary provider</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Hedra API key</label>
+            <input type={showKeys?'text':'password'} value={s.hedraKey} onChange={e=>set({ hedraKey:e.target.value })} placeholder="hdr_..." />
+            <div className="help">Hedra → Profile (E icon) → Settings → API → Create new key.</div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Hedra reference photo URL (start_keyframe_url)</label>
+            <input value={s.hedraStartKeyframeUrl} onChange={e=>set({ hedraStartKeyframeUrl:e.target.value })} placeholder="https://i.imgur.com/your-photo.jpg or any public URL" />
+            <div className="help">
+              Hedra's API uses an IMAGE (not a "Character") as the visual anchor. Either:
+              <ul style={{margin:'4px 0 0 16px',padding:0}}>
+                <li><strong>Quick:</strong> upload a photo of you to imgur/Drive/etc., make it public, paste URL here</li>
+                <li><strong>Or:</strong> tap "Upload reference photo" below to upload a local file → asset ID is saved automatically</li>
+              </ul>
+            </div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Hedra start_keyframe_id (uploaded asset, optional)</label>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <input value={s.hedraStartKeyframeId} onChange={e=>set({ hedraStartKeyframeId:e.target.value })} placeholder="set automatically when you upload — or paste an existing asset ID" style={{flex:1}} />
+              <HedraUploadPhotoButton settings={s} set={set} />
+            </div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <HedraFetchModelsButton settings={s} set={set} />
+            <div style={{marginTop:8,display:'grid',gap:8,gridTemplateColumns:'1fr 1fr'}}>
+              <div>
+                <label className="label">Act-Two model ID</label>
+                <input value={s.hedraActTwoModelId} onChange={e=>set({ hedraActTwoModelId:e.target.value })} placeholder="auto-populated by Fetch models" />
+              </div>
+              <div>
+                <label className="label">Character-2 model ID</label>
+                <input value={s.hedraCharacter2ModelId} onChange={e=>set({ hedraCharacter2ModelId:e.target.value })} placeholder="auto-populated by Fetch models" />
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="label">Hedra base URL (advanced)</label>
+            <input value={s.hedraBaseUrl} onChange={e=>set({ hedraBaseUrl:e.target.value })} placeholder="https://api.hedra.com/web-app/public" />
+            <div className="help">Verified default: <code>api.hedra.com/web-app/public</code></div>
+          </div>
+          <div>
+            <label className="label">Hedra auth scheme</label>
+            <select value={s.hedraAuthScheme || 'x-api-key'} onChange={e=>set({ hedraAuthScheme:e.target.value })}>
+              <option value="x-api-key">X-API-Key (verified — required)</option>
+              <option value="bearer">Authorization: Bearer (rejected by Hedra)</option>
+            </select>
+            <div className="help">Hedra public API requires X-API-Key. Bearer is rejected.</div>
+          </div>
+          <div style={{gridColumn:'1/-1', padding:10, background:'rgba(155,180,255,0.08)', borderRadius:8, marginTop:6}}>
+            <label className="label" style={{fontWeight:600, fontSize:13}}>FinCast Worker URL · REQUIRED for Hedra + ElevenLabs</label>
+            <input value={s.workerUrl} onChange={e=>set({ workerUrl:e.target.value })} placeholder="https://fincast-worker.your-account.workers.dev" />
+            <div className="help" style={{marginTop:8}}>
+              Why: Hedra and ElevenLabs both have CORS allowlists — browsers can't call them directly. The FinCast Worker is a free Cloudflare proxy that solves this for ALL providers in one move.
+              <br /><br />
+              <strong>Deploy in 5 minutes (mobile-friendly):</strong>
+              <ol style={{margin:'4px 0 0 18px',padding:0}}>
+                <li>Tap <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/etblues449/Faceless-Finance/tree/Faceless-Finance-App/worker" target="_blank" rel="noopener" style={{color:'var(--accent)',textDecoration:'underline',fontWeight:600}}>Deploy to Cloudflare</a> (one-click; sign in with email; deploys for free)</li>
+                <li>Cloudflare gives you a URL like <code>https://fincast-worker.you.workers.dev</code></li>
+                <li>Paste it above — no trailing slash needed</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stub providers */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>🔮 Future providers (stubs — paste key to activate when API matures)</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Google Vertex AI key (Veo 3)</label>
+            <input type={showKeys?'text':'password'} value={s.veoKey} onChange={e=>set({ veoKey:e.target.value })} placeholder="ya29... or service-account JSON" />
+          </div>
+          <div>
+            <label className="label">Google Cloud Project ID</label>
+            <input value={s.veoProjectId} onChange={e=>set({ veoProjectId:e.target.value })} placeholder="my-fincast-project" />
+          </div>
+          <div>
+            <label className="label">OpenAI API key (Sora 2)</label>
+            <input type={showKeys?'text':'password'} value={s.openaiKey} onChange={e=>set({ openaiKey:e.target.value })} placeholder="sk-..." />
+          </div>
+          <div>
+            <label className="label">Runway API key (Gen-4)</label>
+            <input type={showKeys?'text':'password'} value={s.runwayKey} onChange={e=>set({ runwayKey:e.target.value })} placeholder="rw_..." />
+          </div>
+        </div>
+        <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise.</div>
+      </div>
+
+      {/* Character Bible — locked persona description prepended to every cinematic prompt */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
+        <div style={{fontWeight:600, marginBottom:8}}>📖 Character Bible (locks your AI persona across every cinematic generation)</div>
+        <div className="help" style={{marginBottom:8}}>
+          One paragraph describing how your character should look. Auto-prepended to every cinematic prompt sent to Hedra / Veo / Sora / Runway. Write it once, use it forever — every cinematic shot stays visually consistent.
+        </div>
+        <textarea
+          value={s.characterBible}
+          onChange={e=>set({ characterBible: e.target.value })}
+          placeholder="e.g. Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm."
+          style={{minHeight:90, fontFamily:'inherit'}}
+        />
+        <div className="help" style={{marginTop:6}}>
+          Tips: be specific and visual. Mention features that uniquely identify your persona. Avoid abstract traits ("confident", "trustworthy") — only physical descriptors.
+        </div>
+      </div>
+
+      {/* Provider preferences */}
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600, marginBottom:8}}>⚙️ Provider preferences</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Default talking-head provider</label>
+            <select value={s.defaultTalkingHeadProvider} onChange={e=>set({ defaultTalkingHeadProvider:e.target.value })}>
+              <option value="auto">Auto (cheapest available)</option>
+              {talkingProviders.map(({ P, avail }) => (
+                <option key={P.id} value={P.id} disabled={!avail.available}>
+                  {P.name}{!avail.available ? ` — needs ${avail.missing.join(', ')}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Default cinematic provider</label>
+            <select value={s.defaultCinematicProvider} onChange={e=>set({ defaultCinematicProvider:e.target.value })}>
+              <option value="auto">Auto (cheapest available)</option>
+              {cinematicProviders.map(({ P, avail }) => (
+                <option key={P.id} value={P.id} disabled={!avail.available}>
+                  {P.name}{!avail.available ? ` — needs ${avail.missing.join(', ')}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Cost cap per video (£)</label>
+            <input type="number" min="0" step="0.50" value={s.costCapPerVideoGBP} onChange={e=>set({ costCapPerVideoGBP: parseFloat(e.target.value) || 0 })} />
+            <div className="help">Render refuses if estimated cost exceeds this. 0 = unlimited.</div>
+          </div>
+          <div style={{gridColumn:'1 / -1'}}>
+            <label className="label" style={{display:'flex', alignItems:'center', gap:8}}>
+              <input type="checkbox" checked={s.singleShotRender !== false} onChange={e=>set({ singleShotRender: e.target.checked })} style={{width:'auto'}} />
+              <span>Single-shot render (recommended)</span>
+            </label>
+            <div className="help">
+              Bundle every scene into ONE Hedra Act-Two job. Reduces queue wait from N&times;(queue+render) to 1&times;(queue+render) — roughly 6&times; faster on a 6-scene video. Active when total duration ≤ 60s and Hedra+ElevenLabs are configured. Uncheck only if you specifically want per-scene cinematic intercuts (and are willing to wait 20–40 min per render).
+            </div>
+          </div>
+          <div>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setShowKeys(v=>!v)}>{showKeys ? 'Hide' : 'Show'} provider keys</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Provider status overview */}
+      <div style={{marginTop:8, padding:10, background:'var(--bg)', borderRadius:8, border:'1px solid var(--border)'}}>
+        <div style={{fontSize:12, color:'var(--muted)', marginBottom:6}}>Provider status</div>
+        <div style={{display:'grid', gap:4, fontSize:12}}>
+          {allProviders.map(({ P, avail }) => (
+            <div key={P.id} style={{display:'flex', alignItems:'center', gap:8}}>
+              <span style={{width:10,height:10,borderRadius:5,background: avail.available ? 'var(--accent)' : 'var(--muted)'}} />
+              <strong>{P.name}</strong>
+              <span style={{color:'var(--muted)'}}>
+                {[
+                  P.caps.talkingHead && 'talking-head',
+                  P.caps.cinematic && 'cinematic',
+                  P.caps.lipSync && 'lip-sync',
+                  P.caps.characterRef && 'char-ref',
+                ].filter(Boolean).join(' · ')}
+              </span>
+              {!avail.available && <span style={{marginLeft:'auto', color:'var(--muted)', fontSize:11}}>missing: {avail.missing.join(', ')}</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { state, dispatch } = useStore();
   const s = state.settings;
   const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
   const [showKeys, setShowKeys] = useState(false);
+  const [avatars, setAvatars] = useState(null);
+  const [voices, setVoices] = useState(null);
+  const [fetching, setFetching] = useState('');
+  const [fetchErr, setFetchErr] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testUrl, setTestUrl] = useState('');
+  const [testText, setTestText] = useState("Hi, this is a quick voice test. The numbers are twelve thousand five hundred and seventy.");
+  const [testErr, setTestErr] = useState('');
+
+  const fetchAvatars = async () => {
+    setFetching('avatars'); setFetchErr('');
+    try { setAvatars(await heygenListAvatars({ apiKey: s.heygenKey, settings: s })); }
+    catch (e) { setFetchErr(e.message); }
+    finally { setFetching(''); }
+  };
+  const fetchVoices = async () => {
+    setFetching('voices'); setFetchErr('');
+    try { setVoices(await heygenListVoices({ apiKey: s.heygenKey, settings: s })); }
+    catch (e) { setFetchErr(e.message); }
+    finally { setFetching(''); }
+  };
+
+  const testVoice = async () => {
+    setTesting(true); setTestErr(''); setTestUrl('');
+    try {
+      const id = await heygenGenerate({
+        apiKey: s.heygenKey, avatarId: s.heygenAvatarId, voiceId: s.heygenVoiceId,
+        scriptText: testText, aspect:'9:16', speed: 1.0, pitch: 0, settings: s,
+      });
+      // Poll until complete
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        const r = await heygenStatus({ apiKey: s.heygenKey, videoId: id, settings: s });
+        if (r.status === 'completed' && r.video_url) { setTestUrl(r.video_url); break; }
+        if (r.status === 'failed') throw new Error(r.error?.message || 'render failed');
+      }
+    } catch (e) { setTestErr(e.message); }
+    finally { setTesting(false); }
+  };
 
   const exportData = () => download('fincast-backup.json', JSON.stringify(state, null, 2), 'application/json');
   const importData = (e) => {
@@ -1268,18 +3145,60 @@ function SettingsPage() {
           </div>
           <div>
             <label className="label">HeyGen Avatar ID</label>
-            <input value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })} placeholder="e.g. Daisy_avatar_v2_..." />
-            <div className="help">HeyGen → Avatars → click your avatar → "Copy ID" or in URL.</div>
+            <div style={{display:'flex',gap:6}}>
+              <input value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })} placeholder="e.g. Daisy_avatar_v2_..." />
+              <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={fetchAvatars} disabled={!s.heygenKey || fetching==='avatars'}>
+                {fetching==='avatars'?<span className="spin"></span>:'↻ Fetch'}
+              </button>
+            </div>
+            {avatars && avatars.length > 0 && (
+              <select style={{marginTop:6}} value={s.heygenAvatarId} onChange={e=>set({ heygenAvatarId:e.target.value })}>
+                <option value="">— Pick an avatar ({avatars.length}) —</option>
+                {avatars.map(a => <option key={a.id} value={a.id}>{a.name} ({a.kind}{a.gender?` · ${a.gender}`:''})</option>)}
+              </select>
+            )}
+            <div className="help">Tap "Fetch" once HeyGen key is in. Picks from a dropdown.</div>
           </div>
           <div>
             <label className="label">HeyGen Voice ID</label>
-            <input value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })} placeholder="..." />
-            <div className="help">Use your own cloned voice ID. Find under Voices → your voice → Copy ID.</div>
+            <div style={{display:'flex',gap:6}}>
+              <input value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })} placeholder="..." />
+              <button className="btn btn-ghost btn-sm" style={{flexShrink:0}} onClick={fetchVoices} disabled={!s.heygenKey || fetching==='voices'}>
+                {fetching==='voices'?<span className="spin"></span>:'↻ Fetch'}
+              </button>
+            </div>
+            {voices && voices.length > 0 && (() => {
+              const cloned = voices.filter(v => v.isClone);
+              const others = voices.filter(v => !v.isClone);
+              return (
+                <select style={{marginTop:6}} value={s.heygenVoiceId} onChange={e=>set({ heygenVoiceId:e.target.value })}>
+                  <option value="">— Pick a voice ({voices.length}) —</option>
+                  {cloned.length > 0 && <optgroup label="Your cloned voices">
+                    {cloned.map(v => <option key={v.id} value={v.id}>{v.name}{v.language?` · ${v.language}`:''}</option>)}
+                  </optgroup>}
+                  <optgroup label="HeyGen voices">
+                    {others.slice(0, 80).map(v => <option key={v.id} value={v.id}>{v.name}{v.language?` · ${v.language}`:''}{v.gender?` · ${v.gender}`:''}</option>)}
+                  </optgroup>
+                </select>
+              );
+            })()}
+            <div className="help">Cloned voices are listed first. If you don't see yours, re-create the clone in HeyGen UI.</div>
           </div>
+          {fetchErr && <div className="alert alert-err" style={{gridColumn:'1/-1'}}>{fetchErr}</div>}
           <div>
             <label className="label">Pexels API key (B-roll)</label>
             <input type={showKeys?'text':'password'} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
             <div className="help">Free at pexels.com/api. Leave blank to skip B-roll search.</div>
+          </div>
+          <div style={{gridColumn:'1 / -1'}}>
+            <label className="label" style={{display:'flex', alignItems:'center', gap:8}}>
+              Google AI Studio API key (Veo 3 cinematic, free tier)
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{fontSize:11, color:'var(--accent)'}}>get key →</a>
+            </label>
+            <input type={showKeys?'text':'password'} value={s.googleAiKey} onChange={e=>set({ googleAiKey:e.target.value })} placeholder="AIzaSy... (optional)" />
+            <div className="help">
+              Optional but transformative. With this set, FinCast renders <strong>Veo 3 cinematic per-scene</strong> — true walking-shot, environment, multi-angle output (matches the Mat-style/QuidSquid reference look). Free tier: ~50 generations/day, enough for ~8 videos/day. Get a key at <code>aistudio.google.com/apikey</code> — no payment required.
+            </div>
           </div>
           <div>
             <label className="label">Buffer Access Token (optional)</label>
@@ -1288,6 +3207,30 @@ function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <PhaseThreeProvidersCard />
+
+      <DebugLogCard />
+
+      {s.defaultTalkingHeadProvider === 'heygen' && s.heygenVoiceId && (
+        <div className="card" style={{marginBottom:14}}>
+          <div className="card-title">Test voice (HeyGen — legacy)</div>
+          <div className="alert alert-warn" style={{marginBottom:10, fontSize:12}}>
+            This card only works when HeyGen is your active talking-head provider. With Hedra, the equivalent is generating a real video in New Video.
+          </div>
+          <div style={{marginBottom:10}}>
+            <label className="label">Test phrase</label>
+            <textarea value={testText} onChange={e=>setTestText(e.target.value)} style={{minHeight:60}} />
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+            <button className="btn btn-sm" onClick={testVoice} disabled={testing || !s.heygenKey || !s.heygenAvatarId || !s.heygenVoiceId}>
+              {testing?<><span className="spin"></span> Rendering test… (~60s)</>:'▶ Render test'}
+            </button>
+          </div>
+          {testErr && <div className="alert alert-err" style={{marginTop:10}}>{testErr}</div>}
+          {testUrl && <video src={testUrl} controls style={{width:'100%',maxHeight:300,marginTop:10,borderRadius:8,background:'#000'}} />}
+        </div>
+      )}
 
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">Channel</div>
@@ -1320,14 +3263,23 @@ function SettingsPage() {
       </div>
 
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">LLM</div>
-        <div>
-          <label className="label">Claude model</label>
-          <select value={s.llmModel} onChange={e=>set({ llmModel:e.target.value })}>
-            <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
-            <option value="claude-opus-4-7">claude-opus-4-7 (best quality, more expensive)</option>
-            <option value="claude-haiku-4-5">claude-haiku-4-5 (cheapest)</option>
-          </select>
+        <div className="card-title">Appearance</div>
+        <div className="grid2">
+          <div>
+            <label className="label">Theme</label>
+            <select value={s.theme} onChange={e=>set({ theme:e.target.value })}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Claude model</label>
+            <select value={s.llmModel} onChange={e=>set({ llmModel:e.target.value })}>
+              <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+              <option value="claude-opus-4-7">claude-opus-4-7 (best quality, more expensive)</option>
+              <option value="claude-haiku-4-5">claude-haiku-4-5 (cheapest)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1350,11 +3302,211 @@ function SettingsPage() {
 // APP ROOT
 // ============================================================================
 
+// ============================================================================
+// CINEMATIC STITCHING — concat per-scene Veo clips + overlay PVC voice
+// ----------------------------------------------------------------------------
+// Loads ffmpeg.wasm on first use (one-time ~30 MB CDN download), runs entirely
+// client-side. After Veo 3 finishes per-scene cinematic clips, this stitches
+// them into one MP4 with the user's ElevenLabs voice as the audio track.
+// ============================================================================
+
+let __ffmpegInstance = null;
+let __ffmpegLoading = null;
+async function loadFFmpeg() {
+  if (__ffmpegInstance) return __ffmpegInstance;
+  if (__ffmpegLoading) return __ffmpegLoading;
+  __ffmpegLoading = (async () => {
+    if (!window.FFmpegWASM) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg.js';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load ffmpeg.wasm UMD bundle'));
+        document.head.appendChild(s);
+      });
+    }
+    const { FFmpeg } = window.FFmpegWASM;
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.js',
+      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.wasm',
+    });
+    __ffmpegInstance = ffmpeg;
+    return ffmpeg;
+  })();
+  return __ffmpegLoading;
+}
+
+async function fetchToBytes(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Stitch fetch failed ${r.status}: ${url.slice(0, 120)}`);
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+// Concatenates per-scene videos (drops their audio) and muxes a single
+// audio track over the combined output. Returns a blob URL for <video src>.
+async function stitchVeoCinematic({ videoUrls, audioBlob, onProgress }) {
+  const ffmpeg = await loadFFmpeg();
+  logEvent('stitch', 'start', { sceneCount: videoUrls.length });
+  onProgress?.({ stage: 'fetching', progress: 0 });
+  for (let i = 0; i < videoUrls.length; i++) {
+    const bytes = await fetchToBytes(videoUrls[i]);
+    await ffmpeg.writeFile(`scene${i}.mp4`, bytes);
+    onProgress?.({ stage: 'fetching', progress: (i + 1) / videoUrls.length });
+  }
+  const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
+  await ffmpeg.writeFile('voice.mp3', audioBytes);
+  const list = videoUrls.map((_, i) => `file 'scene${i}.mp4'`).join('\n');
+  await ffmpeg.writeFile('list.txt', new TextEncoder().encode(list));
+  // Concat (no audio) — videos may have differing codecs, so re-encode
+  // (slower than -c copy but bulletproof for varied Veo outputs).
+  onProgress?.({ stage: 'concat', progress: 0.0 });
+  await ffmpeg.exec([
+    '-f', 'concat', '-safe', '0', '-i', 'list.txt',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-an', 'concat.mp4',
+  ]);
+  onProgress?.({ stage: 'mux', progress: 0.5 });
+  await ffmpeg.exec([
+    '-i', 'concat.mp4', '-i', 'voice.mp3',
+    '-c:v', 'copy', '-c:a', 'aac', '-shortest', 'output.mp4',
+  ]);
+  const data = await ffmpeg.readFile('output.mp4');
+  const blob = new Blob([data.buffer], { type: 'video/mp4' });
+  const url = URL.createObjectURL(blob);
+  logEvent('stitch', 'done', { bytes: data.byteLength });
+  onProgress?.({ stage: 'done', progress: 1.0 });
+  return url;
+}
+
 function App() {
   const [state, dispatch] = useReducer(reducer, null, loadState);
   const [page, setPage] = useState('pipeline');
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; });
 
   useEffect(() => { saveState(state); }, [state]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = state.settings.theme || 'light';
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#0A0A0F' : '#F7F8FA');
+  }, [state.settings.theme]);
+
+  // Global multi-provider polling: survives page navigation. Polls every 8s.
+  // Handles new render.jobs[] (multi-provider) and legacy heygen.videoId (single HeyGen job).
+  useEffect(() => {
+    const tick = async () => {
+      const s = stateRef.current;
+      const rendering = s.videos.filter(v => v.stage === 'render');
+      for (const v of rendering) {
+        // NEW PATH: render.jobs[]
+        if (v.render?.jobs?.length) {
+          let allDone = true;
+          let anyFailed = false;
+          let updatedJobs = [...v.render.jobs];
+          for (let i = 0; i < updatedJobs.length; i++) {
+            const job = updatedJobs[i];
+            if (job.status === 'completed' || job.status === 'failed') continue;
+            const P = PROVIDERS[job.provider];
+            if (!P) { allDone = false; continue; }
+            try {
+              const upd = await P.pollJob({ jobId: job.jobId, settings: s.settings });
+              if (upd.status === 'completed' && upd.videoUrl) {
+                updatedJobs[i] = { ...job, status: 'completed', videoUrl: upd.videoUrl };
+              } else if (upd.status === 'failed') {
+                updatedJobs[i] = { ...job, status: 'failed', error: upd.error };
+                anyFailed = true;
+              } else {
+                updatedJobs[i] = { ...job, status: upd.status || 'processing' };
+                allDone = false;
+              }
+            } catch (e) { console.warn('poll error', e); allDone = false; }
+          }
+          // If all jobs done and at least one succeeded, advance to approval
+          if (allDone) {
+            const successful = updatedJobs.filter(j => j.status === 'completed');
+            if (successful.length === updatedJobs.length) {
+              const primaryUrl = successful[0].videoUrl;
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage: 'approval',
+                render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
+                heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
+              }});
+              // Auto-stitch multi-scene cinematic renders (Higgsfield / Veo 3)
+              // into a single video with the user's ElevenLabs PVC voice.
+              // Runs in the background so the Approval card shows the first
+              // scene immediately and swaps to the stitched final once complete.
+              const isVeoMulti = updatedJobs.length > 1
+                && (updatedJobs[0]?.provider === 'veo3' || updatedJobs[0]?.provider === 'higgsfield')
+                && !v.render?.stitchedUrl;
+              if (isVeoMulti && s.settings.elevenLabsKey && s.settings.elevenLabsVoiceId) {
+                (async () => {
+                  try {
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...v.render, status: 'stitching', jobs: updatedJobs, stitchProgress: { stage: 'starting', progress: 0 } },
+                    }});
+                    const fullText = v.storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+                    const audioBlob = await elevenLabsTTS({
+                      settings: s.settings, apiKey: s.settings.elevenLabsKey, voiceId: s.settings.elevenLabsVoiceId, text: fullText,
+                    });
+                    const stitchedUrl = await stitchVeoCinematic({
+                      videoUrls: updatedJobs.map(j => j.videoUrl),
+                      audioBlob,
+                      onProgress: (p) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                        render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, stitchProgress: p },
+                      }}),
+                    });
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status: 'stitched', stitchedUrl, stitchProgress: { stage: 'done', progress: 1 } },
+                      heygen: { ...stateRef.current.videos.find(x => x.id === v.id)?.heygen, videoUrl: stitchedUrl },
+                    }});
+                  } catch (e) {
+                    logEvent('stitch', 'failed', { error: e.message });
+                    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                      render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status: 'completed', stitchError: e.message },
+                    }});
+                  }
+                })();
+              }
+            } else if (anyFailed) {
+              const errs = updatedJobs.filter(j => j.status === 'failed').map(j => j.error).join('; ');
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                render: { ...v.render, status: 'failed', jobs: updatedJobs, error: errs },
+                heygen: { ...v.heygen, status: 'failed', error: errs },
+              }});
+            }
+          } else {
+            dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render: { ...v.render, jobs: updatedJobs } } });
+          }
+          continue;
+        }
+        // LEGACY PATH: old videos with v.heygen.videoId, no render.jobs.
+        // Only fires for videos rendered BEFORE multi-provider was wired in
+        // (i.e. genuine legacy HeyGen jobs). New videos always have v.render
+        // present — even with empty jobs[] — so we skip them here to avoid
+        // polling HeyGen with a non-HeyGen job ID.
+        if (!v.render && v.heygen?.videoId && s.settings.heygenKey) {
+          try {
+            const r = await heygenStatus({ apiKey: s.settings.heygenKey, videoId: v.heygen.videoId, settings: s.settings });
+            if (r.status === 'completed' && r.video_url) {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                stage:'approval',
+                heygen:{ ...v.heygen, status:'completed', videoUrl: r.video_url, thumbnailUrl: r.thumbnail_url, duration: r.duration, error:'' },
+              }});
+            } else if (r.status === 'failed') {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+                heygen:{ ...v.heygen, status:'failed', error: r.error?.message || r.error?.detail || 'render failed' },
+              }});
+            } else if (r.status && r.status !== v.heygen.status) {
+              dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ heygen:{ ...v.heygen, status: r.status } } });
+            }
+          } catch (e) { console.warn('poll error', e); }
+        }
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 8000);
+    return () => clearInterval(iv);
+  }, []);
 
   const store = useMemo(() => ({ state, dispatch }), [state]);
 
@@ -1370,8 +3522,63 @@ function App() {
           {page === 'calendar' && <CalendarPage />}
           {page === 'settings' && <SettingsPage />}
         </div>
+        <DebugPanel />
       </div>
     </StoreCtx.Provider>
+  );
+}
+
+// Floating debug panel — fixed bottom-right. Tap the bug icon to expand.
+// Shows the last N entries from __debugLog (every provider request, response,
+// raw response body, and error) so users can see ground truth when something
+// looks stuck. Auto-refreshes every 2s while open.
+function DebugPanel() {
+  const [open, setOpen] = useState(false);
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const iv = setInterval(() => force(x => x + 1), 2000);
+    return () => clearInterval(iv);
+  }, [open]);
+  const entries = open ? getDebugLog().slice(0, 60) : [];
+  const copy = async () => {
+    const text = entries.map(e => `[${new Date(e.ts).toISOString()}] [${e.provider}] ${e.action}: ${e.detail}`).join('\n');
+    try { await navigator.clipboard.writeText(text); alert('Copied ' + entries.length + ' log lines.'); }
+    catch { alert('Copy failed; long-press the panel text to select instead.'); }
+  };
+  return (
+    <>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Debug log"
+        style={{position:'fixed', right:14, bottom:14, zIndex:9999, width:44, height:44, borderRadius:22, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text)', fontSize:18, cursor:'pointer', boxShadow:'0 4px 14px rgba(0,0,0,0.18)'}}
+      >🐞</button>
+      {open && (
+        <div style={{position:'fixed', right:14, bottom:64, width:'min(92vw, 560px)', maxHeight:'70vh', zIndex:9999, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, boxShadow:'0 8px 28px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column'}}>
+          <div style={{padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8}}>
+            <strong style={{fontSize:13}}>Debug log</strong>
+            <span style={{fontSize:11, color:'var(--muted)'}}>{entries.length} most recent</span>
+            <span style={{flex:1}}/>
+            <button className="btn btn-ghost btn-sm" onClick={copy}>Copy</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { clearDebugLog(); force(x => x + 1); }}>Clear</button>
+          </div>
+          <div style={{overflow:'auto', padding:'8px 12px', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize:11, lineHeight:1.45}}>
+            {entries.length === 0 && <div style={{color:'var(--muted)'}}>No events yet. Trigger a render or tap "Check now" to see provider traffic here.</div>}
+            {entries.map((e, i) => {
+              const color = e.action.includes('error') ? 'var(--danger)' : (e.action === 'response_body' ? '#9BB4FF' : 'var(--text)');
+              return (
+                <div key={i} style={{padding:'6px 0', borderBottom:'1px dashed var(--border)', color}}>
+                  <div style={{color:'var(--muted)', fontSize:10}}>
+                    {new Date(e.ts).toLocaleTimeString()} · <strong style={{color}}>{e.provider}</strong> · {e.action}
+                  </div>
+                  <div style={{whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2}}>{e.detail}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
