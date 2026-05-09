@@ -49,8 +49,12 @@ const ALLOWED_HOSTS = new Set([
   'upload.heygen.com',         // HeyGen audio/image asset upload endpoint
   'api.anthropic.com',
   'api.pexels.com',
-  // Higgsfield AI (Seedance 2.0 / Cinema Studio 3.5)
-  'api.higgsfield.ai',
+  // Higgsfield AI (Seedance v1 Pro — image-to-video)
+  'platform.higgsfield.ai',
+  // Fal.ai (Seedance 2.0 text-to-video via queue)
+  'fal.run',
+  'queue.fal.run',
+  'rest.alpha.fal.ai',           // Fal legacy REST endpoint
   // S3 presigned download URLs returned by Hedra
   's3.us-east-1.amazonaws.com', 's3.us-west-2.amazonaws.com',
   // OpenAI / Google / Runway
