@@ -286,6 +286,10 @@ const DEFAULT_SETTINGS = {
   workerUrl: '',                  // FinCast Cloudflare Worker URL — handles CORS + multipart for ALL providers. One-click deploy from worker/ folder.
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
+  higgsfieldKey: '',              // Higgsfield AI API key (cloud.higgsfield.ai/api-keys) — Key AND Secret both required
+  higgsfieldSecret: '',           // Higgsfield API secret (separate from key; auth = "Key key:secret")
+  higgsfieldImageUrl: '',         // Reference photo URL for Higgsfield image-to-video (falls back to hedraStartKeyframeUrl)
+  falKey: '',                     // Fal.ai API key (fal.ai) — Seedance 2.0 text-to-video via queue.fal.run
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
   veoProjectId: '',
   googleAiKey: '',                // Google AI Studio API key (free; aistudio.google.com) — Veo 3 cinematic per-scene
@@ -959,6 +963,193 @@ class Veo3Provider extends VideoProvider {
   }
 }
 
+// Higgsfield AI — Seedance v1 Pro (image-to-video, cinematic quality)
+// Official REST API: https://platform.higgsfield.ai  (docs.higgsfield.ai)
+// Auth: "Authorization: Key {api_key}:{api_key_secret}" — two separate values joined by colon.
+// Model endpoint: POST /bytedance/seedance/v1/pro/image-to-video
+//   Required params: image_url (public URL of reference photo), prompt
+//   Optional: duration (int, seconds), aspect_ratio ("9:16" etc.), resolution ("720p")
+// Submit response (202): { request_id, status: "queued", status_url, cancel_url }
+// Poll:  GET /requests/{request_id}/status
+//   → { status: "queued"|"in_progress"|"completed"|"failed"|"nsfw"|"cancelled" }
+//   → when completed: { status: "completed", video: { url: "https://..." } }
+//
+// NOTE: Seedance 2.0 is NOT in the stable REST API (only in the web app via
+// undocumented slugs). v1 Pro is the production-grade documented endpoint.
+// For Seedance 2.0 via a stable API, see FalAiProvider below.
+class HiggsfieldProvider extends VideoProvider {
+  static id = 'higgsfield';
+  static name = 'Higgsfield (Seedance v1 Pro)';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
+  static availability(s) {
+    const missing = [];
+    if (!s.higgsfieldKey) missing.push('Higgsfield API key (cloud.higgsfield.ai/api-keys)');
+    if (!s.higgsfieldSecret) missing.push('Higgsfield API secret (cloud.higgsfield.ai/api-keys)');
+    if (!s.higgsfieldImageUrl && !s.hedraStartKeyframeUrl) missing.push('Reference photo URL (Settings → Higgsfield → Photo URL, or Hedra → start_keyframe_url)');
+    return { available: missing.length === 0, missing };
+  }
+  // Higgsfield credits: ~2–9 credits per video. $1 = 16 credits → ~$0.13–$0.56/video.
+  // Basic plan $9/mo includes a monthly credit allowance.
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + 0.30, 0); }
+
+  static _authHeader(settings) {
+    return `Key ${settings.higgsfieldKey}:${settings.higgsfieldSecret}`;
+  }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const imageUrl = settings.higgsfieldImageUrl || settings.hedraStartKeyframeUrl;
+    if (!imageUrl) throw new Error('Higgsfield requires a reference photo URL. Set it in Settings → Higgsfield → Photo URL.');
+    if (!settings.higgsfieldKey || !settings.higgsfieldSecret) throw new Error('Higgsfield API key and secret are both required. Get them from cloud.higgsfield.ai/api-keys.');
+
+    const jobs = [];
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      const durationSec = Math.min(Math.max(Math.round(sc.durationSec || 5), 4), 15);
+      const requestBody = {
+        image_url: imageUrl,
+        prompt,
+        duration: durationSec,
+        aspect_ratio: aspect,
+        resolution: '720p',
+      };
+      logEvent('higgsfield-submit', 'request_body', { sceneId: sc.id, body: { ...requestBody, image_url: imageUrl.slice(0, 60) + '…' } });
+      const r = await loggedFetch('higgsfield-submit',
+        proxiedUrl('https://platform.higgsfield.ai/bytedance/seedance/v1/pro/image-to-video', settings),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'accept': 'application/json',
+            'authorization': HiggsfieldProvider._authHeader(settings),
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      const d = await r.json();
+      logEvent('higgsfield-submit', 'response_body', { sceneId: sc.id, body: d });
+      if (!r.ok || d.error) throw new Error(`Higgsfield: ${d.error?.message || d.message || JSON.stringify(d).slice(0, 200)}`);
+      const jobId = d.request_id || d.id;
+      if (!jobId) throw new Error(`Higgsfield returned no request_id. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId, sceneIds: [sc.id], provider: 'higgsfield' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const r = await loggedFetch('higgsfield-poll',
+        proxiedUrl(`https://platform.higgsfield.ai/requests/${jobId}/status`, settings),
+        {
+          headers: {
+            'accept': 'application/json',
+            'authorization': HiggsfieldProvider._authHeader(settings),
+          },
+        }
+      );
+      const d = await r.json();
+      logEvent('higgsfield-poll', 'response_body', { jobId, body: d });
+      const status = (d.status || '').toLowerCase();
+      if (status === 'completed') {
+        const videoUrl = d.video?.url || d.video_url || d.output?.url;
+        if (!videoUrl) return { status: 'failed', error: `Higgsfield completed but no video URL. Body: ${JSON.stringify(d).slice(0, 300)}` };
+        return { status: 'completed', videoUrl: proxiedUrl(videoUrl, settings) };
+      }
+      if (status === 'failed' || status === 'nsfw' || status === 'cancelled' || status === 'error') {
+        return { status: 'failed', error: d.error?.message || d.message || `Higgsfield status: ${status}` };
+      }
+      // queued | in_progress → still processing
+      return { status: 'processing', progress: d.progress ?? null };
+    } catch (e) {
+      logEvent('higgsfield-poll', 'error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
+}
+
+// Fal.ai — Seedance 2.0 text-to-video (ByteDance, hosted on Fal.ai)
+// Seedance 2.0 is NOT on Higgsfield's stable REST API; Fal.ai hosts it with a
+// clean documented endpoint. No reference photo needed — pure text-to-video.
+// Auth: "Authorization: Key {fal_key}"
+// Submit: POST https://fal.run/bytedance/seedance-2.0/text-to-video
+// Poll:   GET  https://queue.fal.run/bytedance/seedance-2.0/requests/{id}/status
+// Result: GET  https://queue.fal.run/bytedance/seedance-2.0/requests/{id}
+// Cost: ~$0.30/sec at 720p with audio
+class FalSeedance2Provider extends VideoProvider {
+  static id = 'fal_seedance2';
+  static name = 'Fal.ai · Seedance 2.0';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: false, multiScene: true };
+  static availability(s) {
+    const missing = [];
+    if (!s.falKey) missing.push('Fal.ai API key (fal.ai → Dashboard → API Keys)');
+    return { available: missing.length === 0, missing };
+  }
+  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.30, 0); }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const jobs = [];
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      const durationSec = Math.min(Math.max(Math.round(sc.durationSec || 5), 4), 15).toString();
+      const requestBody = {
+        prompt,
+        resolution: '720p',
+        duration: durationSec,
+        aspect_ratio: aspect,
+        generate_audio: false, // we overlay ElevenLabs audio ourselves
+      };
+      logEvent('fal-seedance2-submit', 'request_body', { sceneId: sc.id, body: requestBody });
+      const r = await loggedFetch('fal-seedance2-submit',
+        proxiedUrl('https://queue.fal.run/bytedance/seedance-2.0/text-to-video', settings),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'authorization': `Key ${settings.falKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      const d = await r.json();
+      logEvent('fal-seedance2-submit', 'response_body', { sceneId: sc.id, body: d });
+      if (!r.ok || d.detail) throw new Error(`Fal Seedance 2.0: ${d.detail || JSON.stringify(d).slice(0, 200)}`);
+      const jobId = d.request_id;
+      if (!jobId) throw new Error(`Fal returned no request_id. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId, sceneIds: [sc.id], provider: 'fal_seedance2' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const r = await loggedFetch('fal-seedance2-poll',
+        proxiedUrl(`https://queue.fal.run/bytedance/seedance-2.0/requests/${jobId}/status`, settings),
+        { headers: { 'authorization': `Key ${settings.falKey}` } }
+      );
+      const d = await r.json();
+      logEvent('fal-seedance2-poll', 'response_body', { jobId, body: d });
+      const status = (d.status || '').toUpperCase();
+      if (status === 'COMPLETED') {
+        // Fetch result
+        const rr = await loggedFetch('fal-seedance2-result',
+          proxiedUrl(`https://queue.fal.run/bytedance/seedance-2.0/requests/${jobId}`, settings),
+          { headers: { 'authorization': `Key ${settings.falKey}` } }
+        );
+        const rd = await rr.json();
+        const videoUrl = rd.video?.url || rd.output?.video?.url;
+        if (!videoUrl) return { status: 'failed', error: `Fal completed but no video URL. Body: ${JSON.stringify(rd).slice(0, 300)}` };
+        return { status: 'completed', videoUrl: proxiedUrl(videoUrl, settings) };
+      }
+      if (status === 'FAILED' || status === 'ERROR') {
+        return { status: 'failed', error: d.error || `Fal status: ${status}` };
+      }
+      return { status: 'processing', progress: d.progress ?? null };
+    } catch (e) {
+      logEvent('fal-seedance2-poll', 'error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
+}
+
 class Sora2Provider extends VideoProvider {
   static id = 'sora2';
   static name = 'OpenAI Sora 2';
@@ -987,6 +1178,8 @@ const PROVIDERS = {
   heygen: HeyGenProvider,
   hedra_act_two: HedraActTwoProvider,
   hedra_character: HedraCharacterProvider,
+  higgsfield: HiggsfieldProvider,
+  fal_seedance2: FalSeedance2Provider,
   veo3: Veo3Provider,
   sora2: Sora2Provider,
   runway_gen4: RunwayGen4Provider,
@@ -1157,7 +1350,42 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
   const singleShotEnabled = settings.singleShotRender !== false;
 
-  // FAST PATH 0 — Veo 3 cinematic per-scene render (Google AI Studio).
+  // FAST PATH 0a — Fal.ai Seedance 2.0 (text-to-video, no reference photo needed).
+  // Seedance 2.0 is ByteDance's latest cinematic model. Fal.ai hosts it with a
+  // stable documented API. Per-scene clips rendered from visualPrompt + character
+  // bible; ElevenLabs audio muxed in-browser via ffmpeg.wasm.
+  // ~$0.30/sec at 720p. Enable by adding a Fal.ai key in Settings.
+  if (settings.falKey) {
+    logEvent('orchestrate', 'fal_seedance2_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await FalSeedance2Provider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'fal_seedance2_failed_fallback', { error: e.message });
+      // Fall through to Higgsfield / Veo 3 / HeyGen / Hedra
+    }
+  }
+
+  // FAST PATH 0b — Higgsfield Seedance v1 Pro (image-to-video).
+  // Requires a reference photo URL (your face → Higgsfield animates it with
+  // cinematic motion). Needs both higgsfieldKey AND higgsfieldSecret from
+  // cloud.higgsfield.ai/api-keys. Basic plan $9/mo.
+  if (settings.higgsfieldKey && settings.higgsfieldSecret) {
+    logEvent('orchestrate', 'higgsfield_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await HiggsfieldProvider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'higgsfield_failed_fallback', { error: e.message });
+      // Fall through to Veo 3 / HeyGen / Hedra if Higgsfield fails
+    }
+  }
+
+  // FAST PATH 1 — Veo 3 cinematic per-scene render (Google AI Studio).
   // When the user has a free Google AI Studio API key set, Veo 3 takes
   // priority for genuine cinematic output (multi-shot composition matching
   // Veo's reference quality — walking shots, environments, etc.). Each
@@ -1179,7 +1407,7 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     }
   }
 
-  // FAST PATH 1 — HeyGen multi-input render with ElevenLabs audio + Pexels b-roll.
+  // FAST PATH 2 — HeyGen multi-input render with ElevenLabs audio + Pexels b-roll.
   // HeyGen v2 supports multiple video_inputs[] in ONE generate request:
   // each entry gets its own character (avatar position/scale), its own voice
   // audio (a different ElevenLabs audio segment per scene), and optionally
@@ -1262,7 +1490,7 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     }
   }
 
-  // FAST PATH 2 — Hedra Act-Two single-shot (slower than HeyGen but works
+  // FAST PATH 3 — Hedra Act-Two single-shot (slower than HeyGen but works
   // when the user only has Hedra configured). Bundles every scene's
   // dialogue into ONE Hedra job — 1 × queue wait instead of N.
   const hedraEligible =
@@ -2728,6 +2956,51 @@ function PhaseThreeProvidersCard() {
         FinCast routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
       </div>
 
+      {/* Fal.ai Seedance 2.0 — top priority */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: s.falKey ? '1.5px solid var(--accent)' : '1.5px solid transparent'}}>
+        <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
+          🎬 Fal.ai · Seedance 2.0 (text-to-video)
+          {s.falKey && <span style={{fontSize:11, background:'var(--accent)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · TOP PRIORITY</span>}
+        </div>
+        <div className="help" style={{marginBottom:10}}>
+          ByteDance Seedance 2.0 hosted on Fal.ai — the <strong>fastest path to Seedance 2.0</strong> cinematic quality. Text-to-video (no reference photo needed). ~$0.30/sec at 720p. Recommended over Higgsfield native API until Higgsfield publishes a Seedance 2.0 REST endpoint.
+          <br />
+          <strong>Get your key:</strong> <a href="https://fal.ai" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>fal.ai</a> → Dashboard → API Keys
+        </div>
+        <div>
+          <label className="label">Fal.ai API key</label>
+          <input type={showKeys?'text':'password'} value={s.falKey||''} onChange={e=>set({ falKey:e.target.value })} placeholder="fal_..." />
+          <div className="help">Paste your Fal.ai key — FinCast immediately uses Seedance 2.0 for all cinematic scenes.</div>
+        </div>
+      </div>
+
+      {/* Higgsfield native — Seedance v1 Pro image-to-video */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: (s.higgsfieldKey && s.higgsfieldSecret) ? '1.5px solid #8b5cf6' : '1.5px solid transparent'}}>
+        <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
+          🎬 Higgsfield native · Seedance v1 Pro (image-to-video)
+          {(s.higgsfieldKey && s.higgsfieldSecret) && <span style={{fontSize:11, background:'#8b5cf6', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · FALLBACK</span>}
+        </div>
+        <div className="help" style={{marginBottom:10}}>
+          Higgsfield's own REST API — animates your reference photo with cinematic motion. Good quality, $9/mo Basic plan. Needs <strong>both</strong> API Key and API Secret from <a href="https://cloud.higgsfield.ai/api-keys" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>cloud.higgsfield.ai/api-keys</a>. Used as fallback if Fal.ai key is not set.
+        </div>
+        <div className="grid2">
+          <div>
+            <label className="label">Higgsfield API Key</label>
+            <input type={showKeys?'text':'password'} value={s.higgsfieldKey||''} onChange={e=>set({ higgsfieldKey:e.target.value })} placeholder="your_api_key" />
+          </div>
+          <div>
+            <label className="label">Higgsfield API Secret</label>
+            <input type={showKeys?'text':'password'} value={s.higgsfieldSecret||''} onChange={e=>set({ higgsfieldSecret:e.target.value })} placeholder="your_api_secret" />
+            <div className="help">Both key and secret are on the same API Keys page.</div>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Reference photo URL (for image-to-video)</label>
+            <input value={s.higgsfieldImageUrl||''} onChange={e=>set({ higgsfieldImageUrl:e.target.value })} placeholder="https://... (public URL of your portrait photo)" />
+            <div className="help">Leave blank to reuse the Hedra start_keyframe_url above. Must be a publicly accessible URL.</div>
+          </div>
+        </div>
+      </div>
+
       {/* ElevenLabs (provider-agnostic voice) */}
       <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8}}>
         <div style={{fontWeight:600, marginBottom:8}}>🎙️ ElevenLabs (voice — used by all video providers)</div>
@@ -3300,12 +3573,12 @@ function App() {
                 render: { ...v.render, status: 'completed', jobs: updatedJobs, completedAt: Date.now() },
                 heygen: { ...v.heygen, status: 'completed', videoUrl: primaryUrl, error: '' },
               }});
-              // Auto-stitch multi-scene Veo 3 renders into a single video
-              // with the user's ElevenLabs PVC voice. Runs in the background
-              // so the Approval card shows the first scene immediately and
-              // swaps to the stitched final once complete.
+              // Auto-stitch multi-scene cinematic renders (Higgsfield / Veo 3)
+              // into a single video with the user's ElevenLabs PVC voice.
+              // Runs in the background so the Approval card shows the first
+              // scene immediately and swaps to the stitched final once complete.
               const isVeoMulti = updatedJobs.length > 1
-                && updatedJobs[0]?.provider === 'veo3'
+                && ['veo3', 'higgsfield', 'fal_seedance2'].includes(updatedJobs[0]?.provider)
                 && !v.render?.stitchedUrl;
               if (isVeoMulti && s.settings.elevenLabsKey && s.settings.elevenLabsVoiceId) {
                 (async () => {
