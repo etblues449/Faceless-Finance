@@ -921,7 +921,7 @@ class Veo3Provider extends VideoProvider {
       );
       const requestBody = {
         instances: [{ prompt }],
-        parameters: { aspectRatio: aspect, sampleCount: 1, generateAudio: false },
+        parameters: { aspectRatio: aspect, sampleCount: 1 },
       };
       logEvent('veo3-submit', 'request_body', { sceneId: sc.id, body: requestBody });
       try {
@@ -1234,7 +1234,6 @@ class RunwayGen4Provider extends VideoProvider {
             'content-type': 'application/json',
             'accept': 'application/json',
             'authorization': `Bearer ${settings.runwayKey}`,
-            'x-runway-version': '2024-11-06',
           },
           body: JSON.stringify(requestBody),
         }
@@ -1259,7 +1258,6 @@ class RunwayGen4Provider extends VideoProvider {
           headers: {
             'accept': 'application/json',
             'authorization': `Bearer ${settings.runwayKey}`,
-            'x-runway-version': '2024-11-06',
           },
         }
       );
