@@ -84,6 +84,14 @@ async function handleProxy(request, env, parts) {
     if (v) outgoingHeaders.set(name, v);
   }
 
+  // Provider-specific header injection.
+  // Runway's developer API requires x-runway-version. Injecting here avoids
+  // needing to add the header to the CORS allow-list (which would break
+  // preflights for clients that don't know to send it).
+  if (targetHost === 'api.dev.runwayml.com' || targetHost === 'api.runwayml.com') {
+    outgoingHeaders.set('x-runway-version', '2024-11-06');
+  }
+
   // Forward the request. For non-GET/HEAD, stream the body as-is — preserves
   // multipart boundaries (which is the whole point of having a backend proxy).
   const init = {
@@ -128,7 +136,7 @@ export default {
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
           ok: true,
-          version: '1.4.0',
+          version: '1.4.1',
           allowed_origin: env.ALLOWED_ORIGIN,
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
