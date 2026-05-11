@@ -62,6 +62,7 @@ const ALLOWED_HOSTS = new Set([
   'aiplatform.googleapis.com',
   'generativelanguage.googleapis.com',  // Google AI Studio (Veo 3 via Gemini API)
   'api.runwayml.com',
+  'api.dev.runwayml.com',              // Runway Developer API (Gen-4 Turbo image-to-video)
 ]);
 
 async function handleProxy(request, env, parts) {
@@ -127,7 +128,7 @@ export default {
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
           ok: true,
-          version: '1.3.0',
+          version: '1.4.0',
           allowed_origin: env.ALLOWED_ORIGIN,
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
