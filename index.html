@@ -289,6 +289,7 @@ const DEFAULT_SETTINGS = {
   higgsfieldKey: '',              // Higgsfield AI API key (cloud.higgsfield.ai/api-keys) — Key AND Secret both required
   higgsfieldSecret: '',           // Higgsfield API secret (separate from key; auth = "Key key:secret")
   higgsfieldImageUrl: '',         // Reference photo URL for Higgsfield image-to-video (falls back to hedraStartKeyframeUrl)
+  higgsfieldModelSlug: 'higgsfield/dop-standard/image-to-video',  // Higgsfield video model path. Options: dop-lite, dop-standard, dop-turbo
   falKey: '',                     // Fal.ai API key (fal.ai) — Seedance 2.0 text-to-video via queue.fal.run
   veoKey: '',                     // Google Vertex AI (Veo 3) — stub
   veoProjectId: '',
@@ -901,34 +902,47 @@ class Veo3Provider extends VideoProvider {
 
   static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
     const jobs = [];
-    for (const sc of scenes) {
+    const errors = [];
+    // Veo 3 free tier is 5 RPM (one request per 12s). Throttle to stay under it.
+    // Tier 1 paid is higher but still rate-limited per-key.
+    const THROTTLE_MS = settings.veoThrottleMs ?? 12500;
+    for (let i = 0; i < scenes.length; i++) {
+      const sc = scenes[i];
+      if (i > 0) {
+        logEvent('veo3-submit', 'throttle_wait', { sceneId: sc.id, waitMs: THROTTLE_MS });
+        await new Promise(r => setTimeout(r, THROTTLE_MS));
+      }
       const prompt = applyCharacterBible(sc, settings);
       const url = proxiedUrl(
         `https://generativelanguage.googleapis.com/v1beta/models/veo-3.0-generate-001:predictLongRunning?key=${encodeURIComponent(settings.googleAiKey)}`,
         settings
       );
-      // Veo 3's accepted parameters in the Gemini API have shifted across
-      // releases. We send the minimal known-good set and let Veo use defaults
-      // for everything else. If the API rejects, we log the body so the next
-      // diagnostic pass has ground truth.
       const requestBody = {
         instances: [{ prompt }],
-        parameters: {
-          aspectRatio: aspect,
-          sampleCount: 1,
-        },
+        parameters: { aspectRatio: aspect, sampleCount: 1 },
       };
       logEvent('veo3-submit', 'request_body', { sceneId: sc.id, body: requestBody });
-      const r = await loggedFetch('veo3-submit', url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-      const d = await r.json();
-      const opName = d.name || d.operation?.name;
-      if (!opName) throw new Error(`Veo 3 returned no operation name. Response: ${JSON.stringify(d).slice(0, 300)}`);
-      jobs.push({ jobId: opName, sceneIds: [sc.id], provider: 'veo3' });
+      try {
+        const r = await loggedFetch('veo3-submit', url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        });
+        const d = await r.json();
+        const opName = d.name || d.operation?.name;
+        if (!opName) throw new Error(`Veo 3 returned no operation name. Response: ${JSON.stringify(d).slice(0, 300)}`);
+        jobs.push({ jobId: opName, sceneIds: [sc.id], provider: 'veo3' });
+      } catch (e) {
+        errors.push({ sceneId: sc.id, error: e.message });
+        // On rate limit, stop submitting more — keep what succeeded.
+        if (/429|RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(e.message)) {
+          logEvent('veo3-submit', 'rate_limit_partial_success', { completed: jobs.length, skipped: scenes.length - i });
+          break;
+        }
+      }
     }
+    if (jobs.length === 0) throw new Error(`Veo 3 failed for every scene. First error: ${errors[0]?.error || 'unknown'}`);
+    if (errors.length > 0) logEvent('veo3-submit', 'partial_success', { ok: jobs.length, failed: errors.length });
     return { jobs };
   }
 
@@ -963,23 +977,21 @@ class Veo3Provider extends VideoProvider {
   }
 }
 
-// Higgsfield AI — Seedance v1 Pro (image-to-video, cinematic quality)
+// Higgsfield AI — DoP (Director of Photography) cinematic image-to-video
 // Official REST API: https://platform.higgsfield.ai  (docs.higgsfield.ai)
-// Auth: "Authorization: Key {api_key}:{api_key_secret}" — two separate values joined by colon.
-// Model endpoint: POST /bytedance/seedance/v1/pro/image-to-video
-//   Required params: image_url (public URL of reference photo), prompt
-//   Optional: duration (int, seconds), aspect_ratio ("9:16" etc.), resolution ("720p")
-// Submit response (202): { request_id, status: "queued", status_url, cancel_url }
-// Poll:  GET /requests/{request_id}/status
-//   → { status: "queued"|"in_progress"|"completed"|"failed"|"nsfw"|"cancelled" }
+// Auth: "Authorization: Key {api_key}:{api_key_secret}" — joined by colon.
+// Model endpoints (set settings.higgsfieldModelSlug):
+//   higgsfield/dop-lite/image-to-video      — cheapest, fastest
+//   higgsfield/dop-standard/image-to-video  — recommended balance (default)
+//   higgsfield/dop-turbo/image-to-video     — fastest with quality
+// Required params: image_url (public URL), prompt
+// Optional: duration, aspect_ratio, resolution
+// Submit response: { request_id, status: "queued", status_url, cancel_url }
+// Poll: GET /requests/{request_id}/status
 //   → when completed: { status: "completed", video: { url: "https://..." } }
-//
-// NOTE: Seedance 2.0 is NOT in the stable REST API (only in the web app via
-// undocumented slugs). v1 Pro is the production-grade documented endpoint.
-// For Seedance 2.0 via a stable API, see FalAiProvider below.
 class HiggsfieldProvider extends VideoProvider {
   static id = 'higgsfield';
-  static name = 'Higgsfield (Seedance v1 Pro)';
+  static name = 'Higgsfield (DoP)';
   static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
   static availability(s) {
     const missing = [];
@@ -1012,9 +1024,10 @@ class HiggsfieldProvider extends VideoProvider {
         aspect_ratio: aspect,
         resolution: '720p',
       };
-      logEvent('higgsfield-submit', 'request_body', { sceneId: sc.id, body: { ...requestBody, image_url: imageUrl.slice(0, 60) + '…' } });
+      const modelSlug = settings.higgsfieldModelSlug || 'higgsfield/dop-standard/image-to-video';
+      logEvent('higgsfield-submit', 'request_body', { sceneId: sc.id, model: modelSlug, body: { ...requestBody, image_url: imageUrl.slice(0, 60) + '…' } });
       const r = await loggedFetch('higgsfield-submit',
-        proxiedUrl('https://platform.higgsfield.ai/bytedance/seedance/v1/pro/image-to-video', settings),
+        proxiedUrl(`https://platform.higgsfield.ai/${modelSlug}`, settings),
         {
           method: 'POST',
           headers: {
@@ -2974,14 +2987,14 @@ function PhaseThreeProvidersCard() {
         </div>
       </div>
 
-      {/* Higgsfield native — Seedance v1 Pro image-to-video */}
+      {/* Higgsfield native — DoP image-to-video */}
       <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: (s.higgsfieldKey && s.higgsfieldSecret) ? '1.5px solid #8b5cf6' : '1.5px solid transparent'}}>
         <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
-          🎬 Higgsfield native · Seedance v1 Pro (image-to-video)
+          🎬 Higgsfield · DoP (image-to-video)
           {(s.higgsfieldKey && s.higgsfieldSecret) && <span style={{fontSize:11, background:'#8b5cf6', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · FALLBACK</span>}
         </div>
         <div className="help" style={{marginBottom:10}}>
-          Higgsfield's own REST API — animates your reference photo with cinematic motion. Good quality, $9/mo Basic plan. Needs <strong>both</strong> API Key and API Secret from <a href="https://cloud.higgsfield.ai/api-keys" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>cloud.higgsfield.ai/api-keys</a>. Used as fallback if Fal.ai key is not set.
+          Higgsfield's DoP (Director of Photography) cinematic models — animate your reference photo with camera moves. Needs <strong>both</strong> API Key and API Secret from <a href="https://cloud.higgsfield.ai/api-keys" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>cloud.higgsfield.ai/api-keys</a>.
         </div>
         <div className="grid2">
           <div>
@@ -2992,6 +3005,15 @@ function PhaseThreeProvidersCard() {
             <label className="label">Higgsfield API Secret</label>
             <input type={showKeys?'text':'password'} value={s.higgsfieldSecret||''} onChange={e=>set({ higgsfieldSecret:e.target.value })} placeholder="your_api_secret" />
             <div className="help">Both key and secret are on the same API Keys page.</div>
+          </div>
+          <div>
+            <label className="label">DoP Model</label>
+            <select value={s.higgsfieldModelSlug || 'higgsfield/dop-standard/image-to-video'} onChange={e=>set({ higgsfieldModelSlug:e.target.value })}>
+              <option value="higgsfield/dop-lite/image-to-video">DoP Lite (cheapest)</option>
+              <option value="higgsfield/dop-standard/image-to-video">DoP Standard (recommended)</option>
+              <option value="higgsfield/dop-turbo/image-to-video">DoP Turbo (faster)</option>
+            </select>
+            <div className="help">Match what's in your Higgsfield dashboard.</div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Reference photo URL (for image-to-video)</label>
