@@ -1267,7 +1267,10 @@ class RunwayGen4Provider extends VideoProvider {
       if (status === 'SUCCEEDED') {
         const videoUrl = d.output?.[0];
         if (!videoUrl) return { status: 'failed', error: `Runway SUCCEEDED but no output URL: ${JSON.stringify(d).slice(0, 300)}` };
-        return { status: 'completed', videoUrl: proxiedUrl(videoUrl, settings) };
+        // Runway's CloudFront CDN serves video with public CORS headers — no
+        // need to route through our worker proxy (and the worker would reject
+        // 'dnznrvs05pmza.cloudfront.net' anyway since it's not in the allowlist).
+        return { status: 'completed', videoUrl };
       }
       if (status === 'FAILED' || status === 'CANCELLED') {
         return { status: 'failed', error: d.failure || d.failureCode || d.error || `Runway: ${status}` };
@@ -3728,6 +3731,40 @@ function App() {
   useEffect(() => { stateRef.current = state; });
 
   useEffect(() => { saveState(state); }, [state]);
+
+  // One-shot: on page load, unwrap any worker-proxied Runway URLs in stored
+  // render state. Runway video URLs were briefly proxied through the worker
+  // (which rejected them because CloudFront wasn't in the allowlist). The
+  // raw CloudFront URLs work directly — no proxy needed.
+  useEffect(() => {
+    const PROXY_PREFIX = '/proxy/';
+    const videos = stateRef.current.videos;
+    let anyChanged = false;
+    for (const v of videos) {
+      if (!v.render?.jobs?.length) continue;
+      if (v.render.jobs[0]?.provider !== 'runway_gen4') continue;
+      const fixed = v.render.jobs.map(j => {
+        if (!j.videoUrl) return j;
+        const ix = j.videoUrl.indexOf(PROXY_PREFIX);
+        if (ix < 0) return j;
+        // Worker URL like .../proxy/{host}/{path...} → reconstruct https://{host}/{path...}
+        const tail = j.videoUrl.slice(ix + PROXY_PREFIX.length);
+        const slashAt = tail.indexOf('/');
+        if (slashAt < 0) return j;
+        const host = tail.slice(0, slashAt);
+        const path = tail.slice(slashAt + 1);
+        if (host.includes('cloudfront.net') || host.includes('runwayml.com')) {
+          anyChanged = true;
+          return { ...j, videoUrl: `https://${host}/${path}` };
+        }
+        return j;
+      });
+      if (fixed.some((j, i) => j !== v.render.jobs[i])) {
+        dispatch({ type:'UPDATE_VIDEO', id: v.id, patch: { render: { ...v.render, jobs: fixed } } });
+      }
+    }
+    if (anyChanged) logEvent('migrate', 'unwrapped_runway_proxy_urls', {});
+  }, []);
 
   // One-shot: on page load, auto-retry any previously failed stitches if
   // all per-scene clips are still in render.jobs[].videoUrl. Avoids losing
