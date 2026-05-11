@@ -3627,27 +3627,55 @@ function SettingsPage() {
 
 let __ffmpegInstance = null;
 let __ffmpegLoading = null;
+
+// Try multiple CDNs in order until one works. jsDelivr sometimes rate-limits
+// or has transient issues on mobile networks; unpkg is a mirror.
+const FFMPEG_VERSIONS = [
+  { v: '0.12.15', base: 'https://cdn.jsdelivr.net/npm' },
+  { v: '0.12.15', base: 'https://unpkg.com' },
+  { v: '0.12.10', base: 'https://cdn.jsdelivr.net/npm' },
+  { v: '0.12.10', base: 'https://unpkg.com' },
+  { v: '0.12.6',  base: 'https://cdn.jsdelivr.net/npm' },
+];
+
+async function tryLoadScript(url) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`script load failed: ${url}`));
+    document.head.appendChild(s);
+    setTimeout(() => reject(new Error(`script load timeout: ${url}`)), 25000);
+  });
+}
+
 async function loadFFmpeg() {
   if (__ffmpegInstance) return __ffmpegInstance;
   if (__ffmpegLoading) return __ffmpegLoading;
   __ffmpegLoading = (async () => {
-    if (!window.FFmpegWASM) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg.js';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('Failed to load ffmpeg.wasm UMD bundle'));
-        document.head.appendChild(s);
-      });
+    let lastErr = null;
+    for (const spec of FFMPEG_VERSIONS) {
+      const ffmpegUrl = `${spec.base}/@ffmpeg/ffmpeg@${spec.v}/dist/umd/ffmpeg.js`;
+      const coreUrl   = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.js`;
+      const wasmUrl   = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.wasm`;
+      try {
+        logEvent('stitch', 'ffmpeg_cdn_attempt', { version: spec.v, base: spec.base });
+        if (!window.FFmpegWASM) {
+          await tryLoadScript(ffmpegUrl);
+        }
+        const { FFmpeg } = window.FFmpegWASM;
+        const ffmpeg = new FFmpeg();
+        await ffmpeg.load({ coreURL: coreUrl, wasmURL: wasmUrl });
+        __ffmpegInstance = ffmpeg;
+        logEvent('stitch', 'ffmpeg_loaded', { version: spec.v, base: spec.base });
+        return ffmpeg;
+      } catch (e) {
+        lastErr = e;
+        logEvent('stitch', 'ffmpeg_cdn_failed', { version: spec.v, base: spec.base, error: e.message });
+        if (window.FFmpegWASM) delete window.FFmpegWASM;
+      }
     }
-    const { FFmpeg } = window.FFmpegWASM;
-    const ffmpeg = new FFmpeg();
-    await ffmpeg.load({
-      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.js',
-      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/[email protected]/dist/umd/ffmpeg-core.wasm',
-    });
-    __ffmpegInstance = ffmpeg;
-    return ffmpeg;
+    throw new Error(`ffmpeg.wasm failed on all CDN fallbacks. Last: ${lastErr?.message}`);
   })();
   return __ffmpegLoading;
 }
@@ -3700,6 +3728,56 @@ function App() {
   useEffect(() => { stateRef.current = state; });
 
   useEffect(() => { saveState(state); }, [state]);
+
+  // One-shot: on page load, auto-retry any previously failed stitches if
+  // all per-scene clips are still in render.jobs[].videoUrl. Avoids losing
+  // the expensive Runway/Veo cinematic clips when ffmpeg.wasm failed to
+  // load on a previous attempt.
+  useEffect(() => {
+    const eligibleProviders = ['runway_gen4', 'veo3', 'higgsfield', 'fal_seedance2'];
+    const candidates = stateRef.current.videos.filter(v =>
+      v.render?.stitchError &&
+      !v.render?.stitchedUrl &&
+      !v.render?.stitchRetried &&
+      v.render?.jobs?.length > 1 &&
+      v.render.jobs.every(j => j.videoUrl) &&
+      eligibleProviders.includes(v.render.jobs[0]?.provider)
+    );
+    const settings = stateRef.current.settings;
+    if (!candidates.length || !settings.elevenLabsKey || !settings.elevenLabsVoiceId) return;
+    for (const v of candidates) {
+      logEvent('stitch', 'auto_retry_start', { videoId: v.id, sceneCount: v.render.jobs.length });
+      dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+        render: { ...v.render, status:'stitching', stitchRetried: true, stitchError: null, stitchProgress: { stage:'starting', progress:0 } },
+      }});
+      (async () => {
+        try {
+          const fullText = v.storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
+          const audioBlob = await elevenLabsTTS({
+            settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId, text: fullText,
+          });
+          const stitchedUrl = await stitchVeoCinematic({
+            videoUrls: v.render.jobs.map(j => j.videoUrl),
+            audioBlob,
+            onProgress: (p) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+              render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, stitchProgress: p },
+            }}),
+          });
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status:'stitched', stitchedUrl, stitchProgress: { stage:'done', progress:1 } },
+            heygen: { ...stateRef.current.videos.find(x => x.id === v.id)?.heygen, videoUrl: stitchedUrl },
+          }});
+          logEvent('stitch', 'auto_retry_success', { videoId: v.id });
+        } catch (e) {
+          logEvent('stitch', 'auto_retry_failed', { videoId: v.id, error: e.message });
+          dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{
+            render: { ...stateRef.current.videos.find(x => x.id === v.id)?.render, status:'completed', stitchError: e.message },
+          }});
+        }
+      })();
+    }
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = state.settings.theme || 'light';
     const tc = document.querySelector('meta[name="theme-color"]');
