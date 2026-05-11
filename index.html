@@ -295,7 +295,9 @@ const DEFAULT_SETTINGS = {
   veoProjectId: '',
   googleAiKey: '',                // Google AI Studio API key (free; aistudio.google.com) — Veo 3 cinematic per-scene
   openaiKey: '',                  // OpenAI (Sora 2) — stub
-  runwayKey: '',                  // Runway Gen-4 — stub
+  runwayKey: '',                  // Runway developer API key (dev.runwayml.com) — Gen-4 Turbo image-to-video
+  runwayModel: 'gen4_turbo',      // gen4_turbo (cheap, fast) | gen4 (premium) | gen3a_turbo (legacy)
+  runwayImageUrl: '',             // Reference photo URL — falls back to hedra/higgsfield if blank
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
   singleShotRender: true,         // Bundle every scene into ONE Hedra job for ~6× faster queue wait. Set false to render per-scene.
@@ -1173,14 +1175,112 @@ class Sora2Provider extends VideoProvider {
   static async pollJob() { throw new Error('Sora 2 stub'); }
 }
 
+// Runway Gen-4 / Gen-4 Turbo — cinematic image-to-video, top-tier quality
+// Official API: https://api.dev.runwayml.com/v1
+// Auth: Authorization: Bearer {api_key}, X-Runway-Version: 2024-11-06
+// POST /image_to_video → { id }
+// GET  /tasks/{id}     → { status: PENDING|RUNNING|SUCCEEDED|FAILED|THROTTLED, output: [url] }
+// Models: gen4_turbo (default, ~$0.25/sec), gen4 (~$0.40/sec), gen3a_turbo
+// Aspect ratios: 720:1280 (9:16), 1280:720 (16:9), 960:960 (1:1)
+// Durations: 5 or 10 seconds only.
 class RunwayGen4Provider extends VideoProvider {
   static id = 'runway_gen4';
-  static name = 'Runway Gen-4';
-  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: false };
-  static availability(s) { return { available: !!s.runwayKey, missing: s.runwayKey ? [] : ['Runway API key'] }; }
-  static estimateCost(scenes) { return scenes.reduce((s, sc) => s + (sc.durationSec || 5) * 0.32, 0); } // ~$0.40/sec
-  static async startRender() { throw new Error('Runway Gen-4 provider stub. Add runwayKey to enable build-out.'); }
-  static async pollJob() { throw new Error('Runway stub'); }
+  static name = 'Runway Gen-4 Turbo';
+  static caps = { talkingHead: false, cinematic: true, lipSync: false, characterRef: true, multiScene: true };
+  static availability(s) {
+    const missing = [];
+    if (!s.runwayKey) missing.push('Runway API key (dev.runwayml.com → Profile → API Keys)');
+    if (!s.runwayImageUrl && !s.hedraStartKeyframeUrl && !s.higgsfieldImageUrl) {
+      missing.push('Reference photo URL (Runway is image-to-video)');
+    }
+    return { available: missing.length === 0, missing };
+  }
+  static estimateCost(scenes) {
+    return scenes.reduce((sum, sc) => sum + ((sc.durationSec || 5) > 7 ? 10 : 5) * 0.25, 0);
+  }
+
+  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
+    const imageUrl = settings.runwayImageUrl || settings.hedraStartKeyframeUrl || settings.higgsfieldImageUrl;
+    if (!imageUrl) throw new Error('Runway requires a reference photo URL. Set it in Settings → Runway → Photo URL.');
+    if (!settings.runwayKey) throw new Error('Runway API key required. Get one from dev.runwayml.com.');
+
+    const ratio = aspect === '16:9' ? '1280:720' : aspect === '1:1' ? '960:960' : '720:1280';
+    const model = settings.runwayModel || 'gen4_turbo';
+    const jobs = [];
+
+    for (const sc of scenes) {
+      const prompt = applyCharacterBible(sc, settings);
+      // Runway only accepts 5 or 10 second durations.
+      const runwayDuration = (sc.durationSec || 5) > 7 ? 10 : 5;
+      // Runway has a ~1000 character cap on promptText. Trim if needed.
+      const promptText = prompt.length > 950 ? prompt.slice(0, 950) + '…' : prompt;
+
+      const requestBody = {
+        promptImage: imageUrl,
+        promptText,
+        model,
+        ratio,
+        duration: runwayDuration,
+      };
+      logEvent('runway-submit', 'request_body', {
+        sceneId: sc.id, model,
+        body: { ...requestBody, promptImage: imageUrl.slice(0, 60) + '…' },
+      });
+      const r = await loggedFetch('runway-submit',
+        proxiedUrl('https://api.dev.runwayml.com/v1/image_to_video', settings),
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'accept': 'application/json',
+            'authorization': `Bearer ${settings.runwayKey}`,
+            'x-runway-version': '2024-11-06',
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      const d = await r.json();
+      logEvent('runway-submit', 'response_body', { sceneId: sc.id, body: d });
+      if (!r.ok || d.error) {
+        throw new Error(`Runway: ${d.error || d.message || JSON.stringify(d).slice(0, 200)}`);
+      }
+      const jobId = d.id;
+      if (!jobId) throw new Error(`Runway returned no task id. Response: ${JSON.stringify(d).slice(0, 300)}`);
+      jobs.push({ jobId, sceneIds: [sc.id], provider: 'runway_gen4' });
+    }
+    return { jobs };
+  }
+
+  static async pollJob({ jobId, settings }) {
+    try {
+      const r = await loggedFetch('runway-poll',
+        proxiedUrl(`https://api.dev.runwayml.com/v1/tasks/${jobId}`, settings),
+        {
+          headers: {
+            'accept': 'application/json',
+            'authorization': `Bearer ${settings.runwayKey}`,
+            'x-runway-version': '2024-11-06',
+          },
+        }
+      );
+      const d = await r.json();
+      logEvent('runway-poll', 'response_body', { jobId, status: d.status, progress: d.progress });
+      const status = (d.status || '').toUpperCase();
+      if (status === 'SUCCEEDED') {
+        const videoUrl = d.output?.[0];
+        if (!videoUrl) return { status: 'failed', error: `Runway SUCCEEDED but no output URL: ${JSON.stringify(d).slice(0, 300)}` };
+        return { status: 'completed', videoUrl: proxiedUrl(videoUrl, settings) };
+      }
+      if (status === 'FAILED' || status === 'CANCELLED') {
+        return { status: 'failed', error: d.failure || d.failureCode || d.error || `Runway: ${status}` };
+      }
+      // PENDING | RUNNING | THROTTLED
+      return { status: 'processing', progress: d.progress ?? null };
+    } catch (e) {
+      logEvent('runway-poll', 'error', { jobId, error: e.message });
+      return { status: 'failed', error: e.message };
+    }
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -1362,6 +1462,23 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
   const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
   const singleShotEnabled = settings.singleShotRender !== false;
+
+  // FAST PATH 0 — Runway Gen-4 Turbo (top priority, cinematic).
+  // The user's reference quality target. Image-to-video, ~$0.25/sec at Gen-4 Turbo.
+  // Per-scene clips animated from the reference photo + character bible prompt.
+  // Auto-stitched in-browser with ffmpeg.wasm + ElevenLabs voice overlay.
+  if (settings.runwayKey) {
+    logEvent('orchestrate', 'runway_start', { totalDuration, sceneCount: storyboard.scenes.length, model: settings.runwayModel || 'gen4_turbo' });
+    try {
+      const { jobs } = await RunwayGen4Provider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'runway_failed_fallback', { error: e.message });
+      // Fall through to Fal.ai / Higgsfield / Veo 3 / HeyGen
+    }
+  }
 
   // FAST PATH 0a — Fal.ai Seedance 2.0 (text-to-video, no reference photo needed).
   // Seedance 2.0 is ByteDance's latest cinematic model. Fal.ai hosts it with a
@@ -2969,11 +3086,44 @@ function PhaseThreeProvidersCard() {
         FinCast routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
       </div>
 
-      {/* Fal.ai Seedance 2.0 — top priority */}
+      {/* Runway Gen-4 Turbo — TOP PRIORITY, user's reference quality */}
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: s.runwayKey ? '2px solid #ff5e3a' : '1.5px solid transparent'}}>
+        <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
+          🎬 Runway Gen-4 Turbo (image-to-video)
+          {s.runwayKey && <span style={{fontSize:11, background:'#ff5e3a', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · TOP PRIORITY</span>}
+        </div>
+        <div className="help" style={{marginBottom:10}}>
+          The cinematic gold standard — Runway's Gen-4 Turbo at ~$0.25/sec produces walking-shot, environment, multi-angle output matching your reference quality. Image-to-video: animates your reference photo with cinematic camera. We mux your ElevenLabs voice over the top.
+          <br />
+          <strong>Get your key:</strong> <a href="https://dev.runwayml.com" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>dev.runwayml.com</a> → Profile → API Keys
+        </div>
+        <div className="grid2">
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Runway API Key</label>
+            <input type={showKeys?'text':'password'} value={s.runwayKey||''} onChange={e=>set({ runwayKey:e.target.value })} placeholder="key_..." />
+            <div className="help">Paste your key — FinCast routes ALL cinematic scenes through Runway first.</div>
+          </div>
+          <div>
+            <label className="label">Model</label>
+            <select value={s.runwayModel || 'gen4_turbo'} onChange={e=>set({ runwayModel:e.target.value })}>
+              <option value="gen4_turbo">Gen-4 Turbo (recommended · $0.25/sec)</option>
+              <option value="gen4">Gen-4 (premium · $0.40/sec)</option>
+              <option value="gen3a_turbo">Gen-3a Turbo (legacy · cheaper)</option>
+            </select>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">Reference photo URL</label>
+            <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot.jpg" />
+            <div className="help">Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Fal.ai Seedance 2.0 — fallback */}
       <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: s.falKey ? '1.5px solid var(--accent)' : '1.5px solid transparent'}}>
         <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
           🎬 Fal.ai · Seedance 2.0 (text-to-video)
-          {s.falKey && <span style={{fontSize:11, background:'var(--accent)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · TOP PRIORITY</span>}
+          {s.falKey && <span style={{fontSize:11, background:'var(--accent)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · FALLBACK</span>}
         </div>
         <div className="help" style={{marginBottom:10}}>
           ByteDance Seedance 2.0 hosted on Fal.ai — the <strong>fastest path to Seedance 2.0</strong> cinematic quality. Text-to-video (no reference photo needed). ~$0.30/sec at 720p. Recommended over Higgsfield native API until Higgsfield publishes a Seedance 2.0 REST endpoint.
@@ -3133,12 +3283,8 @@ function PhaseThreeProvidersCard() {
             <label className="label">OpenAI API key (Sora 2)</label>
             <input type={showKeys?'text':'password'} value={s.openaiKey} onChange={e=>set({ openaiKey:e.target.value })} placeholder="sk-..." />
           </div>
-          <div>
-            <label className="label">Runway API key (Gen-4)</label>
-            <input type={showKeys?'text':'password'} value={s.runwayKey} onChange={e=>set({ runwayKey:e.target.value })} placeholder="rw_..." />
-          </div>
         </div>
-        <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise.</div>
+        <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise. (Runway is now wired up — see the dedicated card above.)</div>
       </div>
 
       {/* Character Bible — locked persona description prepended to every cinematic prompt */}
@@ -3607,7 +3753,7 @@ function App() {
               // Runs in the background so the Approval card shows the first
               // scene immediately and swaps to the stitched final once complete.
               const isVeoMulti = updatedJobs.length > 1
-                && ['veo3', 'higgsfield', 'fal_seedance2'].includes(updatedJobs[0]?.provider)
+                && ['runway_gen4', 'veo3', 'higgsfield', 'fal_seedance2'].includes(updatedJobs[0]?.provider)
                 && !v.render?.stitchedUrl;
               if (isVeoMulti && s.settings.elevenLabsKey && s.settings.elevenLabsVoiceId) {
                 (async () => {
