@@ -919,7 +919,7 @@ class Veo3Provider extends VideoProvider {
       );
       const requestBody = {
         instances: [{ prompt }],
-        parameters: { aspectRatio: aspect, sampleCount: 1 },
+        parameters: { aspectRatio: aspect, sampleCount: 1, generateAudio: false },
       };
       logEvent('veo3-submit', 'request_body', { sceneId: sc.id, body: requestBody });
       try {
@@ -3006,14 +3006,21 @@ function PhaseThreeProvidersCard() {
             <input type={showKeys?'text':'password'} value={s.higgsfieldSecret||''} onChange={e=>set({ higgsfieldSecret:e.target.value })} placeholder="your_api_secret" />
             <div className="help">Both key and secret are on the same API Keys page.</div>
           </div>
-          <div>
-            <label className="label">DoP Model</label>
-            <select value={s.higgsfieldModelSlug || 'higgsfield/dop-standard/image-to-video'} onChange={e=>set({ higgsfieldModelSlug:e.target.value })}>
-              <option value="higgsfield/dop-lite/image-to-video">DoP Lite (cheapest)</option>
-              <option value="higgsfield/dop-standard/image-to-video">DoP Standard (recommended)</option>
-              <option value="higgsfield/dop-turbo/image-to-video">DoP Turbo (faster)</option>
-            </select>
-            <div className="help">Match what's in your Higgsfield dashboard.</div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="label">DoP Model slug (path after platform.higgsfield.ai/)</label>
+            <input value={s.higgsfieldModelSlug || ''} onChange={e=>set({ higgsfieldModelSlug:e.target.value })} placeholder="dop-standard/image-to-video" />
+            <div className="help">
+              Try variants until one stops returning 404:
+              <code style={{display:'block',marginTop:4,padding:6,background:'var(--card2)',borderRadius:4,fontSize:11}}>
+                dop-standard/image-to-video<br/>
+                dop-lite/image-to-video<br/>
+                dop-turbo/image-to-video<br/>
+                higgsfield/dop-standard/image-to-video<br/>
+                higgsfield/dop_standard/image-to-video<br/>
+                v1/dop-standard/image-to-video
+              </code>
+              The exact slug is on the Playground tab in your Higgsfield dashboard — open DoP Standard → Playground → look for the API code snippet.
+            </div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Reference photo URL (for image-to-video)</label>
