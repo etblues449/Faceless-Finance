@@ -3689,9 +3689,23 @@ async function fetchToBytes(url) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
+// Global stitch lock. Multiple videos may try to stitch concurrently (e.g.
+// after the user runs several test renders); ElevenLabs concurrent-request
+// limits and ffmpeg.wasm memory cost mean we MUST serialize. Each call
+// queues behind the previous one.
+let __stitchQueue = Promise.resolve();
+
 // Concatenates per-scene videos (drops their audio) and muxes a single
 // audio track over the combined output. Returns a blob URL for <video src>.
-async function stitchVeoCinematic({ videoUrls, audioBlob, onProgress }) {
+async function stitchVeoCinematic(args) {
+  const next = __stitchQueue.then(() => _stitchVeoCinematicInner(args));
+  // Don't propagate failures into the queue's chain — they'd block all
+  // subsequent stitches. Swallow here, propagate the original error to caller.
+  __stitchQueue = next.catch(() => {});
+  return next;
+}
+
+async function _stitchVeoCinematicInner({ videoUrls, audioBlob, onProgress }) {
   const ffmpeg = await loadFFmpeg();
   logEvent('stitch', 'start', { sceneCount: videoUrls.length });
   onProgress?.({ stage: 'fetching', progress: 0 });
@@ -3867,7 +3881,9 @@ function App() {
               // scene immediately and swaps to the stitched final once complete.
               const isVeoMulti = updatedJobs.length > 1
                 && ['runway_gen4', 'veo3', 'higgsfield', 'fal_seedance2'].includes(updatedJobs[0]?.provider)
-                && !v.render?.stitchedUrl;
+                && !v.render?.stitchedUrl
+                && v.render?.status !== 'stitching'
+                && !v.render?.stitchError;
               if (isVeoMulti && s.settings.elevenLabsKey && s.settings.elevenLabsVoiceId) {
                 (async () => {
                   try {
