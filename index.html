@@ -144,11 +144,12 @@
     .app { flex-direction:column-reverse; }
     .side { width:100%; height:auto; min-height:62px; flex-direction:row; border-right:none; border-top:1px solid var(--border); padding:0; flex-shrink:0; }
     .brand, .side-foot { display:none; }
-    .nav { display:flex; flex-direction:row; padding:0; flex:1; overflow-x:auto; }
-    .nav-item { flex:1; min-width:64px; flex-direction:column; padding:8px 4px; border-left:none; border-top:3px solid transparent; gap:3px; font-size:10px; text-align:center; justify-content:center; align-items:center; }
-    .nav-item.active { border-left:none; border-top-color:var(--accent); }
+    .nav { display:flex; flex-direction:row; padding:0; flex:1; overflow:hidden; }
+    .nav-item { flex:1 1 0; min-width:0; margin:0; border-radius:0; flex-direction:column; padding:7px 1px; border-left:none; border-top:3px solid transparent; gap:2px; font-size:9px; line-height:1.1; text-align:center; justify-content:center; align-items:center; overflow:hidden; }
+    .nav-item .nav-label { flex:none !important; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .nav-item.active { border-left:none; border-top-color:var(--accent); background:var(--accent-dim); }
     .nav-item .pill { display:none; }
-    .nav-icon { font-size:18px; }
+    .nav-icon { font-size:17px; }
     .main { padding:16px 14px 24px; }
     .page-head { flex-direction:column; gap:10px; }
     .page-title { font-size:20px; }
@@ -1907,13 +1908,13 @@ function useStore() { return React.useContext(StoreCtx); }
 // ============================================================================
 
 const NAV = [
-  { id:'pipeline',  label:'Pipeline',   icon:'▦' },
-  { id:'new',       label:'New Video',  icon:'✦' },
-  { id:'approval',  label:'Approval',   icon:'✓' },
-  { id:'analytics', label:'Analytics',  icon:'▥' },
-  { id:'publish',   label:'Publish',    icon:'↗' },
-  { id:'calendar',  label:'Calendar',   icon:'▣' },
-  { id:'settings',  label:'Settings',   icon:'⚙' },
+  { id:'pipeline',  label:'Pipeline',  icon:'▦' },
+  { id:'new',       label:'New',       icon:'✦' },
+  { id:'approval',  label:'Approval',  icon:'✓' },
+  { id:'analytics', label:'Analytics', icon:'▥' },
+  { id:'publish',   label:'Publish',   icon:'↗' },
+  { id:'calendar',  label:'Calendar',  icon:'▣' },
+  { id:'settings',  label:'Settings',  icon:'⚙' },
 ];
 
 // Editorial reference for the provider comparison table. costPerSec is a
@@ -1949,7 +1950,7 @@ function Sidebar({ page, setPage, state }) {
                className={`nav-item ${page===item.id?'active':''}`}
                onClick={() => setPage(item.id)}>
             <span className="nav-icon">{item.icon}</span>
-            <span style={{flex:1}}>{item.label}</span>
+            <span className="nav-label" style={{flex:1}}>{item.label}</span>
             {counts[item.id] > 0 && <span className="pill">{counts[item.id]}</span>}
           </div>
         ))}
