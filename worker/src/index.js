@@ -1,10 +1,10 @@
-// FinCast Cloudflare Worker
+// Faceless Finance Worker
 //
 // Two responsibilities:
 //   1. /proxy/<host>/<path...> — generic CORS-busting passthrough for browser→API calls
 //      that providers (Hedra, ElevenLabs, HeyGen, future) don't allow direct from browsers.
 //      This is the foundation of the multi-provider architecture: every provider call from
-//      FinCast goes through here. Solves CORS allowlists + multipart upload corruption.
+//      Faceless Finance App goes through here. Solves CORS allowlists + multipart upload corruption.
 //   2. /oauth/* + /auth/* + /publish/* — Phase 2 social-media auto-publishing (TikTok/YT/IG).
 //      Optional. Requires KV namespace + provider secrets if user wants to use them.
 //

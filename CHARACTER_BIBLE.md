@@ -21,7 +21,7 @@ British man, late twenties, athletic build, short cropped brown hair with subtle
 
 ## LONG version (canonical Character Bible)
 
-Use this in FinCast → Settings → Character Bible, in cinematic prompt
+Use this in Faceless Finance App → Settings → Character Bible, in cinematic prompt
 templates (Hedra Character-2 / Veo / Sora / Runway), and anywhere a more
 detailed description is supported. The cinematic providers prepend this
 to every visual prompt via `applyCharacterBible()`.
@@ -60,7 +60,7 @@ Setting context for cinematic scenes: UK indoor or natural-light outdoor.
 |---|---|
 | HeyGen Photo Avatar — "Describe your avatar" | SHORT |
 | HeyGen Avatar IV / appearance tags | SHORT |
-| FinCast → Settings → Character Bible | LONG |
+| Faceless Finance App → Settings → Character Bible | LONG |
 | Hedra Character-2 cinematic prompt | LONG (auto-prepended via `applyCharacterBible()`) |
 | Veo 3 / Sora 2 / Runway Gen-4 subject prompt | LONG |
 | Midjourney / DALL-E reference image generation | SHORT or LONG |
@@ -79,7 +79,7 @@ shoulders framing, looking nearly direct-to-camera. Reasons:
 - Beard stubble visible clearly
 - Skin tone, hair, jawline all readable
 - No background distractions, no other faces
-- Direct-to-camera angle matches FinCast's talking-head cinematography
+- Direct-to-camera angle matches Faceless Finance App's talking-head cinematography
 
 If HeyGen rejects it: try the **green-shirt at-the-restaurant** photo as a
 secondary — face is clean, expression is neutral.
@@ -91,7 +91,7 @@ secondary — face is clean, expression is neutral.
 - Provider: ElevenLabs
 - Type: PVC (Professional Voice Clone)
 - Voice name: `JB Blues Script`
-- Voice ID: stored in FinCast → Settings → ElevenLabs Voice ID
+- Voice ID: stored in Faceless Finance App → Settings → ElevenLabs Voice ID
 
 The voice and the avatar are the channel. Don't mix in other voices or
 avatars without a deliberate creative reason — consistency is the brand.
