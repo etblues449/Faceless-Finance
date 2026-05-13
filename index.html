@@ -8,34 +8,35 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Faceless Finance" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#1C1B1F" />
+<meta name="theme-color" content="#FCF8FA" />
 <style>
   :root {
-    /* Google Stitch / Material 3 — light */
-    --bg:#F4F3F8; --surface:#ECEAF2; --card:#FFFFFF; --card2:#F0EEF6;
-    --border:#E4E1EC; --border2:#CAC4D0;
-    --accent:#6750A4; --accent-dim:rgba(103,80,164,.10); --accent-hover:#7965B0;
+    /* Faceless Finance App design system — light (Stitch spec) */
+    --bg:#FCF8FA; --surface:#F6F3F5; --card:#FFFFFF; --card2:#F1EDF0;
+    --border:#E5E1E4; --border2:#C4C7C5;
+    --accent:#059669; --accent-dim:rgba(5,150,105,.10); --accent-hover:#047857;
     --on-accent:#FFFFFF;
-    --gold:#7D5260; --danger:#B3261E; --warn:#8C5000;
-    --text:#1C1B1F; --text-dim:#49454F; --muted:#79747E;
-    --radius-card:16px; --radius-btn:20px; --radius-input:12px; --radius-modal:24px;
-    --shadow:0 1px 3px rgba(28,27,31,0.08), 0 1px 2px rgba(28,27,31,0.04);
-    --shadow-modal:0 8px 32px rgba(28,27,31,0.20);
+    --gold:#0F172A; --danger:#E11D48; --warn:#F59E0B; --info:#0EA5E9;
+    --text:#0F172A; --text-dim:#334155; --muted:#64748B;
+    --radius-card:12px; --radius-btn:8px; --radius-input:8px; --radius-modal:24px;
+    --shadow:0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+    --shadow-modal:0 12px 40px rgba(15,23,42,0.18);
   }
   [data-theme="dark"] {
-    /* Google Stitch / Material 3 — dark */
-    --bg:#1C1B1F; --surface:#2B2930; --card:#211F26; --card2:#322F38;
-    --border:#36343B; --border2:#49454F;
-    --accent:#D0BCFF; --accent-dim:rgba(208,188,255,.12); --accent-hover:#DDCDFF;
-    --on-accent:#381E72;
-    --gold:#FFB1C8; --danger:#F2B8B5; --warn:#FFB95C;
-    --text:#E6E1E9; --text-dim:#CAC4D0; --muted:#948F99;
+    /* Dark variant of the same palette — slate surface, emerald action */
+    --bg:#0F172A; --surface:#1E293B; --card:#1A2436; --card2:#293548;
+    --border:#334155; --border2:#475569;
+    --accent:#10B981; --accent-dim:rgba(16,185,129,.14); --accent-hover:#34D399;
+    --on-accent:#06281C;
+    --gold:#E2E8F0; --danger:#FB7185; --warn:#FBBF24; --info:#38BDF8;
+    --text:#F1F5F9; --text-dim:#CBD5E1; --muted:#94A3B8;
+    --radius-card:12px; --radius-btn:8px; --radius-input:8px; --radius-modal:24px;
     --shadow:none;
-    --shadow-modal:0 8px 32px rgba(0,0,0,0.5);
+    --shadow-modal:0 12px 40px rgba(0,0,0,0.5);
   }
   *,*::before,*::after { box-sizing:border-box; }
   html,body,#root { height:100%; margin:0; }
-  body { background:var(--bg); color:var(--text); font:14px/1.5 "Google Sans Text","Google Sans",Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; overflow:hidden; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 Inter,"Inter","Google Sans Text",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
   button { font:inherit; color:inherit; cursor:pointer; }
   input,textarea,select { font:inherit; color:inherit; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-input); padding:11px 14px; outline:none; width:100%; transition:border-color .15s,box-shadow .15s; }
   input:focus,textarea:focus,select:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
@@ -79,21 +80,21 @@
   .btn-danger:hover:not(:disabled) { background:var(--danger); filter:brightness(1.1); }
   .btn-sm { padding:6px 14px; font-size:12px; }
   .badge { display:inline-block; padding:4px 10px; border-radius:8px; font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; background:var(--card2); color:var(--text-dim); }
-  .badge-idea { background:rgba(125,82,96,.12); color:var(--gold); }
-  .badge-script { background:rgba(103,80,164,.12); color:var(--accent); }
-  .badge-render { background:rgba(140,80,0,.14); color:var(--warn); }
+  .badge-idea { background:rgba(100,116,139,.14); color:var(--muted); }
+  .badge-script { background:rgba(14,165,233,.12); color:var(--info); }
+  .badge-render { background:rgba(245,158,11,.16); color:var(--warn); }
   .badge-approval { background:var(--accent-dim); color:var(--accent); }
-  .badge-approved { background:rgba(103,80,164,.20); color:var(--accent); }
-  .badge-published { background:rgba(103,80,164,.28); color:var(--accent); }
+  .badge-approved { background:rgba(5,150,105,.18); color:var(--accent); }
+  .badge-published { background:rgba(5,150,105,.28); color:var(--accent); }
   .pill { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; border-radius:99px; font-size:11px; background:var(--card2); color:var(--text-dim); }
   .empty { padding:32px 16px; text-align:center; color:var(--muted); font-size:13px; border:1px dashed var(--border2); border-radius:var(--radius-card); }
   .alert { padding:13px 16px; border-radius:12px; font-size:12px; line-height:1.5; }
-  .alert-warn { background:rgba(140,80,0,.08); border:1px solid rgba(140,80,0,.22); color:var(--warn); }
-  .alert-err { background:rgba(179,38,30,.06); border:1px solid rgba(179,38,30,.22); color:var(--danger); }
-  .alert-ok { background:var(--accent-dim); border:1px solid rgba(103,80,164,.28); color:var(--accent); }
-  [data-theme="dark"] .alert-warn { background:rgba(255,185,92,.1); border-color:rgba(255,185,92,.3); }
-  [data-theme="dark"] .alert-err { background:rgba(242,184,181,.08); border-color:rgba(242,184,181,.3); }
-  [data-theme="dark"] .alert-ok { border-color:rgba(208,188,255,.3); }
+  .alert-warn { background:rgba(245,158,11,.10); border:1px solid rgba(245,158,11,.30); color:var(--warn); }
+  .alert-err { background:rgba(225,29,72,.07); border:1px solid rgba(225,29,72,.25); color:var(--danger); }
+  .alert-ok { background:var(--accent-dim); border:1px solid rgba(5,150,105,.30); color:var(--accent); }
+  [data-theme="dark"] .alert-warn { background:rgba(251,191,36,.12); border-color:rgba(251,191,36,.3); }
+  [data-theme="dark"] .alert-err { background:rgba(251,113,133,.10); border-color:rgba(251,113,133,.3); }
+  [data-theme="dark"] .alert-ok { border-color:rgba(16,185,129,.3); }
   .stage-col { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-card); padding:12px; min-height:60px; }
   .stage-col-h { font-size:11px; font-weight:700; color:var(--text-dim); letter-spacing:.06em; text-transform:uppercase; padding:4px 6px 10px; display:flex; justify-content:space-between; align-items:center; }
   .vcard { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:border-color .12s,box-shadow .12s; }
@@ -318,7 +319,7 @@ const DEFAULT_SETTINGS = {
   defaultPlatforms: ['tiktok','reels','shorts'],
   disclaimer: FCA_DISCLAIMER,
   llmModel: 'claude-sonnet-4-6',
-  theme: 'dark',
+  theme: 'light',
 };
 
 // ============================================================================
@@ -3384,7 +3385,7 @@ function AnalyticsPage() {
           </select>
         </div>
         <div style={{display:'flex', flexDirection:'column', gap:8, alignItems:'center'}}>
-          <div style={{padding:'10px 14px', borderRadius:10, background:'rgba(179,38,30,.08)', border:'1px solid rgba(179,38,30,.25)', color:'var(--danger)', textAlign:'center', width:'100%', maxWidth:340}}>
+          <div style={{padding:'10px 14px', borderRadius:10, background:'rgba(225,29,72,.08)', border:'1px solid rgba(225,29,72,.25)', color:'var(--danger)', textAlign:'center', width:'100%', maxWidth:340}}>
             <strong>{sim.primary}</strong><div style={{fontSize:11}}>⚠ Error: {scenario === 'runway_out_of_credits' ? 'Out of credits' : scenario === 'veo_high_latency' ? 'Rate-limited / high latency' : 'Request timed out'}</div>
           </div>
           <div style={{fontSize:11, color:'var(--accent)', fontWeight:600}}>↓ fallback triggered ↓</div>
@@ -3713,10 +3714,10 @@ function PhaseThreeProvidersCard() {
       </div>
 
       {/* Higgsfield native — DoP image-to-video */}
-      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: (s.higgsfieldKey && s.higgsfieldSecret) ? '1.5px solid #8b5cf6' : '1.5px solid transparent'}}>
+      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: (s.higgsfieldKey && s.higgsfieldSecret) ? '1.5px solid var(--info)' : '1.5px solid transparent'}}>
         <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
           🎬 Higgsfield · DoP (image-to-video)
-          {(s.higgsfieldKey && s.higgsfieldSecret) && <span style={{fontSize:11, background:'#8b5cf6', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · FALLBACK</span>}
+          {(s.higgsfieldKey && s.higgsfieldSecret) && <span style={{fontSize:11, background:'var(--info)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · FALLBACK</span>}
         </div>
         <div className="help" style={{marginBottom:10}}>
           Higgsfield's DoP (Director of Photography) cinematic models — animate your reference photo with camera moves. Needs <strong>both</strong> API Key and API Secret from <a href="https://cloud.higgsfield.ai/api-keys" target="_blank" rel="noopener" style={{color:'var(--accent)'}}>cloud.higgsfield.ai/api-keys</a>.
@@ -4504,7 +4505,7 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = state.settings.theme || 'light';
     const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#1C1B1F' : '#F4F3F8');
+    if (tc) tc.setAttribute('content', (state.settings.theme === 'dark') ? '#0F172A' : '#FCF8FA');
   }, [state.settings.theme]);
 
   // Global multi-provider polling: survives page navigation. Polls every 8s.
