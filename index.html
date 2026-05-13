@@ -561,25 +561,51 @@ window.__fincastDebugLog = getDebugLog; // allow `window.__fincastDebugLog()` fr
 
 // Wrapped fetch that logs every request, every response, every error.
 // All provider code should use this instead of raw fetch.
+//
+// Resilience: GET requests (polls, downloads — all idempotent) are retried
+// once on a network-level failure ("Failed to fetch"), which on Chrome is
+// almost always a stale HTTP/2 socket from the connection pool. POSTs are
+// NOT retried (could double-submit / double-charge).
 async function loggedFetch(provider, url, opts = {}) {
-  const startedAt = Date.now();
-  logEvent(provider, 'request', { url, method: opts.method || 'GET' });
-  try {
-    const r = await fetch(url, opts);
-    const durationMs = Date.now() - startedAt;
-    if (!r.ok) {
-      const text = await r.text().catch(() => '');
-      logEvent(provider, 'response_error', { url, status: r.status, body: text.slice(0, 400), durationMs });
-      throw new Error(`${provider} ${r.status} (${durationMs}ms): ${text.slice(0, 300)}`);
+  const method = (opts.method || 'GET').toUpperCase();
+  const isIdempotent = method === 'GET' || method === 'HEAD';
+  const attempt = async (retrying) => {
+    const startedAt = Date.now();
+    if (!retrying) logEvent(provider, 'request', { url, method });
+    else logEvent(provider, 'request_retry', { url, method });
+    try {
+      const r = await fetch(url, retrying ? { ...opts, cache: 'no-store' } : opts);
+      const durationMs = Date.now() - startedAt;
+      if (!r.ok) {
+        const text = await r.text().catch(() => '');
+        logEvent(provider, 'response_error', { url, status: r.status, body: text.slice(0, 400), durationMs });
+        throw new Error(`${provider} ${r.status} (${durationMs}ms): ${text.slice(0, 300)}`);
+      }
+      logEvent(provider, 'response_ok', { url, status: r.status, durationMs, retried: !!retrying });
+      return r;
+    } catch (e) {
+      const durationMs = Date.now() - startedAt;
+      // HTTP-status errors carry the provider name in the message — re-throw as-is.
+      if (e.message?.includes(provider)) throw e;
+      // Network-level failure. Retry once for idempotent requests.
+      if (isIdempotent && !retrying) {
+        logEvent(provider, 'fetch_retry_scheduled', { url, error: e.message, durationMs });
+        await new Promise(r => setTimeout(r, 700));
+        return attempt(true);
+      }
+      logEvent(provider, 'fetch_error', { url, error: e.message, durationMs, hint: 'Network/CORS/DNS. Worker proxy or upstream unreachable.' });
+      throw new Error(`${provider} fetch failed (${durationMs}ms): ${e.message}. URL: ${url}.`);
     }
-    logEvent(provider, 'response_ok', { url, status: r.status, durationMs });
-    return r;
-  } catch (e) {
-    const durationMs = Date.now() - startedAt;
-    if (e.message?.includes(provider)) throw e;
-    logEvent(provider, 'fetch_error', { url, error: e.message, durationMs, hint: 'Likely CORS, DNS, or network. Check provider base URL in Settings.' });
-    throw new Error(`${provider} fetch failed (${durationMs}ms): ${e.message}. URL: ${url}. Likely CORS/DNS issue — try changing the base URL in Settings.`);
-  }
+  };
+  return attempt(false);
+}
+
+// True when a thrown error looks like a transient network blip (stale socket,
+// DNS hiccup, timeout) rather than a real provider error. Used by pollJob()s
+// so a momentary "Failed to fetch" doesn't permanently kill a scene that's
+// still rendering upstream.
+function isTransientFetchError(msg) {
+  return /fetch failed \(|failed to fetch|networkerror|load failed|timeout|err_network|err_connection|connection reset/i.test(String(msg || ''));
 }
 
 // Build Hedra auth headers from settings — tries Bearer or x-api-key per user pref.
@@ -806,8 +832,8 @@ class HedraActTwoProvider extends VideoProvider {
         raw: d,
       };
     } catch (e) {
-      logEvent('hedra-poll', 'pollJob_error', { jobId, error: e.message });
-      return { status: 'failed', error: e.message };
+      logEvent('hedra-poll', 'pollJob_error', { jobId, error: e.message, transient: isTransientFetchError(e.message) });
+      return isTransientFetchError(e.message) ? { status: 'processing' } : { status: 'failed', error: e.message };
     }
   }
 }
@@ -982,8 +1008,8 @@ class Veo3Provider extends VideoProvider {
       videoUri = `${videoUri}${sep}key=${encodeURIComponent(settings.googleAiKey)}`;
       return { status: 'completed', videoUrl: proxiedUrl(videoUri, settings) };
     } catch (e) {
-      logEvent('veo3-poll', 'pollJob_error', { jobId, error: e.message });
-      return { status: 'failed', error: e.message };
+      logEvent('veo3-poll', 'pollJob_error', { jobId, error: e.message, transient: isTransientFetchError(e.message) });
+      return isTransientFetchError(e.message) ? { status: 'processing' } : { status: 'failed', error: e.message };
     }
   }
 }
@@ -1084,8 +1110,8 @@ class HiggsfieldProvider extends VideoProvider {
       // queued | in_progress → still processing
       return { status: 'processing', progress: d.progress ?? null };
     } catch (e) {
-      logEvent('higgsfield-poll', 'error', { jobId, error: e.message });
-      return { status: 'failed', error: e.message };
+      logEvent('higgsfield-poll', 'error', { jobId, error: e.message, transient: isTransientFetchError(e.message) });
+      return isTransientFetchError(e.message) ? { status: 'processing' } : { status: 'failed', error: e.message };
     }
   }
 }
@@ -1168,8 +1194,8 @@ class FalSeedance2Provider extends VideoProvider {
       }
       return { status: 'processing', progress: d.progress ?? null };
     } catch (e) {
-      logEvent('fal-seedance2-poll', 'error', { jobId, error: e.message });
-      return { status: 'failed', error: e.message };
+      logEvent('fal-seedance2-poll', 'error', { jobId, error: e.message, transient: isTransientFetchError(e.message) });
+      return isTransientFetchError(e.message) ? { status: 'processing' } : { status: 'failed', error: e.message };
     }
   }
 }
@@ -1287,8 +1313,8 @@ class RunwayGen4Provider extends VideoProvider {
       // PENDING | RUNNING | THROTTLED
       return { status: 'processing', progress: d.progress ?? null };
     } catch (e) {
-      logEvent('runway-poll', 'error', { jobId, error: e.message });
-      return { status: 'failed', error: e.message };
+      logEvent('runway-poll', 'error', { jobId, error: e.message, transient: isTransientFetchError(e.message) });
+      return isTransientFetchError(e.message) ? { status: 'processing' } : { status: 'failed', error: e.message };
     }
   }
 }
@@ -2723,8 +2749,8 @@ function ApprovalPage({ go }) {
             allDone = false;
           }
         } catch (e) {
-          updatedJobs[i] = { ...job, status: 'failed', error: e.message };
-          anyFailed = true;
+          if (isTransientFetchError(e.message)) { updatedJobs[i] = { ...job, status: job.status || 'processing' }; allDone = false; }
+          else { updatedJobs[i] = { ...job, status: 'failed', error: e.message }; anyFailed = true; }
         }
       }
       if (allDone) {
