@@ -56,6 +56,7 @@
   .nav-icon { width:18px; text-align:center; opacity:.85; }
   .side-foot { padding:14px 18px; border-top:1px solid var(--border); font-size:11px; color:var(--muted); }
   .main { flex:1; overflow-y:auto; padding:24px 28px; }
+  .main > * { max-width:760px; margin-left:auto; margin-right:auto; }
   .page-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; gap:16px; }
   .page-title { font-size:22px; font-weight:700; }
   .page-sub { font-size:13px; color:var(--muted); margin-top:3px; }
@@ -316,7 +317,7 @@ const DEFAULT_SETTINGS = {
   defaultPlatforms: ['tiktok','reels','shorts'],
   disclaimer: FCA_DISCLAIMER,
   llmModel: 'claude-sonnet-4-6',
-  theme: 'light',
+  theme: 'dark',
 };
 
 // ============================================================================
@@ -2002,7 +2003,7 @@ function KeyStatus({ state }) {
 // PAGE: PIPELINE
 // ============================================================================
 
-function PipelinePage() {
+function PipelinePage({ go }) {
   const { state, dispatch } = useStore();
   const [openVideo, setOpenVideo] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -2016,6 +2017,7 @@ function PipelinePage() {
     { stage:'approved',  label:'Approved' },
     { stage:'published', label:'Published' },
   ];
+  const keys = checkKeys(state.settings);
   const toggle = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const selectAllIn = (stage) => setSelected(s => {
     const ids = state.videos.filter(v => v.stage === stage).map(v => v.id);
@@ -2059,62 +2061,94 @@ function PipelinePage() {
     setBusy(''); exitSelect();
   };
 
+  const renderProgress = (v) => {
+    const jobs = v.render?.jobs || [];
+    if (!jobs.length) return null;
+    const done = jobs.filter(j => j.status === 'completed').length;
+    return Math.round((done / jobs.length) * 100);
+  };
+
   return (
-    <div>
+    <div style={{paddingBottom: selectMode ? 90 : 24}}>
       <div className="page-head">
         <div>
           <div className="page-title">Pipeline</div>
-          <div className="page-sub">{selectMode ? 'Tap cards to select. Use the bar below for batch actions.' : 'Every video by stage. Click a card to inspect.'}</div>
+          <div className="page-sub">{selectMode ? 'Tap cards to select · use the bar below for batch actions' : `${state.videos.length} video production${state.videos.length===1?'':'s'}`}</div>
         </div>
         <div style={{display:'flex', gap:8}}>
           {selectMode
             ? <button className="btn btn-ghost btn-sm" onClick={exitSelect}>Done</button>
-            : <button className="btn btn-ghost btn-sm" onClick={()=>setSelectMode(true)} disabled={state.videos.length===0}>☑ Select</button>}
+            : <>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setSelectMode(true)} disabled={state.videos.length===0}>☑ Select</button>
+                <button className="btn btn-sm" onClick={()=>go && go('new')}>+ Create New</button>
+              </>}
         </div>
       </div>
       {state.videos.length === 0 && (
-        <div className="empty">No videos yet. Hit <strong>New Video</strong> to create your first one.</div>
+        <div className="empty">No videos yet. Hit <strong>+ Create New</strong> to start your first one.</div>
       )}
-      <div className="pipeline-grid" style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12, paddingBottom: selectMode ? 80 : 0}}>
+      <div style={{display:'flex', flexDirection:'column', gap:24}}>
         {cols.map(c => {
           const items = state.videos.filter(v => v.stage === c.stage);
+          if (items.length === 0 && !selectMode) return null;
           const allSel = items.length > 0 && items.every(v => selected.has(v.id));
           return (
-            <div key={c.stage} className="stage-col">
-              <div className="stage-col-h">
-                <span>{c.label}</span>
-                {selectMode && items.length > 0
-                  ? <button onClick={()=>selectAllIn(c.stage)} style={{border:'none', background:'transparent', color:'var(--accent)', fontSize:10, cursor:'pointer', fontWeight:600}}>{allSel?'clear':'all'}</button>
-                  : <span>{items.length}</span>}
+            <section key={c.stage}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
+                <h3 style={{fontWeight:700, fontSize:15, margin:0}}>{c.label}</h3>
+                <span style={{background:'var(--card2)', color:'var(--text-dim)', fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:99}}>{items.length}</span>
+                {selectMode && items.length > 0 && (
+                  <button onClick={()=>selectAllIn(c.stage)} style={{marginLeft:'auto', border:'none', background:'transparent', color:'var(--accent)', fontSize:11, cursor:'pointer', fontWeight:600}}>{allSel?'clear all':'select all'}</button>
+                )}
               </div>
-              {items.length===0 && <div style={{fontSize:11,color:'var(--muted)',padding:6}}>—</div>}
-              {items.map(v => {
-                const sel = selected.has(v.id);
-                return (
-                  <div key={v.id} className="vcard" style={selectMode && sel ? {borderColor:'var(--accent)', boxShadow:'0 0 0 2px var(--accent-dim)'} : undefined}
-                       onClick={() => selectMode ? toggle(v.id) : setOpenVideo(v.id)}>
-                    <div style={{display:'flex', alignItems:'flex-start', gap:8}}>
-                      {selectMode && (
-                        <span style={{flexShrink:0, width:16, height:16, borderRadius:4, border:`2px solid ${sel?'var(--accent)':'var(--border2)'}`, background:sel?'var(--accent)':'transparent', color:'var(--on-accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, marginTop:1}}>{sel?'✓':''}</span>
-                      )}
-                      <div style={{flex:1, minWidth:0}}>
-                        <div className="vcard-title">{v.idea?.title || 'Untitled'}</div>
-                        <div className="vcard-meta">
-                          <span className={stageBadgeCls(v.stage)}>{v.stage}</span>
-                          <span>{fmt(v.updatedAt)}</span>
+              {items.length === 0 && <div style={{fontSize:12, color:'var(--muted)', padding:'4px 0'}}>—</div>}
+              <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                {items.map(v => {
+                  const sel = selected.has(v.id);
+                  const pct = c.stage === 'render' ? renderProgress(v) : null;
+                  return (
+                    <div key={v.id} className="card" style={{padding:14, cursor:'pointer', ...(selectMode && sel ? {borderColor:'var(--accent)', boxShadow:'0 0 0 2px var(--accent-dim)'} : {})}}
+                         onClick={() => selectMode ? toggle(v.id) : setOpenVideo(v.id)}>
+                      <div style={{display:'flex', alignItems:'flex-start', gap:10}}>
+                        {selectMode && (
+                          <span style={{flexShrink:0, width:18, height:18, borderRadius:5, border:`2px solid ${sel?'var(--accent)':'var(--border2)'}`, background:sel?'var(--accent)':'transparent', color:'var(--on-accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, marginTop:1}}>{sel?'✓':''}</span>
+                        )}
+                        <div style={{flex:1, minWidth:0}}>
+                          <div style={{display:'flex', justifyContent:'space-between', gap:8, marginBottom:8}}>
+                            <span className={stageBadgeCls(v.stage)}>{v.stage}</span>
+                            <span style={{fontSize:10, color:'var(--muted)', whiteSpace:'nowrap'}}>{fmt(v.updatedAt)}</span>
+                          </div>
+                          <div style={{fontWeight:600, fontSize:14, lineHeight:1.35}}>{v.idea?.title || 'Untitled'}</div>
+                          {pct != null && (
+                            <div style={{marginTop:10}}>
+                              <div style={{height:6, borderRadius:99, background:'var(--card2)', overflow:'hidden'}}>
+                                <div style={{height:'100%', width:`${pct}%`, background:'var(--warn)', transition:'width .3s'}} />
+                              </div>
+                              <div style={{fontSize:11, color:'var(--muted)', marginTop:5}}>{pct}% · {v.render?.jobs?.filter(j=>j.status==='completed').length}/{v.render?.jobs?.length} scenes</div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </section>
           );
         })}
       </div>
+      {!selectMode && state.videos.length > 0 && (
+        <div className="card" style={{marginTop:24, padding:12, display:'flex', alignItems:'center', gap:10}}>
+          <span className="dot" style={{background: keys.ok ? '#2DC26B' : 'var(--danger)'}} />
+          <span style={{fontSize:12, fontWeight:600}}>{keys.ok ? 'Keys OK' : 'Keys missing'}</span>
+          {!keys.ok && <span style={{fontSize:11, color:'var(--muted)'}}>{keys.missing.slice(0,2).join(', ')}{keys.missing.length>2?'…':''}</span>}
+          <span style={{flex:1}}/>
+          <span style={{fontSize:10, fontWeight:700, color:'var(--muted)', letterSpacing:'.08em'}}>FACELESS FINANCE APP · v{APP_VERSION}</span>
+        </div>
+      )}
       {openVideo && <VideoModal id={openVideo} onClose={() => setOpenVideo(null)} />}
       {selectMode && (
-        <div style={{position:'fixed', left:0, right:0, bottom:64, zIndex:40, background:'var(--card)', borderTop:'1px solid var(--border)', boxShadow:'0 -4px 16px rgba(0,0,0,.12)', padding:'10px 14px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
+        <div style={{position:'fixed', left:0, right:0, bottom:64, zIndex:40, background:'var(--card)', borderTop:'1px solid var(--border)', boxShadow:'0 -4px 16px rgba(0,0,0,.3)', padding:'10px 14px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
           <strong style={{fontSize:13}}>{selected.size} selected</strong>
           <span style={{flex:1}}/>
           <button className="btn btn-ghost btn-sm" disabled={!selected.size || !!busy} onClick={bulkRender}>{busy==='render'?<><span className="spin"></span> Rendering…</>:'⟳ Re-render'}</button>
@@ -4559,7 +4593,7 @@ function App() {
       <div className="app">
         <Sidebar page={page} setPage={setPage} state={state} />
         <div className="main">
-          {page === 'pipeline'  && <PipelinePage />}
+          {page === 'pipeline'  && <PipelinePage go={setPage} />}
           {page === 'new'       && <NewVideoPage go={setPage} />}
           {page === 'approval'  && <ApprovalPage go={setPage} />}
           {page === 'analytics' && <AnalyticsPage />}
