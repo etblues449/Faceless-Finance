@@ -1966,6 +1966,9 @@ function KeyStatus({ state }) {
 function PipelinePage() {
   const { state, dispatch } = useStore();
   const [openVideo, setOpenVideo] = useState(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [busy, setBusy] = useState('');
   const cols = [
     { stage:'idea',      label:'Idea' },
     { stage:'script',    label:'Script' },
@@ -1974,38 +1977,113 @@ function PipelinePage() {
     { stage:'approved',  label:'Approved' },
     { stage:'published', label:'Published' },
   ];
+  const toggle = (id) => setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const selectAllIn = (stage) => setSelected(s => {
+    const ids = state.videos.filter(v => v.stage === stage).map(v => v.id);
+    const allIn = ids.length > 0 && ids.every(id => s.has(id));
+    const n = new Set(s);
+    ids.forEach(id => allIn ? n.delete(id) : n.add(id));
+    return n;
+  });
+  const exitSelect = () => { setSelectMode(false); setSelected(new Set()); };
+  const selectedVideos = () => state.videos.filter(v => selected.has(v.id));
+
+  const bulkMoveToApproval = () => {
+    selectedVideos().forEach(v => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approval' } }));
+    exitSelect();
+  };
+  const bulkSendToScript = () => {
+    selectedVideos().forEach(v => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script' } }));
+    exitSelect();
+  };
+  const bulkDelete = () => {
+    const n = selected.size;
+    if (!confirm(`Delete ${n} selected video${n===1?'':'s'}? Cannot be undone.`)) return;
+    selectedVideos().forEach(v => dispatch({ type:'DELETE_VIDEO', id:v.id }));
+    exitSelect();
+  };
+  const bulkRender = async () => {
+    const targets = selectedVideos().filter(v => v.storyboard?.scenes?.length && v.stage !== 'render');
+    if (!targets.length) { alert('No selected videos have a storyboard ready to render (and aren\'t already rendering).'); return; }
+    if (!confirm(`Re-render ${targets.length} video${targets.length===1?'':'s'} via the multi-provider orchestrator? This may cost credits.`)) return;
+    setBusy('render');
+    for (const v of targets) {
+      const aspect = v.render?.aspect || PLATFORMS[v.idea?.platform || 'tiktok']?.aspect || '9:16';
+      dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'render', render:{ ...(v.render||{}), status:'queued', jobs:[], startedAt:Date.now(), aspect } } });
+      try {
+        const { jobs } = await orchestrateRender({ storyboard: v.storyboard, settings: state.settings, aspect });
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render:{ ...(v.render||{}), status:'processing', jobs, startedAt:Date.now(), aspect } } });
+      } catch (e) {
+        dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ render:{ ...(v.render||{}), status:'failed', error:e.message } } });
+      }
+    }
+    setBusy(''); exitSelect();
+  };
+
   return (
     <div>
       <div className="page-head">
         <div>
           <div className="page-title">Pipeline</div>
-          <div className="page-sub">Every video by stage. Click a card to inspect.</div>
+          <div className="page-sub">{selectMode ? 'Tap cards to select. Use the bar below for batch actions.' : 'Every video by stage. Click a card to inspect.'}</div>
+        </div>
+        <div style={{display:'flex', gap:8}}>
+          {selectMode
+            ? <button className="btn btn-ghost btn-sm" onClick={exitSelect}>Done</button>
+            : <button className="btn btn-ghost btn-sm" onClick={()=>setSelectMode(true)} disabled={state.videos.length===0}>☑ Select</button>}
         </div>
       </div>
       {state.videos.length === 0 && (
         <div className="empty">No videos yet. Hit <strong>New Video</strong> to create your first one.</div>
       )}
-      <div className="pipeline-grid" style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12}}>
+      <div className="pipeline-grid" style={{display:'grid', gridTemplateColumns:'repeat(6, minmax(180px, 1fr))', gap:12, paddingBottom: selectMode ? 80 : 0}}>
         {cols.map(c => {
           const items = state.videos.filter(v => v.stage === c.stage);
+          const allSel = items.length > 0 && items.every(v => selected.has(v.id));
           return (
             <div key={c.stage} className="stage-col">
-              <div className="stage-col-h"><span>{c.label}</span><span>{items.length}</span></div>
+              <div className="stage-col-h">
+                <span>{c.label}</span>
+                {selectMode && items.length > 0
+                  ? <button onClick={()=>selectAllIn(c.stage)} style={{border:'none', background:'transparent', color:'var(--accent)', fontSize:10, cursor:'pointer', fontWeight:600}}>{allSel?'clear':'all'}</button>
+                  : <span>{items.length}</span>}
+              </div>
               {items.length===0 && <div style={{fontSize:11,color:'var(--muted)',padding:6}}>—</div>}
-              {items.map(v => (
-                <div key={v.id} className="vcard" onClick={() => setOpenVideo(v.id)}>
-                  <div className="vcard-title">{v.idea?.title || 'Untitled'}</div>
-                  <div className="vcard-meta">
-                    <span className={stageBadgeCls(v.stage)}>{v.stage}</span>
-                    <span>{fmt(v.updatedAt)}</span>
+              {items.map(v => {
+                const sel = selected.has(v.id);
+                return (
+                  <div key={v.id} className="vcard" style={selectMode && sel ? {borderColor:'var(--accent)', boxShadow:'0 0 0 2px var(--accent-dim)'} : undefined}
+                       onClick={() => selectMode ? toggle(v.id) : setOpenVideo(v.id)}>
+                    <div style={{display:'flex', alignItems:'flex-start', gap:8}}>
+                      {selectMode && (
+                        <span style={{flexShrink:0, width:16, height:16, borderRadius:4, border:`2px solid ${sel?'var(--accent)':'var(--border2)'}`, background:sel?'var(--accent)':'transparent', color:'var(--on-accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, marginTop:1}}>{sel?'✓':''}</span>
+                      )}
+                      <div style={{flex:1, minWidth:0}}>
+                        <div className="vcard-title">{v.idea?.title || 'Untitled'}</div>
+                        <div className="vcard-meta">
+                          <span className={stageBadgeCls(v.stage)}>{v.stage}</span>
+                          <span>{fmt(v.updatedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           );
         })}
       </div>
       {openVideo && <VideoModal id={openVideo} onClose={() => setOpenVideo(null)} />}
+      {selectMode && (
+        <div style={{position:'fixed', left:0, right:0, bottom:64, zIndex:40, background:'var(--card)', borderTop:'1px solid var(--border)', boxShadow:'0 -4px 16px rgba(0,0,0,.12)', padding:'10px 14px', display:'flex', alignItems:'center', gap:10, flexWrap:'wrap'}}>
+          <strong style={{fontSize:13}}>{selected.size} selected</strong>
+          <span style={{flex:1}}/>
+          <button className="btn btn-ghost btn-sm" disabled={!selected.size || !!busy} onClick={bulkRender}>{busy==='render'?<><span className="spin"></span> Rendering…</>:'⟳ Re-render'}</button>
+          <button className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={bulkMoveToApproval}>→ To Approval</button>
+          <button className="btn btn-ghost btn-sm" disabled={!selected.size} onClick={bulkSendToScript}>↩ To Script</button>
+          <button className="btn btn-ghost btn-sm" style={{color:'var(--danger)'}} disabled={!selected.size} onClick={bulkDelete}>🗑 Delete</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2400,10 +2478,90 @@ function NewVideoPage({ go }) {
 // PAGE: APPROVAL
 // ============================================================================
 
+// One-video-at-a-time batch review feed. Big approve/reject, comment box,
+// progress counter. Approving/rejecting advances to the next pending video.
+function ReviewFeed({ onClose }) {
+  const { state, dispatch } = useStore();
+  const pending = state.videos.filter(v => v.stage === 'approval' && (v.heygen?.videoUrl || v.render?.stitchedUrl || v.render?.jobs?.some(j=>j.status==='completed')));
+  const total = state.videos.filter(v => v.stage === 'approval' || v.stage === 'approved').length || pending.length;
+  const [idx, setIdx] = useState(0);
+  const [comment, setComment] = useState('');
+  const [reviewed, setReviewed] = useState(0);
+  const v = pending[idx];
+
+  if (!v) {
+    return (
+      <div className="modal-bg" onClick={onClose}>
+        <div className="modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
+          <div className="modal-b" style={{textAlign:'center', padding:32}}>
+            <div style={{fontSize:32, marginBottom:8}}>✓</div>
+            <div style={{fontWeight:700, fontSize:16}}>Review feed clear</div>
+            <div style={{fontSize:13, color:'var(--muted)', marginTop:6}}>{reviewed > 0 ? `${reviewed} video${reviewed===1?'':'s'} reviewed this session.` : 'No completed videos waiting for review.'}</div>
+            <button className="btn" style={{marginTop:16}} onClick={onClose}>Back to Approval</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const videoUrl = v.render?.stitchedUrl || v.heygen?.videoUrl || v.render?.jobs?.find(j=>j.status==='completed')?.videoUrl;
+  const advance = () => { setComment(''); setReviewed(r=>r+1); /* re-filter happens via render; keep idx at 0 since approved video leaves the list */ setIdx(0); };
+  const onApprove = () => {
+    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved', review:{ note: comment || '', at: Date.now(), action:'approved' } } });
+    advance();
+  };
+  const onReject = () => {
+    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script', review:{ note: comment || '', at: Date.now(), action:'rejected' } } });
+    advance();
+  };
+  const onLater = () => onClose();
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" style={{maxWidth:480, display:'flex', flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">
+          <div>
+            <div style={{fontWeight:700, fontSize:16}}>Review Feed</div>
+            <div style={{fontSize:11, color:'var(--muted)'}}>{reviewed} reviewed · {pending.length} waiting</div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+        </div>
+        <div className="modal-b" style={{padding:16}}>
+          <div style={{position:'relative', borderRadius:12, overflow:'hidden', background:'#000'}}>
+            {videoUrl ? <video src={videoUrl} controls playsInline autoPlay muted style={{width:'100%', maxHeight:'52vh', display:'block'}} /> : <div style={{padding:40, textAlign:'center', color:'#888'}}>No playable video URL</div>}
+            <div style={{position:'absolute', top:8, right:8, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:9, fontWeight:700, padding:'3px 6px', borderRadius:4, lineHeight:1.2, textAlign:'right'}}>UK Personal<br/>Finance</div>
+          </div>
+          <div style={{fontWeight:600, fontSize:15, marginTop:12}}>{v.idea?.title}</div>
+          <div style={{fontSize:11, color:'var(--muted)', marginTop:2}}>{v.idea?.platform || '—'} · {v.script?.tone || '—'} · {wordCount(v.script?.text)} words</div>
+          <div style={{display:'flex', gap:8, marginTop:14}}>
+            <button className="btn btn-danger" style={{flex:1}} onClick={onReject}>✕ Reject</button>
+            <button className="btn" style={{flex:1, background:'#2DC26B', color:'#fff'}} onClick={onApprove}>✓ Approve</button>
+          </div>
+          <div style={{marginTop:12}}>
+            <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Optional feedback / note (saved with the video)…" style={{minHeight:60}} />
+          </div>
+          {pending.length > 1 && (
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10}}>
+              <button className="btn btn-ghost btn-sm" disabled={idx===0} onClick={()=>setIdx(i=>Math.max(0,i-1))}>← Prev</button>
+              <span style={{fontSize:11, color:'var(--muted)'}}>{idx+1} / {pending.length}</span>
+              <button className="btn btn-ghost btn-sm" disabled={idx>=pending.length-1} onClick={()=>setIdx(i=>Math.min(pending.length-1,i+1))}>Skip →</button>
+            </div>
+          )}
+        </div>
+        <div className="modal-f">
+          <span style={{fontSize:11, color:'var(--muted)', marginRight:'auto'}}>Batch: {reviewed} of {total} reviewed</span>
+          <button className="btn btn-ghost btn-sm" onClick={onLater}>Review later</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalPage({ go }) {
   const { state, dispatch } = useStore();
   const [rerenderingId, setRerenderingId] = useState(null);
+  const [reviewFeed, setReviewFeed] = useState(false);
   const items = state.videos.filter(v => v.stage === 'approval' || v.stage === 'render');
+  const reviewable = state.videos.filter(v => v.stage === 'approval' && (v.heygen?.videoUrl || v.render?.stitchedUrl || v.render?.jobs?.some(j=>j.status==='completed')));
 
   const approve = (v) => dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved' } });
   const reject = (v) => {
@@ -2482,7 +2640,11 @@ function ApprovalPage({ go }) {
           <div className="page-title">Approval (Final Product)</div>
           <div className="page-sub">Watch every render. Approve to unlock publishing, or send back.</div>
         </div>
+        {reviewable.length > 0 && (
+          <button className="btn btn-sm" onClick={()=>setReviewFeed(true)}>▶ Review Feed ({reviewable.length})</button>
+        )}
       </div>
+      {reviewFeed && <ReviewFeed onClose={()=>setReviewFeed(false)} />}
       {items.length === 0 && <div className="empty">Nothing to review. New renders land here automatically.</div>}
       {items.map(v => (
         <div key={v.id} className="card" style={{marginBottom:14}}>
