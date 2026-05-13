@@ -1,8 +1,8 @@
-# FinCast Worker
+# Faceless Finance Worker
 
 A Cloudflare Worker that does two things:
 
-1. **`/proxy/<host>/<path>`** — generic CORS-busting passthrough for any provider FinCast calls (Hedra, ElevenLabs, HeyGen, Anthropic, Pexels). Solves CORS allowlists + multipart upload corruption that public proxies introduce.
+1. **`/proxy/<host>/<path>`** — generic CORS-busting passthrough for any provider Faceless Finance App calls (Hedra, ElevenLabs, HeyGen, Anthropic, Pexels). Solves CORS allowlists + multipart upload corruption that public proxies introduce.
 2. **`/oauth/*` + `/auth/*` + `/publish/*`** — Phase 2 social-media auto-publishing (TikTok / YouTube / Instagram). Optional. Requires KV namespace + provider secrets if you want it.
 
 ## One-click deploy
@@ -17,7 +17,7 @@ Cloudflare clones this folder, deploys it, gives you a URL like:
 https://fincast-worker.<your-account>.workers.dev
 ```
 
-Paste that URL into FinCast → Settings → Phase 3 → **FinCast Worker URL** field. Done.
+Paste that URL into Faceless Finance App → Settings → Phase 3 → **Faceless Finance Worker URL** field. Done.
 
 The worker is **stateless and free** for personal use. Cloudflare's free tier gives 100,000 requests/day — well above what a 4-videos-per-week channel will use.
 
@@ -53,7 +53,7 @@ npm install
 npx wrangler dev
 ```
 
-Worker runs at `http://localhost:8787`. Set FinCast Worker URL to that for local testing.
+Worker runs at `http://localhost:8787`. Set Faceless Finance Worker URL to that for local testing.
 
 ## Re-deploy after changes
 
@@ -65,7 +65,7 @@ npx wrangler deploy
 ## Architecture
 
 ```
-Browser (FinCast)
+Browser (Faceless Finance App)
     │
     ▼
 proxiedUrl() → workerUrl + /proxy/{host}/{path}

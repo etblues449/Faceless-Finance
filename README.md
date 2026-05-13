@@ -1,4 +1,4 @@
-# FinCast Studio
+# Faceless Finance App
 
 A single-file web app that runs your UK tax-saving content channel end-to-end:
 **idea → script → HeyGen render → approve → publish** for TikTok, Instagram Reels, YouTube Shorts and YouTube long-form.
