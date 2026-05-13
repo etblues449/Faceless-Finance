@@ -2568,6 +2568,7 @@ function ApprovalPage({ go }) {
               </div>
             );
           })()}
+          {v.render?.jobs?.length ? <SceneTimeline video={v} /> : null}
           {v.storyboard?.scenes?.length ? (
             <StoryboardPreview storyboard={v.storyboard} jobs={v.render?.jobs} settings={state.settings} />
           ) : null}
@@ -2577,6 +2578,112 @@ function ApprovalPage({ go }) {
           </details>
         </div>
       ))}
+    </div>
+  );
+}
+
+function SceneTimeline({ video }) {
+  const { state, dispatch } = useStore();
+  const settings = state.settings;
+  const [retrying, setRetrying] = useState(null);
+  const jobs = video.render?.jobs || [];
+  const scenes = video.storyboard?.scenes || [];
+  if (!jobs.length || !scenes.length) return null;
+  const isSingleShot = jobs.length === 1 && jobs[0]?.singleShot;
+  const jobBySceneId = {};
+  for (const j of jobs) for (const sid of (j.sceneIds || [])) jobBySceneId[sid] = j;
+
+  const done = jobs.filter(j => j.status === 'completed').length;
+  const failed = jobs.filter(j => j.status === 'failed').length;
+  const processing = jobs.filter(j => j.status === 'processing').length;
+  const pct = jobs.length ? Math.round((done / jobs.length) * 100) : 0;
+  const totalDur = scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
+  const cost = video.render?.estimatedCostGBP;
+  const startedAt = video.render?.startedAt;
+  const elapsed = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : null;
+  const etaSec = (elapsed && pct > 0 && pct < 100) ? Math.round(elapsed * (100 - pct) / pct) : null;
+  const rstatus = video.render?.status;
+  const stitchedUrl = video.render?.stitchedUrl;
+  const latestCompleted = jobs.filter(j => j.status === 'completed' && j.videoUrl).slice(-1)[0];
+
+  const retryScene = async (sceneId) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    const job = jobBySceneId[sceneId];
+    if (!scene || !job) return;
+    const P = PROVIDERS[job.provider];
+    if (!P) { alert('Unknown provider for retry: ' + job.provider); return; }
+    setRetrying(sceneId);
+    try {
+      const { jobs: newJobs } = await P.startRender({ storyboard: video.storyboard, scenes: [scene], settings, aspect: video.render?.aspect || '9:16' });
+      const newJob = newJobs[0];
+      const updated = jobs.map(j => (j.sceneIds || []).includes(sceneId) ? { ...newJob, status: 'processing' } : j);
+      dispatch({ type:'UPDATE_VIDEO', id: video.id, patch:{ render: { ...video.render, status:'processing', jobs: updated, stitchError: null, stitchedUrl: null, stitchRetried: false } } });
+    } catch (e) { alert('Retry failed: ' + e.message); }
+    finally { setRetrying(null); }
+  };
+
+  const R = 52, CIRC = 2 * Math.PI * R;
+  const offset = CIRC * (1 - pct / 100);
+  const stageLabel = rstatus === 'stitching' ? 'Stitching' : rstatus === 'stitched' ? 'Done' : rstatus === 'failed' ? 'Failed' : 'Rendered';
+
+  return (
+    <div style={{marginTop:14, padding:16, background:'var(--card2)', borderRadius:'var(--radius-card)'}}>
+      <div style={{display:'flex', alignItems:'center', gap:18, flexWrap:'wrap'}}>
+        <div style={{position:'relative', width:120, height:120, flexShrink:0}}>
+          <svg width="120" height="120" style={{transform:'rotate(-90deg)'}}>
+            <circle cx="60" cy="60" r={R} fill="none" stroke="var(--border)" strokeWidth="8" />
+            <circle cx="60" cy="60" r={R} fill="none" stroke="var(--accent)" strokeWidth="8" strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={offset} style={{transition:'stroke-dashoffset .4s'}} />
+          </svg>
+          <div style={{position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+            <div style={{fontSize:22, fontWeight:700, color:'var(--accent)'}}>{pct}%</div>
+            <div style={{fontSize:10, color:'var(--muted)'}}>{stageLabel}</div>
+          </div>
+        </div>
+        <div style={{flex:1, minWidth:140, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(92px,1fr))', gap:12}}>
+          <div><div style={{fontSize:11, color:'var(--muted)'}}>Scenes</div><div style={{fontWeight:600}}>{done}/{jobs.length}{processing?` · ${processing} live`:''}{failed?` · ${failed} failed`:''}</div></div>
+          <div><div style={{fontSize:11, color:'var(--muted)'}}>Total duration</div><div style={{fontWeight:600}}>{Math.floor(totalDur/60)}:{String(totalDur%60).padStart(2,'0')}</div></div>
+          {cost != null && <div><div style={{fontSize:11, color:'var(--muted)'}}>Est. render cost</div><div style={{fontWeight:600}}>£{cost.toFixed(2)}</div></div>}
+          {etaSec != null && <div><div style={{fontSize:11, color:'var(--muted)'}}>Est. remaining</div><div style={{fontWeight:600}}>~{Math.max(1,Math.ceil(etaSec/60))}m</div></div>}
+        </div>
+      </div>
+
+      {!isSingleShot && (
+        <>
+          <div style={{fontSize:12, fontWeight:600, margin:'16px 0 8px'}}>Scene-by-Scene Timeline</div>
+          <div style={{display:'flex', gap:10, overflowX:'auto', paddingBottom:6}}>
+            {scenes.map((sc, i) => {
+              const job = jobBySceneId[sc.id];
+              const st = job?.status || 'queued';
+              const borderColor = st==='failed'?'var(--danger)':st==='completed'?'var(--accent)':st==='processing'?'#9BB4FF':'var(--border)';
+              return (
+                <div key={sc.id} style={{flexShrink:0, width:96}}>
+                  <div style={{width:96, height:170, borderRadius:10, overflow:'hidden', background:'#000', border:`2px solid ${borderColor}`, display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    {st === 'completed' && job?.videoUrl
+                      ? <video src={job.videoUrl} muted playsInline style={{width:'100%', height:'100%', objectFit:'cover'}} preload="metadata" />
+                      : st === 'failed' ? <span style={{fontSize:24}}>⚠️</span>
+                      : st === 'processing' ? <span className="spin" style={{width:18, height:18}}></span>
+                      : <span style={{fontSize:10, color:'var(--muted)'}}>queued</span>}
+                  </div>
+                  <div style={{fontSize:11, fontWeight:600, marginTop:5}}>Scene {i+1}</div>
+                  <div style={{fontSize:10, color:'var(--muted)'}}>{sc.type} · {sc.durationSec}s</div>
+                  {st === 'failed' && (
+                    <button className="btn btn-ghost btn-sm" style={{marginTop:5, fontSize:10, padding:'3px 8px', color:'var(--danger)'}} disabled={retrying===sc.id} onClick={()=>retryScene(sc.id)}>
+                      {retrying===sc.id ? <><span className="spin" style={{width:9,height:9}}></span> …</> : '↻ Quick Retry'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {(stitchedUrl || latestCompleted?.videoUrl) && (
+        <>
+          <div style={{fontSize:12, fontWeight:600, margin:'16px 0 8px'}}>{stitchedUrl ? 'Final Video (stitched + voice)' : 'Instant Preview · latest completed scene'}</div>
+          <video src={stitchedUrl || latestCompleted.videoUrl} controls playsInline className="preview-vid" style={{maxHeight:360}} />
+        </>
+      )}
     </div>
   );
 }
@@ -2591,8 +2698,8 @@ function StoryboardPreview({ storyboard, jobs = [], settings }) {
   // here to avoid duplicating the same video N times in the storyboard.
   const isSingleShot = jobs.length === 1 && jobs[0]?.singleShot;
   return (
-    <details open style={{marginTop:10, marginBottom:10}}>
-      <summary>Scenes ({storyboard.scenes.length}) · {storyboardDuration(storyboard)}s
+    <details style={{marginTop:10, marginBottom:10}}>
+      <summary>Scene scripts &amp; prompts ({storyboard.scenes.length}) · {storyboardDuration(storyboard)}s
         {cost ? <span style={{color:'var(--muted)', marginLeft:8}}>· est £{cost.total.toFixed(2)} via {Object.values(cost.byProvider).map(p=>p.name).join(' + ') || '—'}</span> : null}
         {isSingleShot ? <span style={{color:'var(--muted)', marginLeft:8}}>· single-shot render (one continuous video; player above)</span> : null}
       </summary>
@@ -2622,9 +2729,6 @@ function StoryboardPreview({ storyboard, jobs = [], settings }) {
                 <div style={{marginTop:6, padding:6, borderRadius:6, background:'rgba(232,77,82,0.08)', color:'var(--danger)', fontSize:11}}>
                   <strong>Error:</strong> {job.error}
                 </div>
-              )}
-              {job?.videoUrl && !isSingleShot && (
-                <video src={job.videoUrl} controls className="preview-vid" style={{marginTop:8, maxHeight:200}} />
               )}
             </div>
           );
@@ -3985,44 +4089,55 @@ function App() {
 // looks stuck. Auto-refreshes every 2s while open.
 function DebugPanel() {
   const [open, setOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
   const [, force] = useState(0);
   useEffect(() => {
-    if (!open) return;
+    if (!open || paused) return;
     const iv = setInterval(() => force(x => x + 1), 2000);
     return () => clearInterval(iv);
-  }, [open]);
+  }, [open, paused]);
   const entries = open ? getDebugLog().slice(0, 60) : [];
-  const copy = async () => {
+  const copyAll = async () => {
     const text = entries.map(e => `[${new Date(e.ts).toISOString()}] [${e.provider}] ${e.action}: ${e.detail}`).join('\n');
     try { await navigator.clipboard.writeText(text); alert('Copied ' + entries.length + ' log lines.'); }
     catch { alert('Copy failed; long-press the panel text to select instead.'); }
+  };
+  const copyOne = async (e, i) => {
+    const payload = JSON.stringify({ ts: new Date(e.ts).toISOString(), provider: e.provider, action: e.action, detail: e.detail }, null, 2);
+    try { await navigator.clipboard.writeText(payload); setCopiedIdx(i); setTimeout(()=>setCopiedIdx(null), 1200); }
+    catch { alert('Copy failed; long-press to select.'); }
   };
   return (
     <>
       <button
         onClick={() => setOpen(o => !o)}
-        title="Debug log"
-        style={{position:'fixed', right:14, bottom:14, zIndex:9999, width:44, height:44, borderRadius:22, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text)', fontSize:18, cursor:'pointer', boxShadow:'0 4px 14px rgba(0,0,0,0.18)'}}
+        title="Live events"
+        style={{position:'fixed', right:14, bottom:14, zIndex:9999, width:44, height:44, borderRadius:22, border:'1px solid var(--border)', background:'var(--card)', color:'var(--text)', fontSize:18, cursor:'pointer', boxShadow:'var(--shadow-modal)'}}
       >🐞</button>
       {open && (
-        <div style={{position:'fixed', right:14, bottom:64, width:'min(92vw, 560px)', maxHeight:'70vh', zIndex:9999, background:'var(--card)', border:'1px solid var(--border)', borderRadius:12, boxShadow:'0 8px 28px rgba(0,0,0,0.3)', display:'flex', flexDirection:'column'}}>
-          <div style={{padding:'10px 12px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8}}>
-            <strong style={{fontSize:13}}>Debug log</strong>
-            <span style={{fontSize:11, color:'var(--muted)'}}>{entries.length} most recent</span>
+        <div style={{position:'fixed', right:14, bottom:64, width:'min(92vw, 560px)', maxHeight:'70vh', zIndex:9999, background:'var(--card)', border:'1px solid var(--border)', borderRadius:'var(--radius-card)', boxShadow:'var(--shadow-modal)', display:'flex', flexDirection:'column'}}>
+          <div style={{padding:'12px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:8}}>
+            <strong style={{fontSize:14}}>Live Events</strong>
+            <span style={{fontSize:11, color:'var(--muted)'}}>{entries.length}{paused?' · paused':''}</span>
             <span style={{flex:1}}/>
-            <button className="btn btn-ghost btn-sm" onClick={copy}>Copy</button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setPaused(p=>!p)}>{paused?'▶ Resume':'⏸ Pause'}</button>
+            <button className="btn btn-ghost btn-sm" onClick={copyAll}>Copy all</button>
             <button className="btn btn-ghost btn-sm" onClick={() => { clearDebugLog(); force(x => x + 1); }}>Clear</button>
           </div>
-          <div style={{overflow:'auto', padding:'8px 12px', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize:11, lineHeight:1.45}}>
+          <div style={{overflow:'auto', padding:'8px 14px', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize:11, lineHeight:1.45}}>
             {entries.length === 0 && <div style={{color:'var(--muted)'}}>No events yet. Trigger a render or tap "Check now" to see provider traffic here.</div>}
             {entries.map((e, i) => {
-              const color = e.action.includes('error') ? 'var(--danger)' : (e.action === 'response_body' ? '#9BB4FF' : 'var(--text)');
+              const isErr = e.action.includes('error') || e.action.includes('fail');
+              const color = isErr ? 'var(--danger)' : (e.action === 'response_body' || e.action.includes('response_body') ? '#9BB4FF' : 'var(--text)');
               return (
-                <div key={i} style={{padding:'6px 0', borderBottom:'1px dashed var(--border)', color}}>
-                  <div style={{color:'var(--muted)', fontSize:10}}>
-                    {new Date(e.ts).toLocaleTimeString()} · <strong style={{color}}>{e.provider}</strong> · {e.action}
+                <div key={i} style={{padding:'8px 0', borderBottom:'1px dashed var(--border)', color}}>
+                  <div style={{display:'flex', alignItems:'center', gap:6, color:'var(--muted)', fontSize:10}}>
+                    <span>{new Date(e.ts).toLocaleTimeString()} · <strong style={{color}}>{e.provider}</strong> · {e.action}</span>
+                    <span style={{flex:1}}/>
+                    <button onClick={()=>copyOne(e,i)} style={{border:'1px solid var(--border)', background:'var(--card2)', color:copiedIdx===i?'var(--accent)':'var(--text-dim)', borderRadius:6, padding:'1px 6px', fontSize:9, cursor:'pointer'}}>{copiedIdx===i?'✓ JSON':'Copy JSON'}</button>
                   </div>
-                  <div style={{whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:2}}>{e.detail}</div>
+                  <div style={{whiteSpace:'pre-wrap', wordBreak:'break-word', marginTop:3}}>{e.detail}</div>
                 </div>
               );
             })}
