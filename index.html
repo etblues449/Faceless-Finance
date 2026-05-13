@@ -2558,78 +2558,114 @@ function NewVideoPage({ go }) {
 
 // One-video-at-a-time batch review feed. Big approve/reject, comment box,
 // progress counter. Approving/rejecting advances to the next pending video.
+// Immersive full-screen batch-review feed — one completed video at a time,
+// big circular Approve (green-glow) / Reject (red-glow) buttons, horizontal
+// swipe support, comment + Send Feedback, progress bar + batch summary.
 function ReviewFeed({ onClose }) {
   const { state, dispatch } = useStore();
   const pending = state.videos.filter(v => v.stage === 'approval' && (v.heygen?.videoUrl || v.render?.stitchedUrl || v.render?.jobs?.some(j=>j.status==='completed')));
-  const total = state.videos.filter(v => v.stage === 'approval' || v.stage === 'approved').length || pending.length;
-  const [idx, setIdx] = useState(0);
+  const totalAtStart = useMemo(() => state.videos.filter(v => v.stage === 'approval' || v.stage === 'approved').length, []);
   const [comment, setComment] = useState('');
   const [reviewed, setReviewed] = useState(0);
-  const v = pending[idx];
+  const [approvedN, setApprovedN] = useState(0);
+  const [fb, setFb] = useState('');
+  const [dragX, setDragX] = useState(0);
+  const touchStart = useRef(null);
+  const v = pending[0];
+  const total = totalAtStart || (pending.length + reviewed);
 
   if (!v) {
     return (
-      <div className="modal-bg" onClick={onClose}>
-        <div className="modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
-          <div className="modal-b" style={{textAlign:'center', padding:32}}>
-            <div style={{fontSize:32, marginBottom:8}}>✓</div>
-            <div style={{fontWeight:700, fontSize:16}}>Review feed clear</div>
-            <div style={{fontSize:13, color:'var(--muted)', marginTop:6}}>{reviewed > 0 ? `${reviewed} video${reviewed===1?'':'s'} reviewed this session.` : 'No completed videos waiting for review.'}</div>
-            <button className="btn" style={{marginTop:16}} onClick={onClose}>Back to Approval</button>
-          </div>
-        </div>
+      <div style={{position:'fixed', inset:0, zIndex:60, background:'#000', color:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24, textAlign:'center'}}>
+        <div style={{width:80, height:80, borderRadius:99, background:'rgba(16,185,129,.15)', border:'2px solid #10B981', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, color:'#10B981', marginBottom:16}}>✓</div>
+        <div style={{fontWeight:700, fontSize:18}}>Review feed clear</div>
+        <div style={{fontSize:13, color:'#9CA3AF', marginTop:6}}>{reviewed > 0 ? `${reviewed} reviewed · ${approvedN} approved this session.` : 'No completed videos waiting for review.'}</div>
+        <button className="btn" style={{marginTop:20}} onClick={onClose}>Back to Approval</button>
       </div>
     );
   }
   const videoUrl = v.render?.stitchedUrl || v.heygen?.videoUrl || v.render?.jobs?.find(j=>j.status==='completed')?.videoUrl;
-  const advance = () => { setComment(''); setReviewed(r=>r+1); /* re-filter happens via render; keep idx at 0 since approved video leaves the list */ setIdx(0); };
-  const onApprove = () => {
-    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved', review:{ note: comment || '', at: Date.now(), action:'approved' } } });
-    advance();
+  const reset = () => { setComment(''); setDragX(0); };
+  const onApprove = () => { dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'approved', review:{ note: comment || '', at: Date.now(), action:'approved' } } }); setReviewed(r=>r+1); setApprovedN(n=>n+1); reset(); };
+  const onReject  = () => { dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script', review:{ note: comment || '', at: Date.now(), action:'rejected' } } }); setReviewed(r=>r+1); reset(); };
+  const onSendFeedback = () => {
+    if (!comment.trim()) { setFb('Type a comment first'); setTimeout(()=>setFb(''),1500); return; }
+    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ review:{ note: comment, at: Date.now(), action:'feedback' } } });
+    setFb('Feedback saved'); setTimeout(()=>setFb(''),1500); setComment('');
   };
-  const onReject = () => {
-    dispatch({ type:'UPDATE_VIDEO', id:v.id, patch:{ stage:'script', review:{ note: comment || '', at: Date.now(), action:'rejected' } } });
-    advance();
+  const pct = total ? Math.round((reviewed / total) * 100) : 0;
+
+  // Touch swipe handlers — right = approve, left = reject (threshold 90px)
+  const onTouchStart = (e) => { touchStart.current = e.touches[0].clientX; };
+  const onTouchMove  = (e) => { if (touchStart.current != null) setDragX(e.touches[0].clientX - touchStart.current); };
+  const onTouchEnd   = () => {
+    if (dragX > 90) onApprove(); else if (dragX < -90) onReject(); else setDragX(0);
+    touchStart.current = null;
   };
-  const onLater = () => onClose();
+  const tilt = Math.max(-12, Math.min(12, dragX / 14));
+  const swipeHint = dragX > 40 ? 'approve' : dragX < -40 ? 'reject' : null;
 
   return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" style={{maxWidth:480, display:'flex', flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-h">
-          <div>
-            <div style={{fontWeight:700, fontSize:16}}>Review Feed</div>
-            <div style={{fontSize:11, color:'var(--muted)'}}>{reviewed} reviewed · {pending.length} waiting</div>
-          </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+    <div style={{position:'fixed', inset:0, zIndex:60, background:'#000', color:'#fff', display:'flex', flexDirection:'column'}}>
+      {/* header */}
+      <header style={{padding:'env(safe-area-inset-top,14px) 18px 12px', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0}}>
+        <div style={{display:'flex', alignItems:'center', gap:12}}>
+          <button onClick={onClose} style={{width:38, height:38, borderRadius:99, background:'#1c1c1e', border:'none', color:'#fff', fontSize:18, cursor:'pointer'}}>←</button>
+          <div><div style={{fontWeight:700, fontSize:16, lineHeight:1.1}}>Batch Approval</div><div style={{fontWeight:700, fontSize:16, lineHeight:1.1, color:'#9CA3AF'}}>Review Feed</div></div>
         </div>
-        <div className="modal-b" style={{padding:16}}>
-          <div style={{position:'relative', borderRadius:12, overflow:'hidden', background:'#000'}}>
-            {videoUrl ? <video src={videoUrl} controls playsInline autoPlay muted style={{width:'100%', maxHeight:'52vh', display:'block'}} /> : <div style={{padding:40, textAlign:'center', color:'#888'}}>No playable video URL</div>}
-            <div style={{position:'absolute', top:8, right:8, background:'rgba(0,0,0,.6)', color:'#fff', fontSize:9, fontWeight:700, padding:'3px 6px', borderRadius:4, lineHeight:1.2, textAlign:'right'}}>UK Personal<br/>Finance</div>
-          </div>
-          <div style={{fontWeight:600, fontSize:15, marginTop:12}}>{v.idea?.title}</div>
-          <div style={{fontSize:11, color:'var(--muted)', marginTop:2}}>{v.idea?.platform || '—'} · {v.script?.tone || '—'} · {wordCount(v.script?.text)} words</div>
-          <div style={{display:'flex', gap:8, marginTop:14}}>
-            <button className="btn btn-danger" style={{flex:1}} onClick={onReject}>✕ Reject</button>
-            <button className="btn" style={{flex:1, background:'#2DC26B', color:'#fff'}} onClick={onApprove}>✓ Approve</button>
-          </div>
-          <div style={{marginTop:12}}>
-            <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Optional feedback / note (saved with the video)…" style={{minHeight:60}} />
-          </div>
-          {pending.length > 1 && (
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10}}>
-              <button className="btn btn-ghost btn-sm" disabled={idx===0} onClick={()=>setIdx(i=>Math.max(0,i-1))}>← Prev</button>
-              <span style={{fontSize:11, color:'var(--muted)'}}>{idx+1} / {pending.length}</span>
-              <button className="btn btn-ghost btn-sm" disabled={idx>=pending.length-1} onClick={()=>setIdx(i=>Math.min(pending.length-1,i+1))}>Skip →</button>
-            </div>
-          )}
+        <div style={{textAlign:'right'}}>
+          <div style={{width:80, height:6, background:'#2a2a2e', borderRadius:99, overflow:'hidden', marginLeft:'auto', marginBottom:5}}><div style={{height:'100%', width:`${pct}%`, background:'#10B981', transition:'width .3s'}} /></div>
+          <div style={{fontWeight:700, fontSize:14}}>{reviewed}/{total}</div>
+          <div style={{fontSize:9, color:'#6B7280', letterSpacing:'.08em', fontWeight:600}}>REVIEWED</div>
         </div>
-        <div className="modal-f">
-          <span style={{fontSize:11, color:'var(--muted)', marginRight:'auto'}}>Batch: {reviewed} of {total} reviewed</span>
-          <button className="btn btn-ghost btn-sm" onClick={onLater}>Review later</button>
+      </header>
+
+      {/* video card */}
+      <section style={{flex:1, padding:'0 12px 8px', minHeight:0}}
+               onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+        <div style={{position:'relative', width:'100%', height:'100%', borderRadius:28, overflow:'hidden', background:'#18181b',
+                     transform:`translateX(${dragX}px) rotate(${tilt}deg)`, transition: dragX ? 'none' : 'transform .25s'}}>
+          {videoUrl
+            ? <video src={videoUrl} controls playsInline autoPlay loop muted style={{position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover'}} />
+            : <div style={{position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', color:'#666', fontSize:13}}>No playable video URL</div>}
+          <div style={{position:'absolute', inset:0, background:'linear-gradient(to bottom, rgba(0,0,0,.25) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%)', pointerEvents:'none'}} />
+          {/* swipe colour wash */}
+          {swipeHint && <div style={{position:'absolute', inset:0, background: swipeHint==='approve' ? 'rgba(16,185,129,.18)' : 'rgba(225,29,72,.18)', pointerEvents:'none'}} />}
+          {/* brand badge */}
+          <div style={{position:'absolute', top:14, right:14, background:'rgba(0,0,0,.55)', color:'#fff', fontSize:9, fontWeight:700, padding:'4px 7px', borderRadius:6, lineHeight:1.2, textAlign:'right'}}>UK Personal<br/>Finance</div>
+          {/* title */}
+          <div style={{position:'absolute', top:'42%', left:0, right:0, padding:'0 28px', textAlign:'center', pointerEvents:'none'}}>
+            <div style={{fontSize:22, fontWeight:700, textShadow:'0 2px 12px rgba(0,0,0,.6)', lineHeight:1.25}}>{v.idea?.title}</div>
+            <div style={{fontSize:11, color:'#D1D5DB', marginTop:6, textShadow:'0 1px 6px rgba(0,0,0,.6)'}}>{v.idea?.platform || '—'} · {v.script?.tone || '—'} · {wordCount(v.script?.text)} words</div>
+          </div>
+          {/* Approve — right */}
+          <div style={{position:'absolute', right:18, top:'42%', transform:'translateY(-50%)', display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
+            <span style={{fontSize:20, color:'#10B981', opacity:.7}}>›››</span>
+            <button onClick={onApprove} aria-label="Approve" style={{width:72, height:72, borderRadius:99, border:'2px solid rgba(16,185,129,.6)', background:'rgba(0,0,0,.25)', backdropFilter:'blur(4px)', color:'#10B981', fontSize:30, cursor:'pointer', boxShadow:'0 0 28px rgba(16,185,129,.4)'}}>✓</button>
+            <span style={{background:'#10B981', color:'#06281C', fontWeight:700, fontSize:10, letterSpacing:'.08em', padding:'4px 10px', borderRadius:99}}>APPROVE</span>
+          </div>
+          {/* Reject — left */}
+          <div style={{position:'absolute', left:18, top:'62%', transform:'translateY(-50%)', display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
+            <button onClick={onReject} aria-label="Reject" style={{width:72, height:72, borderRadius:99, border:'2px solid rgba(225,29,72,.6)', background:'rgba(0,0,0,.25)', backdropFilter:'blur(4px)', color:'#FB7185', fontSize:28, cursor:'pointer', boxShadow:'0 0 28px rgba(225,29,72,.35)'}}>✕</button>
+            <span style={{background:'#3d2321', color:'#FCA5A5', border:'1px solid #7f1d1d', fontWeight:700, fontSize:10, letterSpacing:'.08em', padding:'4px 12px', borderRadius:99}}>REJECT</span>
+            <span style={{fontSize:20, color:'#FB7185', opacity:.6, transform:'rotate(180deg)'}}>›››</span>
+          </div>
+          {/* comment row */}
+          <div style={{position:'absolute', left:0, right:0, bottom:14, padding:'0 16px', display:'flex', gap:8, alignItems:'center'}}>
+            <input value={comment} onChange={e=>setComment(e.target.value)} placeholder="Comment…" style={{flex:1, background:'rgba(28,28,30,.85)', backdropFilter:'blur(8px)', border:'none', borderRadius:14, padding:'11px 14px', color:'#fff', fontSize:13}} />
+            <button onClick={onSendFeedback} style={{background:'rgba(28,28,30,.85)', backdropFilter:'blur(8px)', color:'#fff', border:'none', fontWeight:600, fontSize:12, padding:'11px 14px', borderRadius:14, cursor:'pointer', whiteSpace:'nowrap'}}>Send Feedback</button>
+          </div>
+          {fb && <div style={{position:'absolute', bottom:58, left:'50%', transform:'translateX(-50%)', background:'rgba(0,0,0,.8)', color:'#fff', fontSize:11, padding:'5px 12px', borderRadius:99}}>{fb}</div>}
         </div>
-      </div>
+      </section>
+
+      {/* footer */}
+      <footer style={{padding:'14px 18px env(safe-area-inset-bottom,14px)', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexShrink:0}}>
+        <p style={{fontSize:12, color:'#9CA3AF', lineHeight:1.4, maxWidth:200, margin:0}}>
+          <span style={{color:'#fff', fontWeight:600}}>Batch Summary:</span> {approvedN} of {total} videos approved. {pending.length} left.
+        </p>
+        <button onClick={onClose} style={{background:'#fff', color:'#000', padding:'11px 20px', borderRadius:99, fontWeight:700, fontSize:13, border:'none', cursor:'pointer', whiteSpace:'nowrap'}}>REVIEW LATER</button>
+      </footer>
     </div>
   );
 }
