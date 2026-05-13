@@ -1906,12 +1906,25 @@ function useStore() { return React.useContext(StoreCtx); }
 // ============================================================================
 
 const NAV = [
-  { id:'pipeline', label:'Pipeline',   icon:'▦' },
-  { id:'new',      label:'New Video',  icon:'✦' },
-  { id:'approval', label:'Approval',   icon:'✓' },
-  { id:'publish',  label:'Publish',    icon:'↗' },
-  { id:'calendar', label:'Calendar',   icon:'▣' },
-  { id:'settings', label:'Settings',   icon:'⚙' },
+  { id:'pipeline',  label:'Pipeline',   icon:'▦' },
+  { id:'new',       label:'New Video',  icon:'✦' },
+  { id:'approval',  label:'Approval',   icon:'✓' },
+  { id:'analytics', label:'Analytics',  icon:'▥' },
+  { id:'publish',   label:'Publish',    icon:'↗' },
+  { id:'calendar',  label:'Calendar',   icon:'▣' },
+  { id:'settings',  label:'Settings',   icon:'⚙' },
+];
+
+// Editorial reference for the provider comparison table. costPerSec is a
+// representative figure (free-tier providers shown as ~£0). quality is a
+// 1-10 editorial score; lipSync flags whether the avatar's mouth matches.
+const PROVIDER_REFERENCE = [
+  { id:'runway_gen4',   name:'Runway Gen-4 Turbo', costPerSec:0.25, quality:9.0, lipSync:false, kind:'cinematic' },
+  { id:'veo3',          name:'Google Veo 3',       costPerSec:0.00, quality:8.5, lipSync:false, kind:'cinematic (free, rate-limited)' },
+  { id:'fal_seedance2', name:'Fal.ai · Seedance 2.0', costPerSec:0.30, quality:8.5, lipSync:false, kind:'cinematic' },
+  { id:'higgsfield',    name:'Higgsfield · DoP',   costPerSec:0.10, quality:7.0, lipSync:false, kind:'cinematic (image→video)' },
+  { id:'heygen',        name:'HeyGen',             costPerSec:0.14, quality:7.5, lipSync:true,  kind:'talking-head' },
+  { id:'hedra_act_two', name:'Hedra Act-Two',      costPerSec:0.12, quality:6.5, lipSync:true,  kind:'talking-head (slow queue)' },
 ];
 
 function Sidebar({ page, setPage, state }) {
@@ -3157,6 +3170,191 @@ function BrollSearch({ queries, pexelsKey }) {
 }
 
 // ============================================================================
+// PAGE: ANALYTICS
+// ============================================================================
+
+// Normalise a debug-log `provider` string ("runway-submit", "veo3-poll", …)
+// to a base provider key ("runway", "veo3", "heygen", "hedra", "fal", …).
+function debugProviderKey(p) {
+  if (!p) return 'other';
+  return String(p).split('-')[0].replace('hedra_act_two','hedra').replace('hedra','hedra')
+    .replace('fal','fal').replace('runway','runway').replace('veo3','veo3')
+    .replace('heygen','heygen').replace('higgsfield','higgsfield');
+}
+
+function AnalyticsPage() {
+  const { state } = useStore();
+  const s = state.settings;
+  const [, force] = useState(0);
+  useEffect(() => { const iv = setInterval(()=>force(x=>x+1), 4000); return ()=>clearInterval(iv); }, []);
+
+  // --- Provider performance from the rolling debug log ---
+  const perf = useMemo(() => {
+    const log = getDebugLog();
+    const acc = {};
+    for (const e of log) {
+      const key = debugProviderKey(e.provider);
+      if (!['runway','veo3','fal','higgsfield','heygen','hedra'].includes(key)) continue;
+      acc[key] = acc[key] || { req:0, ok:0, err:0, durSum:0, durN:0 };
+      if (e.action === 'request') acc[key].req++;
+      if (e.action === 'response_ok') {
+        acc[key].ok++;
+        try { const d = JSON.parse(e.detail); if (typeof d.durationMs === 'number' && d.durationMs < 600000) { acc[key].durSum += d.durationMs; acc[key].durN++; } } catch {}
+      }
+      if (e.action === 'response_error' || e.action.includes('fetch_error') || e.action.includes('error')) acc[key].err++;
+    }
+    return acc;
+  }, [state.videos]); // re-derive when videos change (proxy for "something happened")
+
+  // --- Fallback Sandbox ---
+  const [scenario, setScenario] = useState('runway_out_of_credits');
+  const ladder = [
+    { id:'runway_gen4',   name:'Runway Gen-4 Turbo', ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl), renderMin: 4 },
+    { id:'fal_seedance2', name:'Fal.ai · Seedance 2.0', ok: !!s.falKey, renderMin: 3 },
+    { id:'higgsfield',    name:'Higgsfield · DoP',   ok: !!s.higgsfieldKey && !!s.higgsfieldSecret, renderMin: 3 },
+    { id:'veo3',          name:'Google Veo 3',       ok: !!s.googleAiKey, renderMin: 6 },
+    { id:'heygen',        name:'HeyGen multi-input', ok: !!s.heygenKey && !!s.heygenAvatarId && !!s.elevenLabsKey && !!s.elevenLabsVoiceId, renderMin: 4 },
+    { id:'hedra_act_two', name:'Hedra Act-Two',      ok: !!s.hedraKey && !!s.hedraActTwoModelId && (!!s.hedraStartKeyframeId || !!s.hedraStartKeyframeUrl) && !!s.elevenLabsKey && !!s.elevenLabsVoiceId, renderMin: 10 },
+  ];
+  const sim = useMemo(() => {
+    // Which provider would fail (the "primary"), then who picks it up.
+    const failIdx = scenario === 'runway_out_of_credits' ? 0
+      : scenario === 'veo_high_latency' ? 3
+      : 0; // api_timeout — assume the top provider times out
+    const primary = ladder[failIdx]?.name || ladder[0].name;
+    const handler = ladder.find((p, i) => i !== failIdx && p.ok) || ladder.find(p => p.ok);
+    if (!handler) return { primary, handler:null };
+    const ref = PROVIDER_REFERENCE.find(r => r.id === handler.id) || {};
+    const sceneCount = 6, dur = 30; // hypothetical short
+    const cost = (ref.costPerSec || 0) * dur;
+    return { primary, handler, cost, renderMin: handler.renderMin, quality: ref.quality, lipSync: ref.lipSync };
+  }, [scenario, JSON.stringify(ladder.map(l=>l.ok))]);
+
+  // --- Channel ROI (real bits + clearly-labelled placeholders) ---
+  const approvedCount = state.videos.filter(v => v.stage === 'approved').length;
+  const publishedCount = state.videos.filter(v => v.stage === 'published').length;
+  const queue = state.videos.filter(v => v.stage === 'approved');
+
+  const SR = ({ k, label }) => {
+    const p = perf[k];
+    const total = p ? (p.ok + p.err) : 0;
+    const rate = total ? Math.round((p.ok / total) * 100) : null;
+    return (
+      <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:8}}>
+        <div style={{width:130, fontSize:12, color:'var(--text-dim)', flexShrink:0}}>{label}</div>
+        <div style={{flex:1, height:18, borderRadius:6, overflow:'hidden', background:'var(--card2)', display:'flex'}}>
+          {rate != null
+            ? <><div style={{width:`${rate}%`, background:'#2DC26B'}} /><div style={{width:`${100-rate}%`, background:'var(--danger)'}} /></>
+            : <div style={{width:'100%', display:'flex', alignItems:'center', paddingLeft:8, fontSize:10, color:'var(--muted)'}}>no traffic yet</div>}
+        </div>
+        <div style={{width:54, textAlign:'right', fontSize:12, fontWeight:600}}>{rate != null ? `${rate}%` : '—'}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <div className="page-title">Analytics</div>
+          <div className="page-sub">Provider performance, fallback simulation, channel ROI.</div>
+        </div>
+      </div>
+
+      {/* AI Provider Performance */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">AI Provider Performance · last {getDebugLog().length} log events</div>
+        <div className="help" style={{marginBottom:14}}>Success rate from the rolling debug log (last 100 provider calls). Trigger a few renders to populate this.</div>
+        <SR k="runway" label="Runway Gen-4" />
+        <SR k="veo3" label="Veo 3" />
+        <SR k="fal" label="Fal.ai" />
+        <SR k="higgsfield" label="Higgsfield" />
+        <SR k="heygen" label="HeyGen" />
+        <SR k="hedra" label="Hedra" />
+        <div style={{overflowX:'auto', marginTop:16}}>
+          <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
+            <thead><tr style={{textAlign:'left', color:'var(--muted)'}}>
+              <th style={{padding:'6px 8px'}}>Provider</th><th style={{padding:'6px 8px'}}>~Cost/sec</th><th style={{padding:'6px 8px'}}>Quality</th><th style={{padding:'6px 8px'}}>Lip-sync</th><th style={{padding:'6px 8px'}}>Calls</th><th style={{padding:'6px 8px'}}>Avg ms</th>
+            </tr></thead>
+            <tbody>
+              {PROVIDER_REFERENCE.map(r => {
+                const p = perf[r.id.split('_')[0].replace('hedra','hedra')];
+                const calls = p ? p.req : 0;
+                const avg = p && p.durN ? Math.round(p.durSum / p.durN) : null;
+                return (
+                  <tr key={r.id} style={{borderTop:'1px solid var(--border)'}}>
+                    <td style={{padding:'8px'}}>{r.name}</td>
+                    <td style={{padding:'8px'}}>{r.costPerSec === 0 ? 'free*' : `£${r.costPerSec.toFixed(2)}`}</td>
+                    <td style={{padding:'8px'}}>{r.quality.toFixed(1)}/10</td>
+                    <td style={{padding:'8px'}}>{r.lipSync ? '✓' : '—'}</td>
+                    <td style={{padding:'8px'}}>{calls || '—'}</td>
+                    <td style={{padding:'8px'}}>{avg != null ? avg : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="help" style={{marginTop:6}}>*Veo 3 free tier — heavily rate-limited (≈5 req/min). Quality scores are editorial. "Lip-sync" = avatar mouth matches the voice track.</div>
+        </div>
+      </div>
+
+      {/* Fallback Sandbox */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">Fallback Sandbox · simulate a provider failure</div>
+        <div style={{marginBottom:12}}>
+          <label className="label">Simulate scenario</label>
+          <select value={scenario} onChange={e=>setScenario(e.target.value)}>
+            <option value="runway_out_of_credits">Runway out of credits</option>
+            <option value="veo_high_latency">Veo 3 high latency / quota</option>
+            <option value="api_timeout">Top provider API timeout</option>
+          </select>
+        </div>
+        <div style={{display:'flex', flexDirection:'column', gap:8, alignItems:'center'}}>
+          <div style={{padding:'10px 14px', borderRadius:10, background:'rgba(179,38,30,.08)', border:'1px solid rgba(179,38,30,.25)', color:'var(--danger)', textAlign:'center', width:'100%', maxWidth:340}}>
+            <strong>{sim.primary}</strong><div style={{fontSize:11}}>⚠ Error: {scenario === 'runway_out_of_credits' ? 'Out of credits' : scenario === 'veo_high_latency' ? 'Rate-limited / high latency' : 'Request timed out'}</div>
+          </div>
+          <div style={{fontSize:11, color:'var(--accent)', fontWeight:600}}>↓ fallback triggered ↓</div>
+          {sim.handler ? (
+            <>
+              <div style={{padding:'10px 14px', borderRadius:10, background:'var(--accent-dim)', border:'1px solid var(--accent)', color:'var(--accent)', textAlign:'center', width:'100%', maxWidth:340}}>
+                <strong>{sim.handler.name}</strong><div style={{fontSize:11}}>picks up the render</div>
+              </div>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, width:'100%', maxWidth:380, marginTop:8}}>
+                <div style={{textAlign:'center', padding:8, background:'var(--card2)', borderRadius:8}}><div style={{fontSize:10, color:'var(--muted)'}}>Hypothetical cost</div><div style={{fontWeight:700}}>£{(sim.cost||0).toFixed(2)}</div></div>
+                <div style={{textAlign:'center', padding:8, background:'var(--card2)', borderRadius:8}}><div style={{fontSize:10, color:'var(--muted)'}}>Time to render</div><div style={{fontWeight:700}}>~{sim.renderMin}m</div></div>
+                <div style={{textAlign:'center', padding:8, background:'var(--card2)', borderRadius:8}}><div style={{fontSize:10, color:'var(--muted)'}}>Quality / lip-sync</div><div style={{fontWeight:700}}>{sim.quality ?? '—'}/10 · {sim.lipSync ? '✓' : '—'}</div></div>
+              </div>
+            </>
+          ) : (
+            <div className="alert alert-warn" style={{maxWidth:380}}>No fallback provider configured. Add another provider's key in Settings → Phase 3 so renders survive failures.</div>
+          )}
+        </div>
+        <div className="help" style={{marginTop:10}}>This is a simulation based on your current provider config — it makes no real API calls.</div>
+      </div>
+
+      {/* Channel ROI */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="card-title">Channel ROI</div>
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))', gap:12, marginBottom:14}}>
+          <div style={{padding:12, background:'var(--card2)', borderRadius:10}}><div style={{fontSize:11, color:'var(--muted)'}}>Approved, queued</div><div style={{fontSize:22, fontWeight:700}}>{approvedCount}</div></div>
+          <div style={{padding:12, background:'var(--card2)', borderRadius:10}}><div style={{fontSize:11, color:'var(--muted)'}}>Published</div><div style={{fontSize:22, fontWeight:700}}>{publishedCount}</div></div>
+          <div style={{padding:12, background:'var(--card2)', borderRadius:10}}><div style={{fontSize:11, color:'var(--muted)'}}>In pipeline</div><div style={{fontSize:22, fontWeight:700}}>{state.videos.length}</div></div>
+        </div>
+        <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Publishing queue</div>
+        {queue.length === 0 && <div className="help">Nothing approved yet. Approve videos to build the queue.</div>}
+        {queue.map(v => (
+          <div key={v.id} style={{display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'var(--card2)', borderRadius:8, marginBottom:6}}>
+            <div style={{flex:1, minWidth:0}}><div style={{fontSize:13, fontWeight:600}}>{v.idea?.title}</div><div style={{fontSize:11, color:'var(--muted)'}}>{(v.idea?.platform || 'tiktok')} · approved {fmt(v.updatedAt)}</div></div>
+            <span className="pill" style={{background:'var(--accent-dim)', color:'var(--accent)'}}>ready</span>
+          </div>
+        ))}
+        <div className="help" style={{marginTop:10}}>Engagement heatmaps & cost-vs-revenue charts need TikTok/YouTube/Instagram analytics APIs — those land with the Phase 2 publishing pipeline.</div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // PAGE: CALENDAR
 // ============================================================================
 
@@ -4356,12 +4554,13 @@ function App() {
       <div className="app">
         <Sidebar page={page} setPage={setPage} state={state} />
         <div className="main">
-          {page === 'pipeline' && <PipelinePage />}
-          {page === 'new'      && <NewVideoPage go={setPage} />}
-          {page === 'approval' && <ApprovalPage go={setPage} />}
-          {page === 'publish'  && <PublishPage />}
-          {page === 'calendar' && <CalendarPage />}
-          {page === 'settings' && <SettingsPage />}
+          {page === 'pipeline'  && <PipelinePage />}
+          {page === 'new'       && <NewVideoPage go={setPage} />}
+          {page === 'approval'  && <ApprovalPage go={setPage} />}
+          {page === 'analytics' && <AnalyticsPage />}
+          {page === 'publish'   && <PublishPage />}
+          {page === 'calendar'  && <CalendarPage />}
+          {page === 'settings'  && <SettingsPage />}
         </div>
         <DebugPanel />
       </div>
