@@ -3220,11 +3220,14 @@ function AnalyticsPage() {
   const { state } = useStore();
   const s = state.settings;
   const [, force] = useState(0);
+  const [timeWindow, setTimeWindow] = useState('7d');
   useEffect(() => { const iv = setInterval(()=>force(x=>x+1), 4000); return ()=>clearInterval(iv); }, []);
 
-  // --- Provider performance from the rolling debug log ---
+  // --- Provider performance from the rolling debug log (filtered by window) ---
+  const windowMs = timeWindow === '24h' ? 864e5 : timeWindow === '7d' ? 7*864e5 : 30*864e5;
   const perf = useMemo(() => {
-    const log = getDebugLog();
+    const cutoff = Date.now() - windowMs;
+    const log = getDebugLog().filter(e => e.ts >= cutoff);
     const acc = {};
     for (const e of log) {
       const key = debugProviderKey(e.provider);
@@ -3238,7 +3241,7 @@ function AnalyticsPage() {
       if (e.action === 'response_error' || e.action.includes('fetch_error') || e.action.includes('error')) acc[key].err++;
     }
     return acc;
-  }, [state.videos]); // re-derive when videos change (proxy for "something happened")
+  }, [state.videos, timeWindow]);
 
   // --- Fallback Sandbox ---
   const [scenario, setScenario] = useState('runway_out_of_credits');
@@ -3286,6 +3289,12 @@ function AnalyticsPage() {
     );
   };
 
+  // Cost-vs-quality scatter geometry — x = quality 5..10, y = cost/sec 0..0.4
+  const SCATTER_W = 320, SCATTER_H = 200, PAD = 36;
+  const xAt = (q) => PAD + ((q - 5) / 5) * (SCATTER_W - PAD - 8);
+  const yAt = (c) => (SCATTER_H - PAD) - (Math.min(c, 0.4) / 0.4) * (SCATTER_H - PAD - 8);
+  const dotColor = { runway_gen4:'#6750A4', veo3:'#2DC26B', fal_seedance2:'#9BB4FF', higgsfield:'#B57BD8', heygen:'#FF7A59', hedra_act_two:'#FFB95C' };
+
   return (
     <div>
       <div className="page-head">
@@ -3293,19 +3302,49 @@ function AnalyticsPage() {
           <div className="page-title">Analytics</div>
           <div className="page-sub">Provider performance, fallback simulation, channel ROI.</div>
         </div>
+        <div className="seg">
+          {['24h','7d','30d'].map(w => (
+            <button key={w} className={`seg-btn ${timeWindow===w?'active':''}`} onClick={()=>setTimeWindow(w)}>{w==='24h'?'Last 24h':w==='7d'?'7 Days':'30 Days'}</button>
+          ))}
+        </div>
       </div>
 
       {/* AI Provider Performance */}
       <div className="card" style={{marginBottom:14}}>
-        <div className="card-title">AI Provider Performance · last {getDebugLog().length} log events</div>
-        <div className="help" style={{marginBottom:14}}>Success rate from the rolling debug log (last 100 provider calls). Trigger a few renders to populate this.</div>
+        <div className="card-title">AI Provider Performance · {timeWindow==='24h'?'last 24h':timeWindow==='7d'?'last 7 days':'last 30 days'}</div>
+        <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Success rate</div>
         <SR k="runway" label="Runway Gen-4" />
         <SR k="veo3" label="Veo 3" />
         <SR k="fal" label="Fal.ai" />
         <SR k="higgsfield" label="Higgsfield" />
         <SR k="heygen" label="HeyGen" />
         <SR k="hedra" label="Hedra" />
-        <div style={{overflowX:'auto', marginTop:16}}>
+
+        <div style={{fontWeight:600, fontSize:13, margin:'18px 0 8px'}}>Cost vs Quality</div>
+        <div style={{overflowX:'auto'}}>
+          <svg width={SCATTER_W} height={SCATTER_H} style={{maxWidth:'100%'}}>
+            {/* grid */}
+            {[0,0.1,0.2,0.3,0.4].map(c => (
+              <g key={c}><line x1={PAD} x2={SCATTER_W-8} y1={yAt(c)} y2={yAt(c)} stroke="var(--border)" strokeWidth="1" /><text x={4} y={yAt(c)+3} fontSize="9" fill="var(--muted)">£{c.toFixed(2)}</text></g>
+            ))}
+            {[5,6,7,8,9,10].map(q => (
+              <g key={q}><line x1={xAt(q)} x2={xAt(q)} y1={8} y2={SCATTER_H-PAD} stroke="var(--border)" strokeWidth="1" /><text x={xAt(q)-3} y={SCATTER_H-PAD+14} fontSize="9" fill="var(--muted)">{q}</text></g>
+            ))}
+            <text x={SCATTER_W/2} y={SCATTER_H-6} fontSize="10" fill="var(--muted)" textAnchor="middle">Quality (1-10)</text>
+            <text x={10} y={14} fontSize="10" fill="var(--muted)">£/sec</text>
+            {/* dots */}
+            {PROVIDER_REFERENCE.map(r => (
+              <g key={r.id}>
+                <circle cx={xAt(r.quality)} cy={yAt(r.costPerSec)} r="7" fill={dotColor[r.id] || 'var(--accent)'} opacity="0.9" />
+                <text x={xAt(r.quality)+10} y={yAt(r.costPerSec)+3} fontSize="9" fill="var(--text-dim)">{r.name.split(' ')[0]}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+        <div className="help" style={{marginTop:4, marginBottom:4}}>Cheaper + higher quality = bottom-right. Veo 3 is "free" (rate-limited). Quality scores are editorial.</div>
+
+        <div style={{fontWeight:600, fontSize:13, margin:'18px 0 8px'}}>Reference table</div>
+        <div style={{overflowX:'auto'}}>
           <table style={{width:'100%', borderCollapse:'collapse', fontSize:12}}>
             <thead><tr style={{textAlign:'left', color:'var(--muted)'}}>
               <th style={{padding:'6px 8px'}}>Provider</th><th style={{padding:'6px 8px'}}>~Cost/sec</th><th style={{padding:'6px 8px'}}>Quality</th><th style={{padding:'6px 8px'}}>Lip-sync</th><th style={{padding:'6px 8px'}}>Calls</th><th style={{padding:'6px 8px'}}>Avg ms</th>
