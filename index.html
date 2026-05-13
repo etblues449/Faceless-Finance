@@ -305,6 +305,7 @@ const DEFAULT_SETTINGS = {
   runwayImageUrl: '',             // Reference photo URL — falls back to hedra/higgsfield if blank
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
+  routingRules: [],               // Smart Fallback Rule Builder — [{field:'sceneType'|'duration', op:'eq'|'gt'|'lt', value, then:providerId}]
   singleShotRender: true,         // Bundle every scene into ONE Hedra job for ~6× faster queue wait. Set false to render per-scene.
   costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
   characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
@@ -1315,11 +1316,36 @@ function listProvidersFor(sceneType, settings) {
   }));
 }
 
+// Evaluate a single routing rule against a scene. Fields supported:
+//   sceneType  (eq with 'cinematic'|'talking-head')
+//   duration   (gt/lt/eq numeric, seconds)
+function matchRoutingRule(rule, scene) {
+  if (!rule || !rule.field || !rule.then) return false;
+  const op = rule.op || 'eq';
+  let lhs;
+  if (rule.field === 'sceneType') lhs = scene.type || 'talking-head';
+  else if (rule.field === 'duration') lhs = scene.durationSec || 5;
+  else return false;
+  const rhs = (rule.field === 'duration') ? Number(rule.value) : String(rule.value);
+  if (op === 'eq') return String(lhs) === String(rhs);
+  if (op === 'gt') return Number(lhs) > rhs;
+  if (op === 'lt') return Number(lhs) < rhs;
+  return false;
+}
+
 function pickProviderForScene(scene, settings) {
   // 1. Manual override on the scene
   if (scene.providerOverride && PROVIDERS[scene.providerOverride]) {
     const P = PROVIDERS[scene.providerOverride];
     if (P.availability(settings).available) return P;
+  }
+  // 1.5 Smart routing rules (Settings → Smart Fallback Rule Builder).
+  // First matching rule wins, but only if the targeted provider is available;
+  // otherwise we keep going so the normal fallback chain still works.
+  for (const rule of (settings.routingRules || [])) {
+    if (matchRoutingRule(rule, scene) && PROVIDERS[rule.then] && PROVIDERS[rule.then].availability(settings).available) {
+      return PROVIDERS[rule.then];
+    }
   }
   // 2. User's default for this scene type
   const defaultId = scene.type === 'cinematic'
@@ -3647,6 +3673,102 @@ function PhaseThreeProvidersCard() {
   );
 }
 
+// Smart Fallback Rule Builder — shows the orchestrator priority ladder,
+// the per-video cost cap, and lets the user add conditional routing rules
+// (IF scene type/duration THEN use provider X) which feed pickProviderForScene.
+function SmartFallbackCard() {
+  const { state, dispatch } = useStore();
+  const s = state.settings;
+  const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
+  // The orchestrator's fixed fast-path order (orchestrateRender). Each entry
+  // notes how we detect it's configured.
+  const LADDER = [
+    { id:'runway_gen4',   label:'Runway Gen-4 Turbo', why:'top cinematic',     ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
+    { id:'fal_seedance2', label:'Fal.ai · Seedance 2.0', why:'cinematic, text→video', ok: !!s.falKey },
+    { id:'higgsfield',    label:'Higgsfield · DoP',   why:'cinematic, image→video', ok: !!s.higgsfieldKey && !!s.higgsfieldSecret },
+    { id:'veo3',          label:'Google Veo 3',       why:'cinematic, throttled',  ok: !!s.googleAiKey },
+    { id:'heygen',        label:'HeyGen multi-input', why:'talking-head + b-roll', ok: !!s.heygenKey && !!s.heygenAvatarId && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
+    { id:'hedra_act_two', label:'Hedra Act-Two',      why:'talking-head, slow',    ok: !!s.hedraKey && !!s.hedraActTwoModelId && (!!s.hedraStartKeyframeId || !!s.hedraStartKeyframeUrl) && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
+  ];
+  const rules = s.routingRules || [];
+  const updRule = (i, patch) => { const next = rules.map((r,j) => j===i ? {...r, ...patch} : r); set({ routingRules: next }); };
+  const addRule = () => set({ routingRules: [...rules, { field:'sceneType', op:'eq', value:'cinematic', then:'runway_gen4' }] });
+  const delRule = (i) => set({ routingRules: rules.filter((_,j)=>j!==i) });
+  const cinematicProviders = Object.values(PROVIDERS).filter(P => P.caps.cinematic || P.caps.talkingHead);
+
+  return (
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-title">Smart Fallback Rule Builder</div>
+      <div className="help" style={{marginBottom:14}}>
+        How renders are routed. The orchestrator tries the ladder top-down, auto-falling through on any error. Conditional rules below override the ladder for matching scenes (if the targeted provider is configured).
+      </div>
+
+      <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Priority ladder &amp; fallbacks</div>
+      <div style={{display:'grid', gap:8, marginBottom:18}}>
+        {LADDER.map((p, i) => (
+          <div key={p.id} style={{display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--card2)', borderRadius:10, border: p.ok ? '1.5px solid var(--accent)' : '1.5px solid transparent'}}>
+            <span style={{fontWeight:700, color:'var(--muted)', width:18}}>{i+1}</span>
+            <div style={{flex:1, minWidth:0}}>
+              <div style={{fontWeight:600, fontSize:13}}>{p.label}</div>
+              <div style={{fontSize:11, color:'var(--muted)'}}>{p.why}</div>
+            </div>
+            <span className="pill" style={{background: p.ok ? 'var(--accent-dim)' : 'var(--card)', color: p.ok ? 'var(--accent)' : 'var(--muted)'}}>{p.ok ? (i===0?'Active · primary':'Ready · backup') : 'Not configured'}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{fontWeight:600, fontSize:13, marginBottom:8}}>Cost cap per video</div>
+      <div style={{marginBottom:6}}>
+        <input type="range" className="slider" min="0" max="50" step="1" value={Math.min(50, s.costCapPerVideoGBP || 0)} onChange={e=>set({ costCapPerVideoGBP: parseInt(e.target.value) })} />
+        <div style={{display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--muted)', marginTop:4}}>
+          <span>£0</span><strong style={{color:'var(--text)', fontSize:14}}>£{(s.costCapPerVideoGBP||0).toFixed(2)}</strong><span>£50</span>
+        </div>
+      </div>
+      <div className="help" style={{marginBottom:18}}>Renders refuse if the estimated cost exceeds this. Set to £0 to disable the cap.</div>
+
+      <div style={{display:'flex', alignItems:'center', marginBottom:8}}>
+        <div style={{fontWeight:600, fontSize:13}}>Conditional routing rules</div>
+        <span style={{flex:1}}/>
+        <button className="btn btn-ghost btn-sm" onClick={addRule}>+ Add rule</button>
+      </div>
+      {rules.length === 0 && <div className="help" style={{marginBottom:8}}>No rules — every scene uses the ladder. Add a rule to force specific scene types or durations onto a chosen provider.</div>}
+      <div style={{display:'grid', gap:8}}>
+        {rules.map((r, i) => (
+          <div key={i} style={{padding:'10px 12px', background:'var(--card2)', borderRadius:10, display:'flex', flexWrap:'wrap', alignItems:'center', gap:6, fontSize:12}}>
+            <span style={{fontWeight:600, color:'var(--accent)'}}>IF</span>
+            <select value={r.field} onChange={e=>updRule(i,{ field:e.target.value, op: e.target.value==='duration'?'gt':'eq', value: e.target.value==='duration'?'8':'cinematic' })} style={{width:'auto', padding:'4px 8px'}}>
+              <option value="sceneType">scene type</option>
+              <option value="duration">scene duration (s)</option>
+            </select>
+            {r.field === 'sceneType' ? (
+              <>
+                <span style={{color:'var(--muted)'}}>is</span>
+                <select value={r.value} onChange={e=>updRule(i,{ value:e.target.value })} style={{width:'auto', padding:'4px 8px'}}>
+                  <option value="cinematic">cinematic</option>
+                  <option value="talking-head">talking-head</option>
+                </select>
+              </>
+            ) : (
+              <>
+                <select value={r.op} onChange={e=>updRule(i,{ op:e.target.value })} style={{width:'auto', padding:'4px 8px'}}>
+                  <option value="gt">&gt;</option><option value="lt">&lt;</option><option value="eq">=</option>
+                </select>
+                <input type="number" value={r.value} onChange={e=>updRule(i,{ value:e.target.value })} style={{width:64, padding:'4px 8px'}} />
+              </>
+            )}
+            <span style={{fontWeight:600, color:'var(--accent)'}}>THEN</span>
+            <span style={{color:'var(--muted)'}}>use</span>
+            <select value={r.then} onChange={e=>updRule(i,{ then:e.target.value })} style={{width:'auto', padding:'4px 8px'}}>
+              {cinematicProviders.map(P => <option key={P.id} value={P.id}>{P.name}</option>)}
+            </select>
+            <button onClick={()=>delRule(i)} style={{marginLeft:'auto', border:'none', background:'transparent', color:'var(--danger)', cursor:'pointer', fontSize:14}}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage() {
   const { state, dispatch } = useStore();
   const s = state.settings;
@@ -3798,6 +3920,8 @@ function SettingsPage() {
       </div>
 
       <PhaseThreeProvidersCard />
+
+      <SmartFallbackCard />
 
       <DebugLogCard />
 
