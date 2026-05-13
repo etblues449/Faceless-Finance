@@ -2465,9 +2465,19 @@ function NewVideoPage({ go }) {
         </div>
       )}
 
-      {step === 3 && scriptObj && (
+      {step === 3 && scriptObj && (() => {
+        const s = state.settings;
+        const renderVia = s.runwayKey ? `Runway · ${s.runwayModel || 'gen4_turbo'}`
+          : s.falKey ? 'Fal.ai · Seedance 2.0'
+          : (s.higgsfieldKey && s.higgsfieldSecret) ? 'Higgsfield · DoP'
+          : s.googleAiKey ? 'Google Veo 3'
+          : (s.heygenKey && s.heygenAvatarId) ? 'HeyGen (talking-head)'
+          : (s.hedraKey && s.hedraActTwoModelId) ? 'Hedra Act-Two'
+          : null;
+        const willHeyGen = renderVia && renderVia.startsWith('HeyGen');
+        return (
         <div className="card">
-          <div className="card-title">Step 3 · Review script & set HeyGen voice speed</div>
+          <div className="card-title">Step 3 · Review script &amp; render</div>
           <div style={{marginBottom:12}}>
             <label className="label">Title</label>
             <input value={scriptObj.title} onChange={e=>setScriptObj({...scriptObj, title:e.target.value})} />
@@ -2476,39 +2486,48 @@ function NewVideoPage({ go }) {
             <label className="label">Spoken script ({wordCount(scriptObj.script)} words · ~{scriptObj.estimatedDurationSec}s)</label>
             <textarea value={scriptObj.script} onChange={e=>setScriptObj({...scriptObj, script:e.target.value})} style={{minHeight:200}} />
           </div>
-          <div style={{marginBottom:14}}>
-            <label className="label">HeyGen voice speed: <strong>{heygenSpeed.toFixed(2)}x</strong></label>
-            <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={heygenSpeed} onChange={e=>setHeygenSpeed(parseFloat(e.target.value))} />
-            <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x.</div>
+          <div style={{padding:'10px 12px', borderRadius:'var(--radius-input)', background:'var(--accent-dim)', border:'1px solid var(--accent)', marginBottom:14, fontSize:12}}>
+            {renderVia
+              ? <>Renders via <strong>{renderVia}</strong> first {willHeyGen ? '' : '(auto-falls through to other configured providers on error)'}. Voice track: ElevenLabs PVC, muxed in-browser.</>
+              : <span style={{color:'var(--danger)'}}>No video provider configured. Add a key in Settings → Phase 3 (Runway recommended) before rendering.</span>}
           </div>
-          <div style={{marginBottom:14}}>
-            <label className="label">HeyGen voice pitch: <strong>{heygenPitch > 0 ? '+' : ''}{heygenPitch}</strong></label>
-            <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
-            <div className="help">0 = neutral. Negative = deeper, positive = higher. Most cloned voices sound best at 0; only adjust if your clone is consistently too high or low.</div>
-          </div>
-          {state.settings.defaultTalkingHeadProvider === 'heygen' && (
+          <details style={{marginBottom:14}}>
+            <summary>HeyGen fallback voice settings (only used if HeyGen renders this video)</summary>
+            <div style={{marginTop:10}}>
+              <label className="label">Voice speed: <strong>{heygenSpeed.toFixed(2)}x</strong></label>
+              <input type="range" className="slider" min="0.5" max="1.5" step="0.05" value={heygenSpeed} onChange={e=>setHeygenSpeed(parseFloat(e.target.value))} />
+              <div className="help">Suggested for {TONE_PRESETS[tone].label}: {TONE_PRESETS[tone].speed.toFixed(2)}x.</div>
+            </div>
+            <div style={{marginTop:10}}>
+              <label className="label">Voice pitch: <strong>{heygenPitch > 0 ? '+' : ''}{heygenPitch}</strong></label>
+              <input type="range" className="slider" min="-50" max="50" step="5" value={heygenPitch} onChange={e=>setHeygenPitch(parseInt(e.target.value))} />
+              <div className="help">0 = neutral. Most cloned voices sound best at 0.</div>
+            </div>
+          </details>
+          {willHeyGen && (
             <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
               <button className="btn btn-outline btn-sm" onClick={renderSample} disabled={sampling || generating}>
-                {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s sample (1 credit)'}
+                {sampling ? <><span className="spin"></span> Sampling… (~60s)</> : '▶ Render 10s HeyGen sample (1 credit)'}
               </button>
-              <span className="help" style={{fontSize:11}}>Legacy HeyGen-only test. Skip — use full render.</span>
+              <span className="help" style={{fontSize:11}}>Optional pre-check. Skip and do the full render if you like.</span>
             </div>
           )}
           {sampleErr && <div className="alert alert-err" style={{marginBottom:10}}>{sampleErr}</div>}
           {sampleUrl && (
             <div style={{marginBottom:14}}>
-              <video src={sampleUrl} controls style={{width:'100%',maxHeight:360,borderRadius:8,background:'#000'}} />
+              <video src={sampleUrl} controls style={{width:'100%',maxHeight:360,borderRadius:'var(--radius-input)',background:'#000'}} />
               <div className="help" style={{marginTop:6}}>If the voice is wrong, try a different Voice ID in Settings, or adjust speed/pitch above and sample again.</div>
             </div>
           )}
           <div style={{display:'flex',gap:8}}>
-            <button className="btn" onClick={startRender} disabled={generating || sampling}>
-              {generating ? <><span className="spin"></span> Sending to HeyGen…</> : '→ Render full video'}
+            <button className="btn" onClick={startRender} disabled={generating || sampling || !renderVia}>
+              {generating ? <><span className="spin"></span> Starting render…</> : '→ Render full video'}
             </button>
             <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {step === 4 && (
         <div className="card">
