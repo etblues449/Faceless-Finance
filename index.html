@@ -306,6 +306,7 @@ const DEFAULT_SETTINGS = {
   runwayKey: '',                  // Runway developer API key (dev.runwayml.com) — Gen-4 Turbo image-to-video
   runwayModel: 'gen4_turbo',      // gen4_turbo | gen4.5 | gen4_aleph | veo3.1 | veo3 | seedance2 | gen3a_turbo (all in user's tier; gen4_turbo is the proven default)
   runwayImageUrl: '',             // Reference photo URL — falls back to hedra/higgsfield if blank
+  runwayChainScenes: true,        // Last-frame chaining: scene 2..n start from the previous scene's last frame for visual continuity (one continuous shot feel)
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
   routingRules: [],               // Smart Fallback Rule Builder — [{field:'sceneType'|'duration', op:'eq'|'gt'|'lt', value, then:providerId}]
@@ -1234,53 +1235,64 @@ class RunwayGen4Provider extends VideoProvider {
     return scenes.reduce((sum, sc) => sum + ((sc.durationSec || 5) > 7 ? 10 : 5) * 0.25, 0);
   }
 
+  static async _submitOneScene({ scene, imageUrl, settings, aspect, model }) {
+    const ratio = aspect === '16:9' ? '1280:720' : aspect === '1:1' ? '960:960' : '720:1280';
+    const prompt = applyCharacterBible(scene, settings);
+    const runwayDuration = (scene.durationSec || 5) > 7 ? 10 : 5;
+    const promptText = prompt.length > 950 ? prompt.slice(0, 950) + '…' : prompt;
+    const requestBody = { promptImage: imageUrl, promptText, model, ratio, duration: runwayDuration };
+    const imgPreview = imageUrl.startsWith('data:') ? `data:image/jpeg (chained, ${Math.round(imageUrl.length/1024)}KB)` : imageUrl.slice(0, 60) + '…';
+    logEvent('runway-submit', 'request_body', { sceneId: scene.id, model, body: { ...requestBody, promptImage: imgPreview } });
+    const r = await loggedFetch('runway-submit',
+      proxiedUrl('https://api.dev.runwayml.com/v1/image_to_video', settings),
+      {
+        method: 'POST',
+        headers: { 'content-type':'application/json', 'accept':'application/json', 'authorization': `Bearer ${settings.runwayKey}` },
+        body: JSON.stringify(requestBody),
+      }
+    );
+    const d = await r.json();
+    logEvent('runway-submit', 'response_body', { sceneId: scene.id, body: d });
+    if (!r.ok || d.error) throw new Error(`Runway: ${d.error || d.message || JSON.stringify(d).slice(0, 200)}`);
+    const jobId = d.id;
+    if (!jobId) throw new Error(`Runway returned no task id. Response: ${JSON.stringify(d).slice(0, 300)}`);
+    return { jobId, sceneIds: [scene.id], provider: 'runway_gen4' };
+  }
+
   static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
     const imageUrl = settings.runwayImageUrl || settings.hedraStartKeyframeUrl || settings.higgsfieldImageUrl;
     if (!imageUrl) throw new Error('Runway requires a reference photo URL. Set it in Settings → Runway → Photo URL.');
     if (!settings.runwayKey) throw new Error('Runway API key required. Get one from dev.runwayml.com.');
-
-    const ratio = aspect === '16:9' ? '1280:720' : aspect === '1:1' ? '960:960' : '720:1280';
     const model = settings.runwayModel || 'gen4_turbo';
-    const jobs = [];
+    const chain = settings.runwayChainScenes !== false && scenes.length > 1;
 
-    for (const sc of scenes) {
-      const prompt = applyCharacterBible(sc, settings);
-      // Runway only accepts 5 or 10 second durations.
-      const runwayDuration = (sc.durationSec || 5) > 7 ? 10 : 5;
-      // Runway has a ~1000 character cap on promptText. Trim if needed.
-      const promptText = prompt.length > 950 ? prompt.slice(0, 950) + '…' : prompt;
-
-      const requestBody = {
-        promptImage: imageUrl,
-        promptText,
-        model,
-        ratio,
-        duration: runwayDuration,
-      };
-      logEvent('runway-submit', 'request_body', {
-        sceneId: sc.id, model,
-        body: { ...requestBody, promptImage: imageUrl.slice(0, 60) + '…' },
-      });
-      const r = await loggedFetch('runway-submit',
-        proxiedUrl('https://api.dev.runwayml.com/v1/image_to_video', settings),
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'accept': 'application/json',
-            'authorization': `Bearer ${settings.runwayKey}`,
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
-      const d = await r.json();
-      logEvent('runway-submit', 'response_body', { sceneId: sc.id, body: d });
-      if (!r.ok || d.error) {
-        throw new Error(`Runway: ${d.error || d.message || JSON.stringify(d).slice(0, 200)}`);
+    if (!chain) {
+      // Original parallel-submit behaviour.
+      const jobs = [];
+      for (const sc of scenes) {
+        jobs.push(await RunwayGen4Provider._submitOneScene({ scene: sc, imageUrl, settings, aspect, model }));
       }
-      const jobId = d.id;
-      if (!jobId) throw new Error(`Runway returned no task id. Response: ${JSON.stringify(d).slice(0, 300)}`);
-      jobs.push({ jobId, sceneIds: [sc.id], provider: 'runway_gen4' });
+      return { jobs };
+    }
+
+    // Chain mode: submit scene 1 now; queue 2..n as awaitingChain placeholders
+    // that the App polling loop will submit one-by-one as each previous scene
+    // completes, using its last frame as the new start image. End result: one
+    // visually-continuous shot rather than N disconnected clips.
+    logEvent('runway-submit', 'chain_mode_on', { sceneCount: scenes.length });
+    const first = await RunwayGen4Provider._submitOneScene({ scene: scenes[0], imageUrl, settings, aspect, model });
+    const jobs = [first];
+    for (let i = 1; i < scenes.length; i++) {
+      jobs.push({
+        jobId: null,
+        sceneIds: [scenes[i].id],
+        provider: 'runway_gen4',
+        status: 'awaitingChain',
+        awaitingChain: true,
+        chainAfterSceneId: scenes[i - 1].id,
+        scene: scenes[i],           // full scene obj — needed for later prompt build
+        aspect, model,              // captured at startRender time
+      });
     }
     return { jobs };
   }
@@ -2983,6 +2995,8 @@ function SceneTimeline({ video }) {
                       ? <video src={job.videoUrl} muted playsInline style={{width:'100%', height:'100%', objectFit:'cover'}} preload="metadata" />
                       : st === 'failed' ? <span style={{fontSize:24}}>⚠️</span>
                       : st === 'processing' ? <span className="spin" style={{width:18, height:18}}></span>
+                      : st === 'awaitingChain' ? <span style={{fontSize:9, color:'var(--muted)', textAlign:'center', padding:'0 4px', lineHeight:1.2}}>waiting<br/>for<br/>prev</span>
+                      : st === 'submitting' ? <><span className="spin" style={{width:14, height:14}}></span><span style={{fontSize:9, color:'var(--muted)', marginLeft:5}}>chaining</span></>
                       : <span style={{fontSize:10, color:'var(--muted)'}}>queued</span>}
                   </div>
                   <div style={{fontSize:11, fontWeight:600, marginTop:5}}>Scene {i+1}</div>
@@ -3831,6 +3845,15 @@ function PhaseThreeProvidersCard() {
             <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot.jpg" />
             <div className="help">Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</div>
           </div>
+          <div style={{gridColumn:'1/-1', padding:'10px 12px', background:'var(--accent-dim)', border:'1px solid var(--accent)', borderRadius:'var(--radius-input)'}}>
+            <label style={{display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer'}}>
+              <input type="checkbox" checked={s.runwayChainScenes !== false} onChange={e=>set({ runwayChainScenes: e.target.checked })} style={{width:18, height:18, marginTop:2, flexShrink:0}} />
+              <div>
+                <div style={{fontWeight:600, fontSize:13}}>Last-frame chaining (recommended)</div>
+                <div className="help" style={{marginTop:3}}>For multi-scene renders, scene 2..N start from scene N-1's last frame instead of the reference photo. Produces one visually-continuous shot — character keeps walking, the environment carries over — instead of N disconnected clips. Scenes render sequentially (one at a time) instead of in parallel.</div>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -4501,6 +4524,49 @@ async function fetchToBytes(url) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
+// Extract the last frame of a video URL as a JPEG data URI. Used by Runway
+// last-frame chaining: feed clip N's final frame as clip N+1's start image
+// so the AI generates one visually-continuous shot. Requires the video host
+// to serve with permissive CORS (Runway's CloudFront does).
+async function extractLastFrameDataUri(videoUrl) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous';
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    let done = false;
+    const finish = (errOrDataUri) => {
+      if (done) return; done = true;
+      v.removeAttribute('src'); try { v.load(); } catch {}
+      if (errOrDataUri instanceof Error) reject(errOrDataUri); else resolve(errOrDataUri);
+    };
+    const timer = setTimeout(() => finish(new Error('extractLastFrame timeout (20s)')), 20000);
+    v.onloadedmetadata = () => {
+      // Seek 100ms before the very end — exact-end seeking sometimes errors.
+      v.currentTime = Math.max(0, (v.duration || 1) - 0.1);
+    };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 720;
+        c.height = v.videoHeight || 1280;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        const dataUri = c.toDataURL('image/jpeg', 0.92);
+        clearTimeout(timer); finish(dataUri);
+      } catch (e) { clearTimeout(timer); finish(new Error('canvas extract failed: ' + e.message)); }
+    };
+    v.onerror = () => { clearTimeout(timer); finish(new Error('video load failed (CORS or 404)')); };
+    v.src = videoUrl;
+  });
+}
+
+// Module-level Set of Runway chain submissions currently in flight, keyed by
+// the awaiting-chain scene's sceneId. Prevents the polling tick from kicking
+// off duplicate submits while one is still pending.
+const __runwayChainInFlight = new Set();
+
 // Global stitch lock. Multiple videos may try to stitch concurrently (e.g.
 // after the user runs several test renders); ElevenLabs concurrent-request
 // limits and ffmpeg.wasm memory cost mean we MUST serialize. Each call
@@ -4662,6 +4728,9 @@ function App() {
           for (let i = 0; i < updatedJobs.length; i++) {
             const job = updatedJobs[i];
             if (job.status === 'completed' || job.status === 'failed') continue;
+            // Chained Runway jobs awaiting submission have no jobId yet — skip
+            // polling; the chain-submission block below handles them.
+            if (!job.jobId) { allDone = false; continue; }
             const P = PROVIDERS[job.provider];
             if (!P) { allDone = false; continue; }
             try {
@@ -4676,6 +4745,55 @@ function App() {
                 allDone = false;
               }
             } catch (e) { console.warn('poll error', e); allDone = false; }
+          }
+
+          // Runway last-frame chaining: for any newly-completed Runway scene
+          // with a queued chained follower, extract its last frame and submit
+          // the next scene with that frame as promptImage.
+          for (let i = 0; i < updatedJobs.length; i++) {
+            const job = updatedJobs[i];
+            if (!job.awaitingChain) continue;
+            const sceneIdKey = job.sceneIds[0];
+            if (__runwayChainInFlight.has(sceneIdKey)) { allDone = false; continue; }
+            const prev = updatedJobs.find(j => j.sceneIds?.includes(job.chainAfterSceneId));
+            if (!prev) {
+              updatedJobs[i] = { ...job, status: 'failed', error: 'chain: previous scene not found', awaitingChain: false };
+              anyFailed = true; continue;
+            }
+            if (prev.status === 'failed') {
+              updatedJobs[i] = { ...job, status: 'failed', error: 'chain: previous scene failed', awaitingChain: false };
+              anyFailed = true; continue;
+            }
+            if (prev.status !== 'completed' || !prev.videoUrl) {
+              allDone = false; continue; // still waiting for prev to render
+            }
+            // Ready to chain. Fire async submit (don't block this tick).
+            __runwayChainInFlight.add(sceneIdKey);
+            updatedJobs[i] = { ...job, status: 'submitting' };
+            allDone = false;
+            (async () => {
+              const videoId = v.id;
+              try {
+                logEvent('runway-chain', 'extracting_frame', { sceneId: sceneIdKey, prevVideo: prev.videoUrl.slice(0, 80) });
+                const frameDataUri = await extractLastFrameDataUri(prev.videoUrl);
+                logEvent('runway-chain', 'frame_extracted', { sceneId: sceneIdKey, kb: Math.round(frameDataUri.length/1024) });
+                const newJob = await RunwayGen4Provider._submitOneScene({
+                  scene: job.scene, imageUrl: frameDataUri, settings: stateRef.current.settings,
+                  aspect: job.aspect, model: job.model,
+                });
+                logEvent('runway-chain', 'submitted', { sceneId: sceneIdKey, jobId: newJob.jobId });
+                const cur = stateRef.current.videos.find(x => x.id === videoId);
+                if (!cur?.render) return;
+                dispatch({ type:'UPDATE_VIDEO', id: videoId, patch: { render: { ...cur.render, jobs: cur.render.jobs.map(j => j.sceneIds?.[0] === sceneIdKey ? { ...j, jobId: newJob.jobId, status: 'processing', awaitingChain: false, scene: undefined } : j) } } });
+              } catch (e) {
+                logEvent('runway-chain', 'failed', { sceneId: sceneIdKey, error: e.message });
+                const cur = stateRef.current.videos.find(x => x.id === videoId);
+                if (!cur?.render) return;
+                dispatch({ type:'UPDATE_VIDEO', id: videoId, patch: { render: { ...cur.render, jobs: cur.render.jobs.map(j => j.sceneIds?.[0] === sceneIdKey ? { ...j, status: 'failed', error: 'Chain: ' + e.message, awaitingChain: false } : j) } } });
+              } finally {
+                __runwayChainInFlight.delete(sceneIdKey);
+              }
+            })();
           }
           // If all jobs done and at least one succeeded, advance to approval
           if (allDone) {
