@@ -301,7 +301,7 @@ const DEFAULT_SETTINGS = {
   googleAiKey: '',                // Google AI Studio API key (free; aistudio.google.com) — Veo 3 cinematic per-scene
   openaiKey: '',                  // OpenAI (Sora 2) — stub
   runwayKey: '',                  // Runway developer API key (dev.runwayml.com) — Gen-4 Turbo image-to-video
-  runwayModel: 'gen4_turbo',      // gen4_turbo (cheap, fast) | gen4 (premium) | gen3a_turbo (legacy)
+  runwayModel: 'gen4_turbo',      // gen4_turbo | gen4.5 | gen4_aleph | veo3.1 | veo3 | seedance2 | gen3a_turbo (all in user's tier; gen4_turbo is the proven default)
   runwayImageUrl: '',             // Reference photo URL — falls back to hedra/higgsfield if blank
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
@@ -3602,10 +3602,15 @@ function PhaseThreeProvidersCard() {
           <div>
             <label className="label">Model</label>
             <select value={s.runwayModel || 'gen4_turbo'} onChange={e=>set({ runwayModel:e.target.value })}>
-              <option value="gen4_turbo">Gen-4 Turbo (recommended · $0.25/sec)</option>
-              <option value="gen4">Gen-4 (premium · $0.40/sec)</option>
-              <option value="gen3a_turbo">Gen-3a Turbo (legacy · cheaper)</option>
+              <option value="gen4_turbo">Gen-4 Turbo — proven, fast (recommended)</option>
+              <option value="gen4.5">Gen-4.5 — newest Runway, best quality</option>
+              <option value="gen4_aleph">Gen-4 Aleph — Runway's flagship video model</option>
+              <option value="veo3.1">Veo 3.1 (via Runway) — Google's model, no Google quota</option>
+              <option value="veo3">Veo 3 (via Runway)</option>
+              <option value="seedance2">Seedance 2.0 (via Runway) — ByteDance, no Fal.ai account needed</option>
+              <option value="gen3a_turbo">Gen-3a Turbo — legacy, cheaper</option>
             </select>
+            <div className="help">Your Runway tier has access to all of these. If a newer model errors on the current API version, the orchestrator falls through to the next provider — just switch back to Gen-4 Turbo. ~5 credits/sec; you have ~1,000 credits ≈ 6-7 short videos.</div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Reference photo URL</label>
