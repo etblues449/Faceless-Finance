@@ -315,7 +315,7 @@ const DEFAULT_SETTINGS = {
   routingRules: [],               // Smart Fallback Rule Builder — [{field:'sceneType'|'duration', op:'eq'|'gt'|'lt', value, then:providerId}]
   singleShotRender: true,         // Bundle every scene into ONE Hedra job for ~6× faster queue wait. Set false to render per-scene.
   costCapPerVideoGBP: 5,          // Renders refuse if estimate exceeds
-  characterBible: 'Strong squared jawline. Defined cheekbones. Light blue-grey eyes. Tight beard stubble. Athletic build. Forearm sleeve tattoo on right arm. Late twenties. Smart-casual British style.',
+  characterBible: 'British man, late twenties. Athletic, broad-shouldered, lean. Short cropped mid-brown hair with subtle blonde tips, clean fade above the ears. Light blue-grey eyes. Strong squared jawline, defined cheekbones, tight dark beard stubble (fully connected, well-groomed). Full black-ink sleeve tattoo on the right forearm, visible in short sleeves. Smart-casual British everyday wear: fitted plain tees (white, navy, black), Cruyff/adidas branded polos, or open-collar fitted shirts (light grey, sage). Thin gold chain at the neckline, quality watch on the left wrist. No flashy logos. Warm natural skin tone, light flush in cheeks. Confident, friendly demeanour.',
   niche: 'UK tax saving for PAYE earners in the 20% and 40% income tax bands (£12,570–£125,140), including the £100k 60% trap.',
   audience: 'UK PAYE earners earning between minimum wage and £125,140. Particular relevance to those approaching or in the £100k–£125,140 personal-allowance taper zone.',
   channelHandle: '',
@@ -846,10 +846,24 @@ class HedraActTwoProvider extends VideoProvider {
 // Centralised so EVERY cinematic provider (Hedra, Veo, Sora, Runway) gets
 // the same locked persona description — regardless of which one renders.
 function applyCharacterBible(scene, settings) {
-  const bible = (settings?.characterBible || '').trim();
+  let bible = (settings?.characterBible || '').trim();
   const scenePrompt = (scene.visualPrompt || scene.dialogue || '').trim();
-  if (!bible) return scenePrompt;
-  return `Subject reference (must match across all scenes): ${bible}\n\nScene: ${scenePrompt}`;
+  // Strip "selfie / direct-to-camera / talking-to-camera" framing biases from
+  // the bible — these bias every Runway clip toward a talking-head shot.
+  // Camera framing belongs in the per-scene visualPrompt, not the persona.
+  if (bible) {
+    bible = bible
+      .replace(/photographed selfie[- ]style[^.]*\.?/gi, '')
+      .replace(/selfie[- ]style[^.]*\.?/gi, '')
+      .replace(/direct[- ]to[- ]camera[^.]*\.?/gi, '')
+      .replace(/looking at (the )?camera[^.]*\.?/gi, '')
+      .replace(/talking to (the )?camera[^.]*\.?/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  const style = 'CINEMATIC SHOT — character is shown in action in a real UK environment (walking, working, moving); NOT a static talking-head, NOT direct-to-camera, NOT selfie framing.';
+  if (!bible) return `${style}\n\n${scenePrompt}`;
+  return `Character (must match across every scene): ${bible}\n\n${style}\n\nScene: ${scenePrompt}`;
 }
 
 // ----------------------------------------------------------------------------
@@ -2037,15 +2051,13 @@ PROSODY rules (CRITICAL — without these the TTS sounds robotic):
 SCENE BREAKDOWN (CRITICAL):
 - Break the script into 3–6 short scenes (one per beat: hook, problem, lever, proof, payoff).
 - Each scene gets its own DIALOGUE (the spoken words, voiceover) AND a VISUALPROMPT (what's on screen) AND a TYPE.
-- type 'talking-head' = avatar in frame speaking. Use for explanation, hook, CTA.
-- type 'cinematic' = no avatar; AI-generated cinematic clip described by visualPrompt. Voiceover plays over it. Use for setting scenes, demonstrations, dramatic reveals (e.g. "me walking up to the Savoy hotel and being handed a room key", "close-up of a tax letter dropping on a doormat", "wide shot of London skyline at golden hour").
+- ALL SCENES MUST BE TYPE 'cinematic'. Never 'talking-head'. The channel format is a continuous cinematic shoot — the character is shown walking through environments, gesturing in real-world settings (UK streets, kitchens, offices, cafés, the Tube, parks). The voiceover plays over the cinematic visuals. NO scenes where the character is sitting/standing speaking directly to the camera in a fixed framing. That's a podcast, not the channel.
 - CRITICAL DISTINCTION:
   * The dialogue field is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
-  * The visualPrompt field is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here.
-  * Both fields are REQUIRED for both scene types. A cinematic scene STILL has spoken voiceover dialogue — just no avatar in frame.
-- Mix types. A typical 50s video might be: cinematic hook (5s) → talking-head explanation (15s) → cinematic illustration (5s) → talking-head proof (15s) → cinematic payoff (5s) → talking-head CTA (5s).
-- For talking-head scenes, set avatarPosition (left/center/right) and avatarScale (close/medium/wide) for visual variety.
-- For cinematic scenes, write visualPrompt as a vivid one-sentence description suitable for an AI video model (e.g. Veo 3, Hedra Character-2). Be specific about location, action, mood, time of day.
+  * The visualPrompt field is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here. NEVER write "talking to camera" or "selfie style" — make it a real cinematic shot (tracking, wide, over-shoulder, walking, etc.).
+- Cinematic visualPrompt guidance: vivid one-sentence shot description for an AI video model. Cover (1) what the character is doing physically — walking, sitting at a café, exiting a building, leaning on a counter — NOT speaking to camera; (2) location — specific UK setting: London street at golden hour, modest UK kitchen, a kerb outside a Pret, a tube platform, a Soho rooftop bar; (3) framing — wide tracking, medium follow shot, over-shoulder, profile two-shot — basically anything BUT centred direct-to-camera; (4) mood/light — warm domestic, overcast city, late-afternoon golden hour.
+- Example visualPrompts: "Wide tracking shot, character walks down a London terrace street at golden hour, hands in pockets, autumn leaves underfoot" · "Medium follow shot through a modern UK kitchen, character makes a coffee while glancing at a payslip on the counter" · "Over-the-shoulder, character exits a glass office building onto a busy street, looks down at his phone".
+- avatarPosition and avatarScale fields are still required for compatibility — set to "center" and "medium" by default for cinematic scenes (they only matter to the talking-head HeyGen fallback path, which the channel doesn't use).
 
 Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
 {
@@ -2056,8 +2068,8 @@ Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
       "id": "scene_1",
       "dialogue": "the spoken text for this scene (1-3 sentences)",
       "durationSec": 5,
-      "type": "talking-head" | "cinematic",
-      "visualPrompt": "for cinematic: vivid description for AI video model. for talking-head: short hint about background/B-roll",
+      "type": "cinematic",
+      "visualPrompt": "vivid one-sentence cinematic shot description (action, location, framing, mood) — NOT talking-to-camera",
       "brollKeywords": ["keyword1","keyword2"],
       "avatarPosition": "left" | "center" | "right",
       "avatarScale": "close" | "medium" | "wide",
