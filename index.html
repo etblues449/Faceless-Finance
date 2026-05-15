@@ -1457,17 +1457,49 @@ class LongCatAvatarProvider extends VideoProvider {
 
   static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
     const jobs = [];
-    for (const sc of scenes) {
+    // Pre-flight: kick off scene 1 and race against a 5-second window. If it
+    // errors fast (e.g. HF ZeroGPU rejects "GPU duration (900s) too large" —
+    // policy on the cpuai Space, can't be fixed client-side), THROW so the
+    // orchestrator falls through to Runway instead of returning unrunnable
+    // jobs. If still pending after 5s, assume it's running and proceed.
+    const firstScene = scenes[0];
+    const firstJobId = `longcat-${firstScene.id}-${Date.now().toString(36)}`;
+    const firstEntry = { resolved: false, videoUrl: null, error: null, sceneId: firstScene.id };
+    firstEntry.promise = (async () => {
+      try { firstEntry.videoUrl = await LongCatAvatarProvider._renderOneScene({ scene: firstScene, settings }); firstEntry.resolved = true; }
+      catch (e) { firstEntry.error = e.message; firstEntry.resolved = true; }
+    })();
+    const PROBE_MS = 5000;
+    const probeStart = Date.now();
+    while (!firstEntry.resolved && (Date.now() - probeStart) < PROBE_MS) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (firstEntry.resolved && firstEntry.error) {
+      // Categorise the failure for clearer logs and to decide whether to
+      // recommend disabling the provider entirely.
+      const err = firstEntry.error;
+      const isGpuBudget = /GPU duration|larger than the maximum|gpu_duration/i.test(err);
+      const isAuth = /401|403|unauthor|hf_token|auth/i.test(err);
+      const isQuota = /quota|429|rate limit/i.test(err);
+      const hint = isGpuBudget
+        ? 'This HF Space requests 900s of ZeroGPU per call, but standard HF tiers grant ≤480s. Disable LongCat-Avatar in Settings (Phase 3) until a fork with shorter GPU duration is hosted, or self-host.'
+        : isAuth ? 'Auth issue — paste a valid HF token in Settings → LongCat card.'
+        : isQuota ? 'HF rate limit hit — wait, or add an HF token.'
+        : 'See debug log for full error. Disable LongCat in Settings to render via Runway instead.';
+      logEvent('longcat-avatar', 'probe_failed_falling_through', { error: err, category: isGpuBudget ? 'gpu_budget' : isAuth ? 'auth' : isQuota ? 'quota' : 'other', hint });
+      throw new Error(`LongCat probe failed (${isGpuBudget ? 'GPU budget' : isAuth ? 'auth' : isQuota ? 'quota' : 'unknown'}): ${err}. ${hint}`);
+    }
+    // First scene either succeeded fast or is still in-flight — commit to the
+    // run, save the first job, kick off the rest.
+    __longcatJobs.set(firstJobId, firstEntry);
+    jobs.push({ jobId: firstJobId, sceneIds: [firstScene.id], provider: 'longcat_avatar' });
+    for (let i = 1; i < scenes.length; i++) {
+      const sc = scenes[i];
       const jobId = `longcat-${sc.id}-${Date.now().toString(36)}`;
       const entry = { resolved: false, videoUrl: null, error: null, sceneId: sc.id };
       entry.promise = (async () => {
-        try {
-          entry.videoUrl = await LongCatAvatarProvider._renderOneScene({ scene: sc, settings });
-          entry.resolved = true;
-        } catch (e) {
-          entry.error = e.message;
-          entry.resolved = true;
-        }
+        try { entry.videoUrl = await LongCatAvatarProvider._renderOneScene({ scene: sc, settings }); entry.resolved = true; }
+        catch (e) { entry.error = e.message; entry.resolved = true; }
       })();
       __longcatJobs.set(jobId, entry);
       jobs.push({ jobId, sceneIds: [sc.id], provider: 'longcat_avatar' });
