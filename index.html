@@ -1410,18 +1410,37 @@ class LongCatAvatarProvider extends VideoProvider {
 
     logEvent('longcat-avatar', 'predict_start', { sceneId: scene.id, audioKB: Math.round(audioBlob.size/1024), imgKB: Math.round(imgBlob.size/1024) });
     let result;
-    // /run is cpuai/LongCat-Video-Avatar's actual inference endpoint (confirmed
-    // from view_api). Fallbacks: /predict (other forks), then unnamed 0.
-    const attempts = ['/run', '/predict', 0];
+    // Confirmed signature from view_api:
+    //   mode_v   (Radio: 'at2v' = audio→video, 'ai2v' = audio+image→video)
+    //   audio_fp (Audio, required)
+    //   prompt_v (Textbox)
+    //   img_fp   (Image, required)
+    //   seed_v / res_v / seg_v / idx_v / ... all have defaults
+    // We use 'ai2v' so the reference photo locks the character identity.
+    const namedArgs = {
+      mode_v: 'ai2v',
+      audio_fp: audioBlob,
+      prompt_v: promptText,
+      img_fp: imgBlob,
+    };
+    // Positional fallback in the correct slot order (if the JS client refuses
+    // named args on this Gradio version, this matches the parameter order).
+    const positional = ['ai2v', audioBlob, promptText, imgBlob];
+    const attempts = [
+      { endpoint: '/run',     args: namedArgs   },
+      { endpoint: '/run',     args: positional  },
+      { endpoint: '/predict', args: namedArgs   },
+      { endpoint: 0,          args: positional  },
+    ];
     let lastErr = null;
-    for (const endpoint of attempts) {
+    for (const a of attempts) {
       try {
-        result = await client.predict(endpoint, [imgBlob, audioBlob, promptText]);
-        logEvent('longcat-avatar', 'predict_endpoint_ok', { sceneId: scene.id, endpoint });
+        result = await client.predict(a.endpoint, a.args);
+        logEvent('longcat-avatar', 'predict_endpoint_ok', { sceneId: scene.id, endpoint: a.endpoint, argsForm: Array.isArray(a.args) ? 'positional' : 'named' });
         break;
       } catch (e) {
         lastErr = e;
-        logEvent('longcat-avatar', 'predict_endpoint_failed', { sceneId: scene.id, endpoint, error: e.message });
+        logEvent('longcat-avatar', 'predict_endpoint_failed', { sceneId: scene.id, endpoint: a.endpoint, argsForm: Array.isArray(a.args) ? 'positional' : 'named', error: (e.message || String(e)).slice(0, 400) });
       }
     }
     if (!result) throw new Error(`LongCat predict failed on all endpoints. Last: ${lastErr?.message}`);
