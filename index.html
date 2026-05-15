@@ -3,196 +3,805 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Faceless Finance</title>
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="description" content="Faceless Finance — a non-custodial trading desk. Keys on your device, orders through anonymized relays, balances never touch a server you don't control." />
+  <title>Faceless Finance — Markets without surveillance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-elev: #111111;
+      --bg-card: #0e0e0e;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #ededed;
+      --text-dim: #8a8a8a;
+      --text-mute: #5a5a5a;
+      --accent: #5ee4a0;
+      --accent-soft: rgba(94, 228, 160, 0.12);
+      --accent-line: rgba(94, 228, 160, 0.22);
+      --danger: #f06464;
+
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+      --max: 1200px;
+      --pad: clamp(1.25rem, 4vw, 3rem);
+      --radius: 14px;
+      --radius-lg: 22px;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0d0d0d;
-      color: #e8e8e8;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-feature-settings: "ss01", "cv11";
+      overflow-x: hidden;
+      line-height: 1.5;
     }
 
-    header {
-      padding: 2rem 3rem;
+    /* Ambient backdrop glow */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(94, 228, 160, 0.10), transparent 60%),
+        radial-gradient(ellipse 50% 40% at 100% 20%, rgba(94, 228, 160, 0.04), transparent 60%);
+    }
+
+    /* === NAV === */
+    nav.top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(14px) saturate(160%);
+      -webkit-backdrop-filter: blur(14px) saturate(160%);
+      background: rgba(10, 10, 10, 0.72);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 1rem var(--pad);
       display: flex;
+      align-items: center;
       justify-content: space-between;
+      gap: 2rem;
+    }
+    .brand {
+      display: inline-flex;
       align-items: center;
-      border-bottom: 1px solid #1e1e1e;
-    }
-
-    header .logo {
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: #fff;
-    }
-
-    header .logo span { color: #6ee7b7; }
-
-    nav a {
-      color: #aaa;
-      text-decoration: none;
-      margin-left: 2rem;
-      font-size: 0.9rem;
-      transition: color 0.2s;
-    }
-
-    nav a:hover { color: #fff; }
-
-    main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 4rem 2rem;
-      text-align: center;
-    }
-
-    .badge {
-      display: inline-block;
-      background: #1a2e26;
-      color: #6ee7b7;
-      font-size: 0.75rem;
+      gap: 0.55rem;
+      font-size: 0.95rem;
       font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      padding: 0.35rem 0.9rem;
+      letter-spacing: -0.01em;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .brand-mark { display: grid; place-items: center; }
+    .brand-mark svg { display: block; }
+    .brand-dim { color: var(--text-dim); font-weight: 400; }
+
+    .nav-links {
+      display: flex;
+      gap: 0.15rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.875rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      transition: color 160ms var(--ease-out), background-color 160ms var(--ease-out);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .nav-links a:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.04);
+      }
+    }
+    @media (max-width: 760px) { .nav-links { display: none; } }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.5rem 0.95rem;
+      color: var(--bg);
+      background: var(--text);
+      border-radius: 999px;
+      text-decoration: none;
+      transition: transform 160ms var(--ease-out), background-color 200ms var(--ease-out);
+      will-change: transform;
+    }
+    .nav-cta:active { transform: scale(0.97); }
+
+    /* === HERO === */
+    .hero {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: clamp(3rem, 9vw, 7rem) var(--pad) clamp(2.5rem, 5vw, 4rem);
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: clamp(2rem, 5vw, 4.5rem);
+      align-items: center;
+    }
+    @media (max-width: 880px) {
+      .hero { grid-template-columns: 1fr; }
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: var(--accent);
+      padding: 0.35rem 0.75rem 0.35rem 0.6rem;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-line);
       border-radius: 999px;
       margin-bottom: 1.5rem;
+      font-family: "Geist Mono", ui-monospace, monospace;
+    }
+    .eyebrow .dot {
+      width: 6px; height: 6px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(94, 228, 160, 0.55);
+      animation: pulse 2400ms var(--ease-in-out) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(94, 228, 160, 0.55); }
+      50%      { box-shadow: 0 0 0 6px rgba(94, 228, 160, 0); }
     }
 
-    h1 {
-      font-size: clamp(2.2rem, 6vw, 4rem);
-      font-weight: 800;
-      line-height: 1.15;
-      letter-spacing: -1px;
-      max-width: 700px;
+    h1.display {
+      font-size: clamp(2.4rem, 5.6vw, 4.3rem);
+      font-weight: 600;
+      line-height: 0.98;
+      letter-spacing: -0.035em;
+      color: var(--text);
       margin-bottom: 1.25rem;
     }
-
-    h1 span { color: #6ee7b7; }
-
-    p.subtitle {
-      font-size: 1.1rem;
-      color: #888;
-      max-width: 480px;
-      line-height: 1.7;
-      margin-bottom: 2.5rem;
+    h1.display .em { color: var(--accent); }
+    h1.display .strike {
+      color: var(--text-mute);
+      text-decoration: line-through;
+      text-decoration-thickness: 1.5px;
     }
 
-    .cta {
+    p.lead {
+      font-size: clamp(1rem, 1.25vw, 1.075rem);
+      color: var(--text-dim);
+      line-height: 1.6;
+      max-width: 52ch;
+      margin-bottom: 2rem;
+    }
+
+    .cta-row {
       display: flex;
-      gap: 1rem;
+      gap: 0.75rem;
       flex-wrap: wrap;
-      justify-content: center;
+      align-items: center;
     }
 
     .btn {
-      padding: 0.75rem 1.75rem;
-      border-radius: 8px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      text-decoration: none;
-      transition: opacity 0.2s, transform 0.15s;
-    }
-
-    .btn:hover { opacity: 0.85; transform: translateY(-1px); }
-
-    .btn-primary { background: #6ee7b7; color: #0d0d0d; }
-
-    .btn-secondary {
-      background: transparent;
-      color: #e8e8e8;
-      border: 1px solid #333;
-    }
-
-    .features {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.5rem;
-      max-width: 900px;
-      width: 100%;
-      margin-top: 5rem;
-      padding: 0 1rem;
-    }
-
-    .card {
-      background: #141414;
-      border: 1px solid #1e1e1e;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: inherit;
+      font-size: 0.92rem;
+      font-weight: 500;
+      padding: 0.78rem 1.25rem;
       border-radius: 12px;
-      padding: 1.5rem;
-      text-align: left;
+      text-decoration: none;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition:
+        transform 160ms var(--ease-out),
+        background-color 200ms var(--ease-out),
+        border-color 200ms var(--ease-out),
+        color 200ms var(--ease-out);
+      will-change: transform;
+    }
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #042a18;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.22) inset,
+        0 8px 24px -10px rgba(94, 228, 160, 0.5);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.22);
+      }
+    }
+    .btn-arrow { display: inline-flex; }
+    .btn-arrow svg { transition: transform 240ms var(--ease-out); }
+    @media (hover: hover) and (pointer: fine) {
+      .btn:hover .btn-arrow svg { transform: translateX(2px); }
     }
 
-    .card .icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
-    .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
-    .card p { font-size: 0.85rem; color: #666; line-height: 1.6; }
+    /* Trust line */
+    .trust {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-top: 1.5rem;
+      font-size: 0.78rem;
+      color: var(--text-mute);
+    }
+    .trust .stack { display: flex; }
+    .trust .stack span {
+      display: block;
+      width: 22px; height: 22px;
+      border-radius: 999px;
+      border: 1.5px solid var(--bg);
+      margin-left: -6px;
+    }
+    .trust .stack span:first-child { margin-left: 0; }
+    .trust .stack span:nth-child(1) { background: linear-gradient(140deg, #2dd4bf, #0d9488); }
+    .trust .stack span:nth-child(2) { background: linear-gradient(140deg, #f59e0b, #b45309); }
+    .trust .stack span:nth-child(3) { background: linear-gradient(140deg, #6366f1, #4f46e5); }
+    .trust .stack span:nth-child(4) { background: linear-gradient(140deg, #ec4899, #be185d); }
 
-    footer {
-      text-align: center;
-      padding: 2rem;
+    /* === HERO PREVIEW === */
+    .hero-preview {
+      position: relative;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+      padding: 1.1rem;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.05) inset,
+        0 24px 60px -20px rgba(0, 0, 0, 0.6);
+    }
+    .preview-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.9rem;
+    }
+    .preview-bar i {
+      display: block;
+      width: 9px; height: 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .preview-bar .label {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.72rem;
+      color: var(--text-mute);
+      margin-left: auto;
+    }
+
+    .preview-rows { display: grid; gap: 0.35rem; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 0.85rem;
+      padding: 0.55rem 0.6rem;
+      border-radius: 9px;
+      transition: background-color 220ms var(--ease-out);
+    }
+    .row:nth-child(odd) { background: rgba(255, 255, 255, 0.015); }
+    .row .asset {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .row .glyph {
+      width: 26px; height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      letter-spacing: 0.02em;
+    }
+    .row .px {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.85rem;
+      font-feature-settings: "tnum";
+      color: var(--text);
+    }
+    .row .delta {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.76rem;
+      padding: 0.18rem 0.45rem;
+      border-radius: 6px;
+      min-width: 60px;
+      text-align: right;
+    }
+    .delta.up { color: var(--accent); background: var(--accent-soft); }
+    .delta.dn { color: var(--danger); background: rgba(240, 100, 100, 0.10); }
+
+    /* === STATS === */
+    .stats {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 var(--pad);
+    }
+    .stats-inner {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 720px) {
+      .stats-inner { grid-template-columns: 1fr 1fr; }
+    }
+    .stat { padding: 1.4rem 1.2rem; }
+    .stat + .stat { border-left: 1px solid var(--border); }
+    @media (max-width: 720px) {
+      .stat:nth-child(3),
+      .stat:nth-child(4) { border-top: 1px solid var(--border); }
+      .stat:nth-child(3) { border-left: 0; }
+    }
+    .stat .n {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 1.7rem;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      font-feature-settings: "tnum";
+    }
+    .stat .l {
+      font-size: 0.72rem;
+      color: var(--text-mute);
+      margin-top: 0.4rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* === SECTION === */
+    .section {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: clamp(3rem, 7vw, 6rem) var(--pad);
+    }
+    .section-head {
+      display: grid;
+      gap: 0.55rem;
+      margin-bottom: 2.5rem;
+      max-width: 56ch;
+    }
+    .kicker {
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    h2 {
+      font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      line-height: 1.05;
+    }
+
+    /* === BENTO === */
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.85rem;
+    }
+    @media (max-width: 880px) {
+      .bento { grid-template-columns: 1fr; }
+    }
+    .tile {
+      grid-column: span 6;
+      position: relative;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      overflow: hidden;
+      transition: border-color 240ms var(--ease-out);
+    }
+    @media (min-width: 881px) {
+      .tile.a { grid-column: span 4; grid-row: span 2; min-height: 320px; }
+      .tile.b { grid-column: span 2; min-height: 154px; }
+      .tile.c { grid-column: span 2; min-height: 154px; }
+      .tile.d { grid-column: span 3; min-height: 200px; }
+      .tile.e { grid-column: span 3; min-height: 200px; }
+    }
+    @media (hover: hover) and (pointer: fine) {
+      .tile:hover { border-color: var(--border-strong); }
+    }
+    .tile .ico {
+      width: 32px; height: 32px;
+      display: grid; place-items: center;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-bottom: 0.95rem;
+    }
+    .tile h3 {
+      font-size: 1.02rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.4rem;
+    }
+    .tile p {
+      font-size: 0.88rem;
+      color: var(--text-dim);
+      line-height: 1.55;
+      max-width: 42ch;
+    }
+    .tile.a .visual {
+      position: relative;
+      margin-top: 1.4rem;
+      height: 150px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(94, 228, 160, 0.04), rgba(94, 228, 160, 0));
+      overflow: hidden;
+    }
+    .tile.a .visual svg { display: block; width: 100%; height: 100%; }
+    .tile.a .visual .mark {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.85rem;
+      font-family: "Geist Mono", ui-monospace, monospace;
+      font-size: 0.72rem;
+      color: var(--text-mute);
+      display: flex;
+      gap: 0.85rem;
+    }
+    .tile.a .visual .mark b { color: var(--text); font-weight: 500; }
+
+    /* === CTA STRIP === */
+    .cta-strip {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: clamp(3rem, 6vw, 5rem) var(--pad);
+    }
+    .cta-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-strong);
+      background:
+        radial-gradient(ellipse 60% 80% at 15% 10%, rgba(94, 228, 160, 0.10), transparent 60%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+        var(--bg-card);
+      padding: clamp(2rem, 5vw, 3.5rem);
+      display: grid;
+      gap: 1.25rem;
+      overflow: hidden;
+    }
+    .cta-card h2 { max-width: 18ch; }
+    .cta-card p {
+      color: var(--text-dim);
+      max-width: 52ch;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    /* === FOOTER === */
+    footer.site {
+      border-top: 1px solid var(--border);
+      padding: 2rem var(--pad);
+      max-width: var(--max);
+      margin: 3rem auto 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+    }
+    footer.site .legal {
+      font-size: 0.76rem;
+      color: var(--text-mute);
+      font-family: "Geist Mono", ui-monospace, monospace;
+    }
+    footer.site .links {
+      display: flex;
+      gap: 1.25rem;
+      list-style: none;
+    }
+    footer.site .links a {
       font-size: 0.8rem;
-      color: #444;
-      border-top: 1px solid #1a1a1a;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 160ms var(--ease-out);
+    }
+    @media (hover: hover) and (pointer: fine) {
+      footer.site .links a:hover { color: var(--text); }
+    }
+
+    /* === Stagger entrance === */
+    .stagger > * {
+      opacity: 0;
+      transform: translateY(8px);
+      animation: enter 600ms var(--ease-out) forwards;
+    }
+    .stagger > *:nth-child(1) { animation-delay: 40ms; }
+    .stagger > *:nth-child(2) { animation-delay: 110ms; }
+    @keyframes enter {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+    }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+
+    /* === Reduced motion === */
+    @media (prefers-reduced-motion: reduce) {
+      .stagger > * { animation: none; opacity: 1; transform: none; }
+      .eyebrow .dot { animation: none; }
+      .reveal { opacity: 1; transform: none; transition: none; }
+      *, *::before, *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <div class="logo">Faceless<span>Finance</span></div>
-    <nav>
-      <a href="#">Features</a>
-      <a href="#">Pricing</a>
-      <a href="#">Docs</a>
-      <a href="#">Sign in</a>
-    </nav>
-  </header>
+  <nav class="top">
+    <div class="nav-inner">
+      <a href="#" class="brand">
+        <span class="brand-mark">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 5L10 2L17 5V10L10 18L3 10V5Z" stroke="#5ee4a0" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M7 9.5L10 12L13 9.5" stroke="#5ee4a0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        Faceless<span class="brand-dim">·Finance</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#product">Product</a></li>
+        <li><a href="#trust">Trust model</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#docs">Docs</a></li>
+      </ul>
+      <a href="#pricing" class="nav-cta">
+        Get access
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M3 6h6m0 0L6 3m3 3L6 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+    </div>
+  </nav>
 
-  <main>
-    <div class="badge">Now in Beta</div>
-    <h1>Invest <span>anonymously</span>.<br>Trade without a trace.</h1>
-    <p class="subtitle">
-      Faceless Finance gives you institutional-grade portfolio tools
-      with privacy at the core — no personal data required.
-    </p>
-    <div class="cta">
-      <a href="#" class="btn btn-primary">Get Early Access</a>
-      <a href="#" class="btn btn-secondary">Learn More</a>
+  <section class="hero stagger">
+    <div>
+      <div class="eyebrow"><span class="dot"></span>Closed beta · 1,418 on the list</div>
+      <h1 class="display">
+        Move capital<br />
+        without<br />
+        <span class="strike">leaving</span> a <span class="em">trail.</span>
+      </h1>
+      <p class="lead">
+        Faceless is a non-custodial trading desk. Keys stay on your device,
+        orders route through anonymized relays, balances never touch a server
+        you don't control.
+      </p>
+      <div class="cta-row">
+        <a href="#pricing" class="btn btn-primary">
+          Request access
+          <span class="btn-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 7h8m0 0L8 4m3 3L8 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </a>
+        <a href="#docs" class="btn btn-ghost">Read the protocol paper</a>
+      </div>
+      <div class="trust">
+        <div class="stack" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        Trusted by 4,217 self-custody traders · audited Q1 '26
+      </div>
     </div>
 
-    <div class="features">
-      <div class="card">
-        <div class="icon">🔒</div>
-        <h3>Zero-knowledge Auth</h3>
-        <p>Sign in without an email or phone number. Your identity stays yours.</p>
+    <div class="hero-preview" aria-hidden="true">
+      <div class="preview-bar">
+        <i></i><i></i><i></i>
+        <span class="label">desk · session #4f81 · 47:12</span>
       </div>
-      <div class="card">
-        <div class="icon">📊</div>
-        <h3>Real-time Analytics</h3>
-        <p>Live market data, portfolio tracking, and risk metrics — all client-side.</p>
-      </div>
-      <div class="card">
-        <div class="icon">⚡</div>
-        <h3>Instant Execution</h3>
-        <p>Sub-second order routing with no middlemen and no surveillance.</p>
-      </div>
-      <div class="card">
-        <div class="icon">🌐</div>
-        <h3>Decentralized Custody</h3>
-        <p>Your assets, your keys. Non-custodial by default.</p>
+      <div class="preview-rows">
+        <div class="row">
+          <div class="asset"><span class="glyph">BTC</span>Bitcoin</div>
+          <div class="px">94,217.40</div>
+          <div class="delta up">+1.84%</div>
+        </div>
+        <div class="row">
+          <div class="asset"><span class="glyph">ETH</span>Ethereum</div>
+          <div class="px">3,512.06</div>
+          <div class="delta up">+0.62%</div>
+        </div>
+        <div class="row">
+          <div class="asset"><span class="glyph">SOL</span>Solana</div>
+          <div class="px">241.91</div>
+          <div class="delta dn">−2.14%</div>
+        </div>
+        <div class="row">
+          <div class="asset"><span class="glyph">ARB</span>Arbitrum</div>
+          <div class="px">1.0473</div>
+          <div class="delta up">+0.09%</div>
+        </div>
+        <div class="row">
+          <div class="asset"><span class="glyph">USDC</span>USD Coin</div>
+          <div class="px">1.0001</div>
+          <div class="delta up">+0.01%</div>
+        </div>
       </div>
     </div>
-  </main>
+  </section>
 
-  <footer>
-    &copy; 2026 Faceless Finance &mdash; Built for privacy-first investors.
+  <div class="stats">
+    <div class="stats-inner">
+      <div class="stat"><div class="n">$847.2M</div><div class="l">Routed in '25</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">KYC fields stored</div></div>
+      <div class="stat"><div class="n">11.4ms</div><div class="l">P50 fill time</div></div>
+      <div class="stat"><div class="n">31</div><div class="l">Relays online</div></div>
+    </div>
+  </div>
+
+  <section class="section reveal" id="product">
+    <div class="section-head">
+      <div class="kicker">What it does</div>
+      <h2>The desk that doesn't remember you.</h2>
+    </div>
+
+    <div class="bento">
+      <div class="tile a">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M3 13L7 9L10 11L15 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="3" cy="13" r="1.4" fill="currentColor"/>
+            <circle cx="15" cy="5" r="1.4" fill="currentColor"/>
+          </svg>
+        </div>
+        <h3>Client-side portfolio engine</h3>
+        <p>Every position, P&amp;L, and risk metric is computed in your browser. The server sees encrypted blobs, never balances.</p>
+        <div class="visual">
+          <div class="mark">PORTFOLIO · 30D <b>+18.4%</b></div>
+          <svg viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#5ee4a0" stop-opacity="0.32"/>
+                <stop offset="100%" stop-color="#5ee4a0" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,108 L28,100 L56,104 L84,82 L112,90 L140,62 L168,72 L196,54 L224,44 L252,58 L280,38 L308,28 L336,42 L364,22 L400,18 L400,140 L0,140 Z" fill="url(#grad)"/>
+            <path d="M0,108 L28,100 L56,104 L84,82 L112,90 L140,62 L168,72 L196,54 L224,44 L252,58 L280,38 L308,28 L336,42 L364,22 L400,18" stroke="#5ee4a0" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="tile b">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <rect x="3.5" y="7.5" width="11" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M6 7.5V5.5A3 3 0 0 1 12 5.5V7.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h3>Passkey sign-in</h3>
+        <p>No email. No phone. A passkey on your device proves who you are without telling us who you are.</p>
+      </div>
+
+      <div class="tile c">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M2.5 9L9 2.5L15.5 9L9 15.5L2.5 9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M6 9L9 12L12 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h3>Non-custodial</h3>
+        <p>Keys never leave your hardware. We couldn't freeze your funds even if a court asked.</p>
+      </div>
+
+      <div class="tile d">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M9 5.5V9L11 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h3>Sub-second routing</h3>
+        <p>Orders fan out across 31 relays in parallel — the fastest fill wins. Median execution lands at 11.4ms, P99 at 38ms.</p>
+      </div>
+
+      <div class="tile e" id="trust">
+        <div class="ico">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M2.5 5.5L9 9L15.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2.5 5.5V12.5L9 16L15.5 12.5V5.5L9 2L2.5 5.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M9 9V16" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+        </div>
+        <h3>Onion-routed orderflow</h3>
+        <p>Every leg of an order hops through three relays before reaching a venue. No node ever sees both your identity and your trade.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-strip reveal" id="pricing">
+    <div class="cta-card">
+      <div class="kicker">Pricing</div>
+      <h2>Free during beta.<br />Self-host forever after.</h2>
+      <p>We don't charge you to keep your own money. When we leave beta, you'll be able to pay $14/month for hosted relays — or run the daemon yourself for nothing.</p>
+      <div class="cta-row">
+        <a href="#" class="btn btn-primary">
+          Get on the list
+          <span class="btn-arrow">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 7h8m0 0L8 4m3 3L8 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+        </a>
+        <a href="#" class="btn btn-ghost">View source</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site" id="docs">
+    <div class="legal">© 2026 Faceless Finance Labs · v0.4.2-beta</div>
+    <ul class="links">
+      <li><a href="#">Protocol paper</a></li>
+      <li><a href="#">Source</a></li>
+      <li><a href="#">Status</a></li>
+      <li><a href="#">PGP</a></li>
+    </ul>
   </footer>
+
+  <script>
+    // Reveal-on-scroll for sections — IntersectionObserver, no scroll listener
+    (function () {
+      if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+        return;
+      }
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) {
+            e.target.classList.add('in');
+            io.unobserve(e.target);
+          }
+        });
+      }, { rootMargin: '0px 0px -10% 0px', threshold: 0.05 });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+    })();
+  </script>
 
 </body>
 </html>
