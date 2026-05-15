@@ -1378,6 +1378,9 @@ class LongCatAvatarProvider extends VideoProvider {
     try {
       const api = await client.view_api();
       logEvent('longcat-avatar', 'api_schema', { spaceId, endpoints: Object.keys(api?.named_endpoints || {}), unnamed: Object.keys(api?.unnamed_endpoints || {}).slice(0,3) });
+      // Log the full parameter spec of /run so we can confirm input order/types.
+      const runSpec = api?.named_endpoints?.['/run'];
+      if (runSpec) logEvent('longcat-avatar', 'run_params', { parameters: runSpec.parameters?.map(p => ({ name: p.parameter_name || p.label, type: p.type, component: p.component, hasDefault: p.parameter_has_default })), returns: runSpec.returns?.map(r => ({ label: r.label, type: r.type, component: r.component })) });
     } catch (e) { logEvent('longcat-avatar', 'view_api_failed', { error: e.message }); }
     return client;
   }
@@ -1407,15 +1410,21 @@ class LongCatAvatarProvider extends VideoProvider {
 
     logEvent('longcat-avatar', 'predict_start', { sceneId: scene.id, audioKB: Math.round(audioBlob.size/1024), imgKB: Math.round(imgBlob.size/1024) });
     let result;
-    try {
-      // First attempt: /predict positional. Most LongCat-Avatar Spaces use this.
-      result = await client.predict('/predict', [imgBlob, audioBlob, promptText]);
-    } catch (e1) {
-      logEvent('longcat-avatar', 'predict_retry', { error: e1.message });
-      // Second attempt: unnamed endpoint 0 (the streamlit/raw form).
-      try { result = await client.predict(0, [imgBlob, audioBlob, promptText]); }
-      catch (e2) { throw new Error(`LongCat predict failed: ${e1.message} / ${e2.message}`); }
+    // /run is cpuai/LongCat-Video-Avatar's actual inference endpoint (confirmed
+    // from view_api). Fallbacks: /predict (other forks), then unnamed 0.
+    const attempts = ['/run', '/predict', 0];
+    let lastErr = null;
+    for (const endpoint of attempts) {
+      try {
+        result = await client.predict(endpoint, [imgBlob, audioBlob, promptText]);
+        logEvent('longcat-avatar', 'predict_endpoint_ok', { sceneId: scene.id, endpoint });
+        break;
+      } catch (e) {
+        lastErr = e;
+        logEvent('longcat-avatar', 'predict_endpoint_failed', { sceneId: scene.id, endpoint, error: e.message });
+      }
     }
+    if (!result) throw new Error(`LongCat predict failed on all endpoints. Last: ${lastErr?.message}`);
     logEvent('longcat-avatar', 'predict_done', { sceneId: scene.id, dataType: typeof result?.data, sample: JSON.stringify(result?.data).slice(0,200) });
     // result.data is typically an array; the video is either a string URL, or
     // an object { url, path, orig_name } depending on Gradio version.
