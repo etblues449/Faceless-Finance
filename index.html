@@ -1772,7 +1772,26 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     }
   }
 
-  // FAST PATH 0 — Runway Gen-4 Turbo (top priority, cinematic).
+  // FAST PATH 0 — Veo 3 cinematic per-scene render (Google AI Studio).
+  // PROMOTED to top priority because Google AI Studio's free tier covers Veo 3
+  // generations up to a daily quota — effectively £0 per video when the user
+  // has only a Google key set. Falls through to paid Runway/Fal/etc on quota
+  // exhaustion or transient errors. Walking-shot cinematic output matches the
+  // channel's intent.
+  if (settings.googleAiKey) {
+    logEvent('orchestrate', 'veo3_top_priority_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await Veo3Provider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'veo3_failed_fallback', { error: e.message });
+      // Fall through to Runway / Fal / Higgsfield / HeyGen / Hedra
+    }
+  }
+
+  // FAST PATH 0c — Runway Gen-4 Turbo (paid cinematic backup).
   // The user's reference quality target. Image-to-video, ~$0.25/sec at Gen-4 Turbo.
   // Per-scene clips animated from the reference photo + character bible prompt.
   // Auto-stitched in-browser with ffmpeg.wasm + ElevenLabs voice overlay.
@@ -1785,7 +1804,7 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
       return { jobs, cost };
     } catch (e) {
       logEvent('orchestrate', 'runway_failed_fallback', { error: e.message });
-      // Fall through to Fal.ai / Higgsfield / Veo 3 / HeyGen
+      // Fall through to Fal.ai / Higgsfield / HeyGen
     }
   }
 
@@ -1821,28 +1840,6 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     } catch (e) {
       logEvent('orchestrate', 'higgsfield_failed_fallback', { error: e.message });
       // Fall through to Veo 3 / HeyGen / Hedra if Higgsfield fails
-    }
-  }
-
-  // FAST PATH 1 — Veo 3 cinematic per-scene render (Google AI Studio).
-  // When the user has a free Google AI Studio API key set, Veo 3 takes
-  // priority for genuine cinematic output (multi-shot composition matching
-  // Veo's reference quality — walking shots, environments, etc.). Each
-  // scene is its own Veo 3 8-second clip generated from the scene's
-  // visualPrompt + character bible. Audio is overlaid post-render in the
-  // browser via ffmpeg.wasm using the user's ElevenLabs PVC voice (next
-  // commit). For now: generate per-scene clips, user sees them in the
-  // storyboard preview and downloads to edit in CapCut.
-  if (singleShotEnabled && settings.googleAiKey) {
-    logEvent('orchestrate', 'veo3_multi_scene_start', { totalDuration, sceneCount: storyboard.scenes.length });
-    try {
-      const { jobs } = await Veo3Provider.startRender({
-        storyboard, scenes: storyboard.scenes, settings, aspect,
-      });
-      return { jobs, cost };
-    } catch (e) {
-      logEvent('orchestrate', 'veo3_failed_fallback', { error: e.message });
-      // Fall through to HeyGen / Hedra paths if Veo fails (quota, key issue, etc.)
     }
   }
 
@@ -3589,17 +3586,17 @@ function AnalyticsPage() {
   // --- Fallback Sandbox ---
   const [scenario, setScenario] = useState('runway_out_of_credits');
   const ladder = [
+    { id:'veo3',          name:'Google Veo 3',       ok: !!s.googleAiKey, renderMin: 6 },
     { id:'runway_gen4',   name:'Runway Gen-4 Turbo', ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl), renderMin: 4 },
     { id:'fal_seedance2', name:'Fal.ai · Seedance 2.0', ok: !!s.falKey, renderMin: 3 },
     { id:'higgsfield',    name:'Higgsfield · DoP',   ok: !!s.higgsfieldKey && !!s.higgsfieldSecret, renderMin: 3 },
-    { id:'veo3',          name:'Google Veo 3',       ok: !!s.googleAiKey, renderMin: 6 },
     { id:'heygen',        name:'HeyGen multi-input', ok: !!s.heygenKey && !!s.heygenAvatarId && !!s.elevenLabsKey && !!s.elevenLabsVoiceId, renderMin: 4 },
     { id:'hedra_act_two', name:'Hedra Act-Two',      ok: !!s.hedraKey && !!s.hedraActTwoModelId && (!!s.hedraStartKeyframeId || !!s.hedraStartKeyframeUrl) && !!s.elevenLabsKey && !!s.elevenLabsVoiceId, renderMin: 10 },
   ];
   const sim = useMemo(() => {
     // Which provider would fail (the "primary"), then who picks it up.
-    const failIdx = scenario === 'runway_out_of_credits' ? 0
-      : scenario === 'veo_high_latency' ? 3
+    const failIdx = scenario === 'runway_out_of_credits' ? 1
+      : scenario === 'veo_high_latency' ? 0
       : 0; // api_timeout — assume the top provider times out
     const primary = ladder[failIdx]?.name || ladder[0].name;
     const handler = ladder.find((p, i) => i !== failIdx && p.ok) || ladder.find(p => p.ok);
@@ -4427,10 +4424,10 @@ function SmartFallbackCard() {
   // notes how we detect it's configured.
   const LADDER = [
     { id:'longcat_avatar', label:'LongCat-Avatar (HF Space)', why:'cinematic + lip-sync (experimental)', ok: !!s.longcatAvatarEnabled && !!s.elevenLabsKey && !!s.elevenLabsVoiceId && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
-    { id:'runway_gen4',   label:'Runway Gen-4 Turbo', why:'top cinematic',     ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
+    { id:'veo3',          label:'Google Veo 3',       why:'cinematic · FREE (Google AI Studio quota)',  ok: !!s.googleAiKey },
+    { id:'runway_gen4',   label:'Runway Gen-4 Turbo', why:'paid cinematic backup', ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
     { id:'fal_seedance2', label:'Fal.ai · Seedance 2.0', why:'cinematic, text→video', ok: !!s.falKey },
     { id:'higgsfield',    label:'Higgsfield · DoP',   why:'cinematic, image→video', ok: !!s.higgsfieldKey && !!s.higgsfieldSecret },
-    { id:'veo3',          label:'Google Veo 3',       why:'cinematic, throttled',  ok: !!s.googleAiKey },
     { id:'heygen',        label:'HeyGen multi-input', why:'talking-head + b-roll', ok: !!s.heygenKey && !!s.heygenAvatarId && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
     { id:'hedra_act_two', label:'Hedra Act-Two',      why:'talking-head, slow',    ok: !!s.hedraKey && !!s.hedraActTwoModelId && (!!s.hedraStartKeyframeId || !!s.hedraStartKeyframeUrl) && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
   ];
