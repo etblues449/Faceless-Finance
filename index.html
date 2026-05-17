@@ -453,7 +453,12 @@ async function heygenListVoices({ apiKey, settings = {} }) {
 
 async function pexelsSearch({ apiKey, query, perPage=8, settings = {} }) {
   if (!apiKey) return { videos: [] };
-  const r = await fetch(proxiedUrl(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=portrait`, settings), {
+  // Pexels orientation: we used to force 'portrait' which biased every stock
+  // clip toward face-centric framing — wrong for a cinematic walking-around
+  // channel. Drop the filter; let Pexels return the highest-quality match in
+  // any orientation. Vertical-crop happens at render time via the avatar
+  // composition / ffmpeg pass.
+  const r = await fetch(proxiedUrl(`https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}`, settings), {
     headers: { Authorization: apiKey },
   });
   if (!r.ok) throw new Error(`Pexels ${r.status}`);
@@ -508,7 +513,10 @@ function migrateScriptToStoryboard(scriptObj) {
       id: 'scene_' + i,
       dialogue,
       durationSec: Math.round((wordCount / wpm) * 60),
-      type: 'talking-head',
+      // Cinematic-only channel — even the legacy flat-script migration path
+      // defaults to cinematic so a Claude regression doesn't silently produce
+      // a talking-head video.
+      type: 'cinematic',
       visualPrompt: '',
       brollKeywords: scriptObj.broll?.[i] ? [scriptObj.broll[i]] : [],
       avatarPosition: 'center',
@@ -848,9 +856,9 @@ class HedraActTwoProvider extends VideoProvider {
 function applyCharacterBible(scene, settings) {
   let bible = (settings?.characterBible || '').trim();
   const scenePrompt = (scene.visualPrompt || scene.dialogue || '').trim();
-  // Strip "selfie / direct-to-camera / talking-to-camera" framing biases from
-  // the bible — these bias every Runway clip toward a talking-head shot.
-  // Camera framing belongs in the per-scene visualPrompt, not the persona.
+  // Strip framing biases from the bible — these would otherwise leak into
+  // every Runway clip as "selfie / talking-head" hints. Camera framing must
+  // come from the per-scene visualPrompt, never from the persona description.
   if (bible) {
     bible = bible
       .replace(/photographed selfie[- ]style[^.]*\.?/gi, '')
@@ -858,10 +866,20 @@ function applyCharacterBible(scene, settings) {
       .replace(/direct[- ]to[- ]camera[^.]*\.?/gi, '')
       .replace(/looking at (the )?camera[^.]*\.?/gi, '')
       .replace(/talking to (the )?camera[^.]*\.?/gi, '')
+      .replace(/direct eye contact[^.]*\.?/gi, '')
+      .replace(/eye contact with (the )?camera[^.]*\.?/gi, '')
+      .replace(/looks? directly at (the lens|the camera|camera)[^.]*\.?/gi, '')
+      .replace(/portrait[- ]style[^.]*\.?/gi, '')
+      .replace(/head[- ]and[- ]shoulders[^.]*\.?/gi, '')
+      .replace(/headshot[^.]*\.?/gi, '')
+      .replace(/speaks? to (the )?camera[^.]*\.?/gi, '')
+      .replace(/addresses? (the )?camera[^.]*\.?/gi, '')
+      .replace(/centred[^.]*\.?/gi, '')
+      .replace(/centered[^.]*\.?/gi, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
   }
-  const style = 'CINEMATIC SHOT — character is shown in action in a real UK environment (walking, working, moving); NOT a static talking-head, NOT direct-to-camera, NOT selfie framing.';
+  const style = 'CINEMATIC SHOT — character shown in FULL ACTION in a real UK environment (walking, working, moving). Framing: wide, medium-tracking, follow shot, profile, or over-shoulder. NOT static talking-head. NOT direct-to-camera. NOT selfie. NOT head-and-shoulders close-up. NOT centred portrait. The camera observes the character DOING something — never staring at them from the front.';
   if (!bible) return `${style}\n\n${scenePrompt}`;
   return `Character (must match across every scene): ${bible}\n\n${style}\n\nScene: ${scenePrompt}`;
 }
@@ -2055,8 +2073,10 @@ SCENE BREAKDOWN (CRITICAL):
 - CRITICAL DISTINCTION:
   * The dialogue field is what the VOICE says. Spoken words only. NEVER write camera direction, scene description, or stage notes here. e.g. "And here's where it gets interesting…" YES. "Close-up of hands pulling coins off a table" NO — that's a visual.
   * The visualPrompt field is what the CAMERA shows. Camera direction, location, action, lighting. NEVER write spoken dialogue here. NEVER write "talking to camera" or "selfie style" — make it a real cinematic shot (tracking, wide, over-shoulder, walking, etc.).
-- Cinematic visualPrompt guidance: vivid one-sentence shot description for an AI video model. Cover (1) what the character is doing physically — walking, sitting at a café, exiting a building, leaning on a counter — NOT speaking to camera; (2) location — specific UK setting: London street at golden hour, modest UK kitchen, a kerb outside a Pret, a tube platform, a Soho rooftop bar; (3) framing — wide tracking, medium follow shot, over-shoulder, profile two-shot — basically anything BUT centred direct-to-camera; (4) mood/light — warm domestic, overcast city, late-afternoon golden hour.
-- Example visualPrompts: "Wide tracking shot, character walks down a London terrace street at golden hour, hands in pockets, autumn leaves underfoot" · "Medium follow shot through a modern UK kitchen, character makes a coffee while glancing at a payslip on the counter" · "Over-the-shoulder, character exits a glass office building onto a busy street, looks down at his phone".
+- Cinematic visualPrompt guidance: vivid one-sentence shot description for an AI video model. Cover (1) what the character is DOING physically — walking, sitting at a café, exiting a building, leaning on a counter, climbing tube stairs, paying at a card reader, flicking coffee, glancing at his phone — NOT speaking to camera; (2) location — specific UK setting: London terrace street at golden hour, modest UK kitchen, kerb outside a Pret, a tube platform, a Soho rooftop bar, Borough Market under string lights; (3) framing — wide tracking, medium follow shot, over-shoulder, profile two-shot, low-angle behind — basically anything BUT centred direct-to-camera; (4) mood/light — warm domestic, overcast city, late-afternoon golden hour, blue-hour streetlamps.
+- **FORBIDDEN in visualPrompt** (never use any of these): "close-up of face", "head and shoulders", "medium close-up of speaker", "portrait", "looking directly at camera", "centred", "centered", "static", "talking head", "selfie", "presenter shot", "address camera", "eye contact with camera". Every shot must show the character DOING something physical in a real environment — the camera is OBSERVING him in action, never STARING at him from the front.
+- Example GOOD visualPrompts (study these — produce the same energy): "Wide tracking shot, character walks down a London terrace street at golden hour, hands in pockets, autumn leaves underfoot" · "Medium follow shot through a modern UK kitchen, character makes a coffee while glancing at a payslip on the counter" · "Over-the-shoulder shot, character exits a glass office building onto a busy street, looks down at his phone" · "Low-angle behind, character climbs the steps out of a tube station at blue hour, headphones in, traffic blurred behind" · "Profile two-shot, character leans on a kitchen island flicking through bank-statement pages, dawn light through the window" · "Wide cinematic shot, character pays at a card reader inside a small UK café, barista's hand visible mid-frame, espresso machine steam".
+- Example BAD visualPrompts (NEVER produce these): "Avatar centre-frame, direct eye contact, gesturing with hands" · "Close-up of character speaking to camera" · "Head and shoulders, character explains the rule" · "Centred portrait, character looks at the lens" — these are all forbidden talking-head framings.
 - avatarPosition and avatarScale fields are still required for compatibility — set to "center" and "medium" by default for cinematic scenes (they only matter to the talking-head HeyGen fallback path, which the channel doesn't use).
 
 Return ONLY a JSON object with this exact shape, no prose, no markdown fences:
@@ -2520,6 +2540,13 @@ function NewVideoPage({ go }) {
       const parsed = tryParseJSON(out);
       // New format: parsed.scenes[]. Old format: parsed.script (string). Accept either.
       if (!parsed || (!parsed.scenes && !parsed.script)) throw new Error('Could not parse script. Raw: ' + out.slice(0,200));
+      // Force every parsed scene to type:'cinematic'. The channel is cinematic-only;
+      // a regressed model output shouldn't silently produce talking-head scenes.
+      if (parsed.scenes) {
+        const forced = parsed.scenes.filter(s => s.type && s.type !== 'cinematic').length;
+        parsed.scenes = parsed.scenes.map(s => ({ ...s, type: 'cinematic' }));
+        if (forced > 0) logEvent('script-parse', 'forced_cinematic', { count: forced, total: parsed.scenes.length });
+      }
       // If LLM returned old format, migrate inline
       const storyboard = parsed.scenes
         ? { version: STORYBOARD_VERSION, ...parsed }
@@ -4092,10 +4119,35 @@ function PhaseThreeProvidersCard() {
             </select>
             <div className="help">Your Runway tier has access to all of these. If a newer model errors on the current API version, the orchestrator falls through to the next provider — just switch back to Gen-4 Turbo. ~5 credits/sec; you have ~1,000 credits ≈ 6-7 short videos.</div>
           </div>
+          <div style={{gridColumn:'1/-1', padding:'12px 14px', background:'#fff7ed', border:'2px solid #f59e0b', borderRadius:'var(--radius-input)', marginBottom:8}}>
+            <div style={{fontWeight:700, fontSize:13, color:'#92400e', marginBottom:6}}>⚠️ CRITICAL for cinematic output — read this</div>
+            <div style={{fontSize:12.5, color:'#7c2d12', lineHeight:1.5}}>
+              Runway clones your reference photo's framing in every clip — <strong>more strongly than any prompt instruction</strong>. If your reference is a <strong>selfie</strong> (looking at camera, head-and-shoulders), every render WILL look like a talking-head no matter what the script says.
+              <br /><br />
+              Upload a <strong>full-body / walking / 3-4 view</strong> photo of yourself in an environment for cinematic results. Default below points to <code>elliot-fullbody.png</code> (3/4 view, full-body in a London bus doorway) — ideal cinematic reference.
+            </div>
+            <table style={{width:'100%', marginTop:10, fontSize:12, borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{background:'#fde68a'}}>
+                  <th style={{textAlign:'left', padding:'4px 8px', color:'#78350f'}}>✅ What works</th>
+                  <th style={{textAlign:'left', padding:'4px 8px', color:'#78350f'}}>❌ What doesn't</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style={{padding:'4px 8px', color:'#7c2d12'}}>Full-body walking shot</td><td style={{padding:'4px 8px', color:'#7c2d12'}}>Selfie / phone-arm shot</td></tr>
+                <tr><td style={{padding:'4px 8px', color:'#7c2d12'}}>Profile / side view</td><td style={{padding:'4px 8px', color:'#7c2d12'}}>Head-and-shoulders portrait</td></tr>
+                <tr><td style={{padding:'4px 8px', color:'#7c2d12'}}>3/4 view in an environment</td><td style={{padding:'4px 8px', color:'#7c2d12'}}>ID / passport photo</td></tr>
+                <tr><td style={{padding:'4px 8px', color:'#7c2d12'}}>Wide / medium framing</td><td style={{padding:'4px 8px', color:'#7c2d12'}}>Anything centred looking at camera</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Reference photo URL</label>
-            <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot.jpg" />
-            <div className="help">Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</div>
+            <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot-fullbody.png" />
+            <div className="help" style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+              <span>Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</span>
+              <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'3px 8px'}} onClick={()=>set({ runwayImageUrl: 'https://etblues449.github.io/Faceless-Finance/visual-references/elliot-fullbody.png' })}>Use cinematic default (elliot-fullbody.png)</button>
+            </div>
           </div>
           <div style={{gridColumn:'1/-1', padding:'10px 12px', background:'var(--accent-dim)', border:'1px solid var(--accent)', borderRadius:'var(--radius-input)'}}>
             <label style={{display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer'}}>
