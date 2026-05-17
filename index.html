@@ -4124,7 +4124,7 @@ function PhaseThreeProvidersCard() {
             <div style={{fontSize:12.5, color:'#7c2d12', lineHeight:1.5}}>
               Runway clones your reference photo's framing in every clip — <strong>more strongly than any prompt instruction</strong>. If your reference is a <strong>selfie</strong> (looking at camera, head-and-shoulders), every render WILL look like a talking-head no matter what the script says.
               <br /><br />
-              Upload a <strong>full-body / walking / 3-4 view</strong> photo of yourself in an environment for cinematic results. The default <code>elliot.jpg</code> is a selfie — replace it.
+              Upload a <strong>full-body / walking / 3-4 view</strong> photo of yourself in an environment for cinematic results. Default below points to <code>elliot-fullbody.png</code> (3/4 view, full-body in a London bus doorway) — ideal cinematic reference.
             </div>
             <table style={{width:'100%', marginTop:10, fontSize:12, borderCollapse:'collapse'}}>
               <thead>
@@ -4143,8 +4143,11 @@ function PhaseThreeProvidersCard() {
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Reference photo URL</label>
-            <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot.jpg" />
-            <div className="help">Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</div>
+            <input value={s.runwayImageUrl||''} onChange={e=>set({ runwayImageUrl:e.target.value })} placeholder="https://etblues449.github.io/Faceless-Finance/visual-references/elliot-fullbody.png" />
+            <div className="help" style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+              <span>Leave blank to reuse the Hedra/Higgsfield photo URL. Must be publicly accessible.</span>
+              <button type="button" className="btn btn-ghost" style={{fontSize:11, padding:'3px 8px'}} onClick={()=>set({ runwayImageUrl: 'https://etblues449.github.io/Faceless-Finance/visual-references/elliot-fullbody.png' })}>Use cinematic default (elliot-fullbody.png)</button>
+            </div>
           </div>
           <div style={{gridColumn:'1/-1', padding:'10px 12px', background:'var(--accent-dim)', border:'1px solid var(--accent)', borderRadius:'var(--radius-input)'}}>
             <label style={{display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer'}}>
