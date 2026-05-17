@@ -4788,15 +4788,27 @@ async function tryLoadScript(url) {
   });
 }
 
+// Fetch a cross-origin asset and return a same-origin blob: URL of it.
+// Required because GitHub Pages + browser CSP forbids `new Worker(crossOriginUrl)`,
+// which ffmpeg.wasm 0.12 does internally for its class-worker (`814.ffmpeg.js`).
+// `new Worker(blobUrl)` is treated as same-origin and works.
+async function toBlobURL(url, mimeType) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`fetch ${url} -> ${resp.status}`);
+  const buf = await resp.arrayBuffer();
+  return URL.createObjectURL(new Blob([buf], { type: mimeType }));
+}
+
 async function loadFFmpeg() {
   if (__ffmpegInstance) return __ffmpegInstance;
   if (__ffmpegLoading) return __ffmpegLoading;
   __ffmpegLoading = (async () => {
     let lastErr = null;
     for (const spec of FFMPEG_VERSIONS) {
-      const ffmpegUrl = `${spec.base}/@ffmpeg/ffmpeg@${spec.v}/dist/umd/ffmpeg.js`;
-      const coreUrl   = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.js`;
-      const wasmUrl   = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.wasm`;
+      const ffmpegUrl       = `${spec.base}/@ffmpeg/ffmpeg@${spec.v}/dist/umd/ffmpeg.js`;
+      const classWorkerUrl  = `${spec.base}/@ffmpeg/ffmpeg@${spec.v}/dist/umd/814.ffmpeg.js`;
+      const coreUrl         = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.js`;
+      const wasmUrl         = `${spec.base}/@ffmpeg/core@${spec.v}/dist/umd/ffmpeg-core.wasm`;
       try {
         logEvent('stitch', 'ffmpeg_cdn_attempt', { version: spec.v, base: spec.base });
         if (!window.FFmpegWASM) {
@@ -4804,7 +4816,19 @@ async function loadFFmpeg() {
         }
         const { FFmpeg } = window.FFmpegWASM;
         const ffmpeg = new FFmpeg();
-        await ffmpeg.load({ coreURL: coreUrl, wasmURL: wasmUrl });
+        // Convert all three remote assets to same-origin blob URLs so the
+        // browser allows `new Worker()` + cross-origin fetches under strict
+        // GitHub Pages CSP.
+        const [classWorkerBlob, coreBlob, wasmBlob] = await Promise.all([
+          toBlobURL(classWorkerUrl, 'text/javascript'),
+          toBlobURL(coreUrl, 'text/javascript'),
+          toBlobURL(wasmUrl, 'application/wasm'),
+        ]);
+        await ffmpeg.load({
+          coreURL: coreBlob,
+          wasmURL: wasmBlob,
+          classWorkerURL: classWorkerBlob,
+        });
         __ffmpegInstance = ffmpeg;
         logEvent('stitch', 'ffmpeg_loaded', { version: spec.v, base: spec.base });
         return ffmpeg;
