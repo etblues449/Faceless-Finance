@@ -237,7 +237,7 @@ const MOOD_PRESETS = {
 const TONE_PRESETS = {
   matStyle: {
     label: 'Mat-style (QuidSquid)',
-    desc: 'Punchy. 6–10 word sentences. Brutal hook. £-saved on screen. Sub-30 sec.',
+    desc: 'Punchy. 6–10 word sentences. Brutal hook. £-saved on screen. TikTok-length (15–22 sec).',
     speed: 1.0,
     pitch: 0,
     wpmTarget: 165,
@@ -247,29 +247,28 @@ const TONE_PRESETS = {
 - Use one specific number per video (£X saved or owed).
 - Working-class register. No "let's dive in" / "in this video" filler.
 - End with a clear single action ("set up the SIPP this week", "claim it before April 5").
-- Total spoken duration: 25-45 seconds.`,
+- Total spoken duration: 15-22 seconds. STRICT cap — TikTok sweet spot, ~50-60 words MAX.`,
   },
   rebeccaStyle: {
     label: 'Rebecca-style (chartered accountant)',
-    desc: 'Warm, technical-but-clear, slower educational pace, defines terms.',
+    desc: 'Warm, technical-but-clear, TikTok-length educational (25–35 sec).',
     speed: 0.95,
     pitch: 0,
     wpmTarget: 135,
     promptStyle: `Tone reference: like UK creator "Rebecca's Finance Channel".
 - Calm, qualified-accountant register but warm and accessible.
 - Define every technical term in plain English ("Personal allowance — that's the £12,570 you can earn before any tax.").
-- Walk through one concept thoroughly with one worked example.
-- Slower pace, longer sentences allowed but never run-on.
+- Walk through ONE concept tightly with one worked example — don't over-explain.
 - Confidence without hype. No "you won't believe this" framing.
-- Total spoken duration: 60-90 seconds.`,
+- Total spoken duration: 25-35 seconds. STRICT cap — TikTok-length, ~55-75 words MAX.`,
   },
   neutral: {
     label: 'Neutral / educational',
-    desc: 'Clear, mid-pace, balanced.',
+    desc: 'Clear, mid-pace, balanced. TikTok-length (18–25 sec).',
     speed: 1.0,
     pitch: 0,
     wpmTarget: 150,
-    promptStyle: `Tone: clear, neutral, educational. No clickbait. Define terms briefly. 45-60 seconds spoken.`,
+    promptStyle: `Tone: clear, neutral, educational. No clickbait. Define terms briefly. Total spoken duration: 18-25 seconds. STRICT cap — TikTok-length, ~45-60 words MAX.`,
   },
 };
 
