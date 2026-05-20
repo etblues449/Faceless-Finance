@@ -306,9 +306,6 @@ const DEFAULT_SETTINGS = {
   runwayModel: 'gen4_turbo',      // gen4_turbo | gen4.5 | gen4_aleph | veo3.1 | veo3 | seedance2 | gen3a_turbo (all in user's tier; gen4_turbo is the proven default)
   runwayImageUrl: '',             // Reference photo URL — falls back to hedra/higgsfield if blank
   runwayChainScenes: true,        // Last-frame chaining: scene 2..n start from the previous scene's last frame for visual continuity (one continuous shot feel)
-  longcatAvatarEnabled: false,    // EXPERIMENTAL — LongCat-Video-Avatar via Hugging Face Space (only open-source cinematic-with-lip-sync option, MIT)
-  longcatAvatarSpace: 'cpuai/LongCat-Video-Avatar', // HF Space slug; user can swap if a different fork is more reliable
-  longcatHfToken: '',             // Optional HF token to avoid the public-tier rate limits on ZeroGPU
   defaultTalkingHeadProvider: 'hedra_act_two', // Hedra Act-Two preferred — uses ElevenLabs voice natively
   defaultCinematicProvider: 'hedra_character',  // Hedra Character-2 for cinematic
   routingRules: [],               // Smart Fallback Rule Builder — [{field:'sceneType'|'duration', op:'eq'|'gt'|'lt', value, then:providerId}]
@@ -1365,189 +1362,6 @@ class RunwayGen4Provider extends VideoProvider {
   }
 }
 
-// LongCat-Video-Avatar — Meituan's open-source audio-driven character animation
-// model, served via a public Hugging Face Space (default cpuai/LongCat-Video-Avatar
-// on ZeroGPU). Genuinely unique capability: cinematic walking-around video with
-// real lip-sync to your ElevenLabs PVC voice — the rest of the cinematic stack
-// (Runway, Veo, Higgsfield) doesn't sync the mouth to your audio track.
-//
-// EXPERIMENTAL: HF Spaces are unsupported, rate-limited (queue waits 5-15 min on
-// ZeroGPU), and the API schema isn't formally published — on first connect we
-// call client.view_api() and log the actual signature so you can debug. If the
-// predict() call below errors with "no endpoint" or "wrong arg count", check the
-// 🐞 panel for the schema and tell me — fix is one line.
-const __longcatJobs = new Map(); // jobId → { promise, resolved, videoUrl, error, sceneId }
-let __longcatClientLoader = null;
-async function loadGradioClient() {
-  if (__longcatClientLoader) return __longcatClientLoader;
-  __longcatClientLoader = (async () => {
-    const mod = await import('https://cdn.jsdelivr.net/npm/@gradio/client/+esm');
-    return mod.Client || mod.client || mod.default;
-  })();
-  return __longcatClientLoader;
-}
-
-class LongCatAvatarProvider extends VideoProvider {
-  static id = 'longcat_avatar';
-  static name = 'LongCat-Avatar (HF Space)';
-  static caps = { talkingHead: true, cinematic: true, lipSync: true, characterRef: true, multiScene: true };
-  static availability(s) {
-    const missing = [];
-    if (!s.longcatAvatarEnabled) missing.push('Enable LongCat-Avatar in Settings → Phase 3 (experimental)');
-    if (!s.elevenLabsKey || !s.elevenLabsVoiceId) missing.push('ElevenLabs key + voice ID (for the lip-synced audio)');
-    if (!s.runwayImageUrl && !s.hedraStartKeyframeUrl && !s.higgsfieldImageUrl) missing.push('Reference photo URL (any of the Runway / Hedra / Higgsfield photo fields)');
-    return { available: missing.length === 0, missing };
-  }
-  // Free via HF ZeroGPU (rate-limited). Treat as £0 for cost-cap purposes.
-  static estimateCost() { return 0; }
-
-  static async _connect(settings) {
-    const Client = await loadGradioClient();
-    const spaceId = settings.longcatAvatarSpace || 'cpuai/LongCat-Video-Avatar';
-    const opts = settings.longcatHfToken ? { hf_token: settings.longcatHfToken } : {};
-    const client = await Client.connect(spaceId, opts);
-    try {
-      const api = await client.view_api();
-      logEvent('longcat-avatar', 'api_schema', { spaceId, endpoints: Object.keys(api?.named_endpoints || {}), unnamed: Object.keys(api?.unnamed_endpoints || {}).slice(0,3) });
-      // Log the full parameter spec of /run so we can confirm input order/types.
-      const runSpec = api?.named_endpoints?.['/run'];
-      if (runSpec) logEvent('longcat-avatar', 'run_params', { parameters: runSpec.parameters?.map(p => ({ name: p.parameter_name || p.label, type: p.type, component: p.component, hasDefault: p.parameter_has_default })), returns: runSpec.returns?.map(r => ({ label: r.label, type: r.type, component: r.component })) });
-    } catch (e) { logEvent('longcat-avatar', 'view_api_failed', { error: e.message }); }
-    return client;
-  }
-
-  static async _renderOneScene({ scene, settings }) {
-    const refUrl = settings.runwayImageUrl || settings.hedraStartKeyframeUrl || settings.higgsfieldImageUrl;
-    if (!refUrl) throw new Error('No reference photo URL set');
-
-    // 1. Generate the voice track for this scene's dialogue.
-    logEvent('longcat-avatar', 'tts_start', { sceneId: scene.id, chars: (scene.dialogue||'').length });
-    const audioBlob = await elevenLabsTTS({
-      settings, apiKey: settings.elevenLabsKey, voiceId: settings.elevenLabsVoiceId,
-      text: scene.dialogue || scene.visualPrompt || 'speaking to camera',
-    });
-
-    // 2. Fetch the reference photo as a Blob so we can pass it to Gradio.
-    const imgResp = await fetch(refUrl);
-    if (!imgResp.ok) throw new Error(`Reference photo fetch failed: ${imgResp.status}`);
-    const imgBlob = await imgResp.blob();
-
-    // 3. Connect to the Space and call predict. The exact endpoint name and
-    //    input order is read from view_api() above. We try the common shapes
-    //    in order: positional [image, audio, text], then named-arg variant.
-    const client = await LongCatAvatarProvider._connect(settings);
-    const prompt = applyCharacterBible(scene, settings);
-    const promptText = prompt.length > 800 ? prompt.slice(0, 800) + '…' : prompt;
-
-    logEvent('longcat-avatar', 'predict_start', { sceneId: scene.id, audioKB: Math.round(audioBlob.size/1024), imgKB: Math.round(imgBlob.size/1024) });
-    let result;
-    // Confirmed signature from view_api:
-    //   mode_v   (Radio: 'at2v' = audio→video, 'ai2v' = audio+image→video)
-    //   audio_fp (Audio, required)
-    //   prompt_v (Textbox)
-    //   img_fp   (Image, required)
-    //   seed_v / res_v / seg_v / idx_v / ... all have defaults
-    // We use 'ai2v' so the reference photo locks the character identity.
-    const namedArgs = {
-      mode_v: 'ai2v',
-      audio_fp: audioBlob,
-      prompt_v: promptText,
-      img_fp: imgBlob,
-    };
-    // Positional fallback in the correct slot order (if the JS client refuses
-    // named args on this Gradio version, this matches the parameter order).
-    const positional = ['ai2v', audioBlob, promptText, imgBlob];
-    const attempts = [
-      { endpoint: '/run',     args: namedArgs   },
-      { endpoint: '/run',     args: positional  },
-      { endpoint: '/predict', args: namedArgs   },
-      { endpoint: 0,          args: positional  },
-    ];
-    let lastErr = null;
-    for (const a of attempts) {
-      try {
-        result = await client.predict(a.endpoint, a.args);
-        logEvent('longcat-avatar', 'predict_endpoint_ok', { sceneId: scene.id, endpoint: a.endpoint, argsForm: Array.isArray(a.args) ? 'positional' : 'named' });
-        break;
-      } catch (e) {
-        lastErr = e;
-        logEvent('longcat-avatar', 'predict_endpoint_failed', { sceneId: scene.id, endpoint: a.endpoint, argsForm: Array.isArray(a.args) ? 'positional' : 'named', error: (e.message || String(e)).slice(0, 400) });
-      }
-    }
-    if (!result) throw new Error(`LongCat predict failed on all endpoints. Last: ${lastErr?.message}`);
-    logEvent('longcat-avatar', 'predict_done', { sceneId: scene.id, dataType: typeof result?.data, sample: JSON.stringify(result?.data).slice(0,200) });
-    // result.data is typically an array; the video is either a string URL, or
-    // an object { url, path, orig_name } depending on Gradio version.
-    const out = Array.isArray(result?.data) ? result.data[0] : result?.data;
-    const videoUrl = (typeof out === 'string') ? out
-      : out?.url || out?.video?.url || out?.path && (`https://${settings.longcatAvatarSpace || 'cpuai-LongCat-Video-Avatar'}.hf.space/file=${out.path}`)
-      || null;
-    if (!videoUrl) throw new Error(`LongCat returned no video URL. Body: ${JSON.stringify(result?.data).slice(0,300)}`);
-    return videoUrl;
-  }
-
-  static async startRender({ storyboard, scenes, settings, aspect = '9:16' }) {
-    const jobs = [];
-    // Pre-flight: kick off scene 1 and race against a 5-second window. If it
-    // errors fast (e.g. HF ZeroGPU rejects "GPU duration (900s) too large" —
-    // policy on the cpuai Space, can't be fixed client-side), THROW so the
-    // orchestrator falls through to Runway instead of returning unrunnable
-    // jobs. If still pending after 5s, assume it's running and proceed.
-    const firstScene = scenes[0];
-    const firstJobId = `longcat-${firstScene.id}-${Date.now().toString(36)}`;
-    const firstEntry = { resolved: false, videoUrl: null, error: null, sceneId: firstScene.id };
-    firstEntry.promise = (async () => {
-      try { firstEntry.videoUrl = await LongCatAvatarProvider._renderOneScene({ scene: firstScene, settings }); firstEntry.resolved = true; }
-      catch (e) { firstEntry.error = e.message; firstEntry.resolved = true; }
-    })();
-    const PROBE_MS = 5000;
-    const probeStart = Date.now();
-    while (!firstEntry.resolved && (Date.now() - probeStart) < PROBE_MS) {
-      await new Promise(r => setTimeout(r, 200));
-    }
-    if (firstEntry.resolved && firstEntry.error) {
-      // Categorise the failure for clearer logs and to decide whether to
-      // recommend disabling the provider entirely.
-      const err = firstEntry.error;
-      const isGpuBudget = /GPU duration|larger than the maximum|gpu_duration/i.test(err);
-      const isAuth = /401|403|unauthor|hf_token|auth/i.test(err);
-      const isQuota = /quota|429|rate limit/i.test(err);
-      const hint = isGpuBudget
-        ? 'This HF Space requests 900s of ZeroGPU per call, but standard HF tiers grant ≤480s. Disable LongCat-Avatar in Settings (Phase 3) until a fork with shorter GPU duration is hosted, or self-host.'
-        : isAuth ? 'Auth issue — paste a valid HF token in Settings → LongCat card.'
-        : isQuota ? 'HF rate limit hit — wait, or add an HF token.'
-        : 'See debug log for full error. Disable LongCat in Settings to render via Runway instead.';
-      logEvent('longcat-avatar', 'probe_failed_falling_through', { error: err, category: isGpuBudget ? 'gpu_budget' : isAuth ? 'auth' : isQuota ? 'quota' : 'other', hint });
-      throw new Error(`LongCat probe failed (${isGpuBudget ? 'GPU budget' : isAuth ? 'auth' : isQuota ? 'quota' : 'unknown'}): ${err}. ${hint}`);
-    }
-    // First scene either succeeded fast or is still in-flight — commit to the
-    // run, save the first job, kick off the rest.
-    __longcatJobs.set(firstJobId, firstEntry);
-    jobs.push({ jobId: firstJobId, sceneIds: [firstScene.id], provider: 'longcat_avatar' });
-    for (let i = 1; i < scenes.length; i++) {
-      const sc = scenes[i];
-      const jobId = `longcat-${sc.id}-${Date.now().toString(36)}`;
-      const entry = { resolved: false, videoUrl: null, error: null, sceneId: sc.id };
-      entry.promise = (async () => {
-        try { entry.videoUrl = await LongCatAvatarProvider._renderOneScene({ scene: sc, settings }); entry.resolved = true; }
-        catch (e) { entry.error = e.message; entry.resolved = true; }
-      })();
-      __longcatJobs.set(jobId, entry);
-      jobs.push({ jobId, sceneIds: [sc.id], provider: 'longcat_avatar' });
-    }
-    return { jobs };
-  }
-
-  static async pollJob({ jobId }) {
-    const entry = __longcatJobs.get(jobId);
-    if (!entry) return { status: 'failed', error: 'LongCat job not found (tab may have been reloaded — in-memory state lost)' };
-    if (!entry.resolved) return { status: 'processing' };
-    if (entry.error) return { status: 'failed', error: entry.error };
-    if (entry.videoUrl) return { status: 'completed', videoUrl: entry.videoUrl };
-    return { status: 'failed', error: 'LongCat returned no video URL' };
-  }
-}
-
 // ----------------------------------------------------------------------------
 // Provider Registry + Picker
 // ----------------------------------------------------------------------------
@@ -1556,7 +1370,6 @@ const PROVIDERS = {
   heygen: HeyGenProvider,
   hedra_act_two: HedraActTwoProvider,
   hedra_character: HedraCharacterProvider,
-  longcat_avatar: LongCatAvatarProvider,
   higgsfield: HiggsfieldProvider,
   fal_seedance2: FalSeedance2Provider,
   veo3: Veo3Provider,
@@ -1753,24 +1566,6 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
   const totalDuration = storyboard.scenes.reduce((s, sc) => s + (sc.durationSec || 5), 0);
   const fullText = storyboard.scenes.map(sc => sc.dialogue).filter(Boolean).join(' ').trim();
   const singleShotEnabled = settings.singleShotRender !== false;
-
-  // FAST PATH -1 — LongCat-Video-Avatar (experimental, opt-in).
-  // The ONLY open-source cinematic-with-lip-sync option. Generates video where
-  // the character's mouth actually matches your ElevenLabs voice. Slow on the
-  // public HF Space (ZeroGPU queue 5-15 min), unsupported API, but free.
-  if (settings.longcatAvatarEnabled && settings.elevenLabsKey && settings.elevenLabsVoiceId) {
-    const avail = LongCatAvatarProvider.availability(settings);
-    if (avail.available) {
-      logEvent('orchestrate', 'longcat_start', { totalDuration, sceneCount: storyboard.scenes.length, space: settings.longcatAvatarSpace });
-      try {
-        const { jobs } = await LongCatAvatarProvider.startRender({ storyboard, scenes: storyboard.scenes, settings, aspect });
-        return { jobs, cost };
-      } catch (e) {
-        logEvent('orchestrate', 'longcat_failed_fallback', { error: e.message });
-        // Fall through to Runway / others on any LongCat failure.
-      }
-    }
-  }
 
   // FAST PATH 0 — Veo 3 cinematic per-scene render (Google AI Studio).
   // PROMOTED to top priority because Google AI Studio's free tier covers Veo 3
@@ -4050,41 +3845,6 @@ function PhaseThreeProvidersCard() {
         the app routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
       </div>
 
-      {/* LongCat-Video-Avatar — experimental open-source lip-sync */}
-      <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:'var(--radius-input)', border: s.longcatAvatarEnabled ? '2px solid var(--info)' : '1.5px solid transparent'}}>
-        <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
-          🎬 LongCat-Video-Avatar (lip-sync, experimental)
-          {s.longcatAvatarEnabled && <span style={{fontSize:11, background:'var(--info)', color:'#fff', padding:'2px 7px', borderRadius:10}}>ACTIVE · TOP PRIORITY</span>}
-        </div>
-        <div className="help" style={{marginBottom:10}}>
-          Meituan's open-source <strong>audio-driven character animation</strong> (MIT licensed). The only open-source cinematic option with real lip-sync to your ElevenLabs voice — every other cinematic provider (Runway, Veo, Higgsfield) leaves the mouth out of sync. Routed via a free public Hugging Face Space on ZeroGPU.
-          <br/><br/>
-          <strong>Limitations to know before enabling:</strong>
-          <ul style={{margin:'4px 0 0 16px', padding:0}}>
-            <li>HF Space is unsupported · queue waits can be 5–15 min/scene during peak hours</li>
-            <li>In-flight state lives in browser memory only — <em>don't close the tab</em> mid-render or jobs are lost</li>
-            <li>API schema isn't formally published; the 🐞 panel logs the actual schema on first connect (look for <code>longcat-avatar api_schema</code>)</li>
-            <li>If the first <code>predict()</code> errors, paste me the schema log and the fix is one line</li>
-          </ul>
-        </div>
-        <label style={{display:'flex', alignItems:'flex-start', gap:10, cursor:'pointer', marginBottom:10}}>
-          <input type="checkbox" checked={!!s.longcatAvatarEnabled} onChange={e=>set({ longcatAvatarEnabled: e.target.checked })} style={{width:18, height:18, marginTop:2, flexShrink:0}} />
-          <div style={{fontWeight:600, fontSize:13}}>Enable LongCat-Avatar as top-priority provider</div>
-        </label>
-        <div className="grid2">
-          <div style={{gridColumn:'1/-1'}}>
-            <label className="label">Hugging Face Space</label>
-            <input value={s.longcatAvatarSpace||''} onChange={e=>set({ longcatAvatarSpace:e.target.value })} placeholder="cpuai/LongCat-Video-Avatar" />
-            <div className="help">Swap to a different fork if you find a more reliable one (e.g. <code>shahxadahanan/longcat-video-avatar</code>).</div>
-          </div>
-          <div style={{gridColumn:'1/-1'}}>
-            <label className="label">Hugging Face token (optional)</label>
-            <input type={showKeys?'text':'password'} value={s.longcatHfToken||''} onChange={e=>set({ longcatHfToken:e.target.value })} placeholder="hf_... (avoids public-tier rate limits)" />
-            <div className="help">Get one free at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>. Read-only is enough.</div>
-          </div>
-        </div>
-      </div>
-
       {/* Runway Gen-4 Turbo — TOP PRIORITY, user's reference quality */}
       <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:8, border: s.runwayKey ? '2px solid #ff5e3a' : '1.5px solid transparent'}}>
         <div style={{fontWeight:600, marginBottom:4, display:'flex', alignItems:'center', gap:8}}>
@@ -4423,7 +4183,6 @@ function SmartFallbackCard() {
   // The orchestrator's fixed fast-path order (orchestrateRender). Each entry
   // notes how we detect it's configured.
   const LADDER = [
-    { id:'longcat_avatar', label:'LongCat-Avatar (HF Space)', why:'cinematic + lip-sync (experimental)', ok: !!s.longcatAvatarEnabled && !!s.elevenLabsKey && !!s.elevenLabsVoiceId && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
     { id:'veo3',          label:'Google Veo 3',       why:'cinematic · FREE (Google AI Studio quota)',  ok: !!s.googleAiKey },
     { id:'runway_gen4',   label:'Runway Gen-4 Turbo', why:'paid cinematic backup', ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
     { id:'fal_seedance2', label:'Fal.ai · Seedance 2.0', why:'cinematic, text→video', ok: !!s.falKey },
