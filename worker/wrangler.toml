@@ -8,6 +8,24 @@ compatibility_date = "2026-05-01"
 ALLOWED_ORIGIN = ""
 APP_ROOT_PATH = "/Faceless-Finance"
 
+# ── Generation secrets (Design A) ───────────────────────────────────────────
+# The /proxy/* endpoint injects these server-side so the browser never holds a
+# real generation key. Set the ones for the providers you use, then `wrangler
+# deploy`. The 5 core providers (consolidated stack):
+#   wrangler secret put ANTHROPIC_KEY      (Claude — script)
+#   wrangler secret put GOOGLE_AI_KEY      (Google AI Studio — Veo 3)
+#   wrangler secret put RUNWAY_KEY         (Runway Gen-4)
+#   wrangler secret put ELEVENLABS_KEY     (voice)
+#   wrangler secret put PEXELS_KEY         (B-roll)
+# Dormant providers — set ONLY if you activate them:
+#   wrangler secret put HEYGEN_KEY
+#   wrangler secret put HEDRA_KEY
+#   wrangler secret put HIGGSFIELD_KEY
+#   wrangler secret put HIGGSFIELD_SECRET
+#   wrangler secret put FAL_KEY
+# A host with no secret set falls back to passthrough, so nothing hard-breaks.
+# Verify what's set via GET / → "managed_hosts".
+
 # OPTIONAL: KV namespace for storing OAuth tokens (Phase 2 auto-publish only).
 # The /proxy/* endpoint works WITHOUT this — only OAuth + /publish/* need it.
 # To enable later: uncomment, run `wrangler kv namespace create fincast_tokens`,

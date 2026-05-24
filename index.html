@@ -190,6 +190,11 @@
     .main { padding-top: max(16px, env(safe-area-inset-top)); }
   }
 </style>
+<!-- Cross-origin isolation (COOP/COEP) via service worker so ffmpeg.wasm can use
+     SharedArrayBuffer to stitch on GitHub Pages, which can't send those headers.
+     Must load first; reloads once to gain isolation. Chromium/desktop — degrades
+     gracefully where credentialless COEP is unsupported (e.g. iOS Safari). -->
+<script src="coi-serviceworker.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -329,13 +334,29 @@ const DEFAULT_SETTINGS = {
 // STATE / PERSISTENCE
 // ============================================================================
 
+// When a Worker URL is set, generation secrets live as Cloudflare Worker secrets
+// and the browser never holds a real key. Fill empty secret fields with a non-empty
+// placeholder so each provider's availability() check still passes; the Worker injects
+// the real key server-side and the placeholder never leaves the browser.
+const WORKER_MANAGED_KEYS = [
+  'anthropicKey', 'googleAiKey', 'runwayKey', 'elevenLabsKey', 'pexelsKey',
+  'heygenKey', 'hedraKey', 'higgsfieldKey', 'higgsfieldSecret', 'falKey',
+  'veoKey', 'openaiKey', 'bufferToken', 'longcatHfToken',
+];
+function applyWorkerManagedKeys(settings) {
+  if (!settings || !(settings.workerUrl || '').trim()) return settings;
+  const patched = { ...settings };
+  for (const k of WORKER_MANAGED_KEYS) if (!patched[k]) patched[k] = 'worker';
+  return patched;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { settings:{...DEFAULT_SETTINGS}, videos:[] };
     const parsed = JSON.parse(raw);
     return {
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings||{}) },
+      settings: applyWorkerManagedKeys({ ...DEFAULT_SETTINGS, ...(parsed.settings||{}) }),
       videos: parsed.videos || [],
     };
   } catch (e) {
@@ -347,7 +368,7 @@ function saveState(s) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'SET_SETTINGS': return { ...state, settings:{...state.settings, ...action.patch} };
+    case 'SET_SETTINGS': return { ...state, settings: applyWorkerManagedKeys({...state.settings, ...action.patch}) };
     case 'CREATE_VIDEO': return { ...state, videos:[action.video, ...state.videos] };
     case 'UPDATE_VIDEO': return { ...state, videos: state.videos.map(v => v.id===action.id ? {...v, ...action.patch, updatedAt:Date.now()} : v) };
     case 'DELETE_VIDEO': return { ...state, videos: state.videos.filter(v => v.id !== action.id) };
@@ -648,6 +669,10 @@ function proxiedUrl(originalUrl, settings) {
   const worker = (settings?.workerUrl || '').trim().replace(/\/+$/, '');
   if (!worker) return originalUrl;
   const u = new URL(originalUrl);
+  // The Worker injects the real provider key server-side, so strip any inline
+  // ?key= secret (e.g. Google AI Studio / Veo). Otherwise it would be persisted
+  // into saved render URLs / app state — the original key-leak vector.
+  u.searchParams.delete('key');
   return `${worker}/proxy/${u.host}${u.pathname}${u.search}`;
 }
 
@@ -4038,6 +4063,7 @@ function PhaseThreeProvidersCard() {
   const s = state.settings;
   const set = (patch) => dispatch({ type: 'SET_SETTINGS', patch });
   const [showKeys, setShowKeys] = useState(false);
+  const workerManaged = !!(s.workerUrl || '').trim();
 
   const allProviders = Object.values(PROVIDERS).map(P => ({ P, avail: P.availability(s) }));
   const talkingProviders = allProviders.filter(({ P }) => P.caps.talkingHead);
@@ -4049,6 +4075,11 @@ function PhaseThreeProvidersCard() {
       <div className="help" style={{marginBottom:14}}>
         the app routes each scene to the best available provider. Add API keys below to enable providers. Stubs are listed for future providers — they activate the moment you paste a key.
       </div>
+      {workerManaged && (
+        <div className="alert" style={{marginBottom:14, color:'var(--accent)', borderColor:'var(--accent)', background:'var(--accent-dim)'}}>
+          ✓ Managed by your Worker — provider keys are injected server-side, so the key fields below are locked. A provider is live once its secret is set on the Worker (<code>wrangler secret put</code>); see SETUP.md.
+        </div>
+      )}
 
       {/* LongCat-Video-Avatar — experimental open-source lip-sync */}
       <div style={{marginBottom:14, padding:12, background:'var(--card2)', borderRadius:'var(--radius-input)', border: s.longcatAvatarEnabled ? '2px solid var(--info)' : '1.5px solid transparent'}}>
@@ -4079,7 +4110,7 @@ function PhaseThreeProvidersCard() {
           </div>
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Hugging Face token (optional)</label>
-            <input type={showKeys?'text':'password'} value={s.longcatHfToken||''} onChange={e=>set({ longcatHfToken:e.target.value })} placeholder="hf_... (avoids public-tier rate limits)" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.longcatHfToken||''} onChange={e=>set({ longcatHfToken:e.target.value })} placeholder="hf_... (avoids public-tier rate limits)" />
             <div className="help">Get one free at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>. Read-only is enough.</div>
           </div>
         </div>
@@ -4099,7 +4130,7 @@ function PhaseThreeProvidersCard() {
         <div className="grid2">
           <div style={{gridColumn:'1/-1'}}>
             <label className="label">Runway API Key</label>
-            <input type={showKeys?'text':'password'} value={s.runwayKey||''} onChange={e=>set({ runwayKey:e.target.value })} placeholder="key_..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.runwayKey||''} onChange={e=>set({ runwayKey:e.target.value })} placeholder="key_..." />
             <div className="help">Paste your key — the app routes ALL cinematic scenes through Runway first.</div>
           </div>
           <div>
@@ -4170,7 +4201,7 @@ function PhaseThreeProvidersCard() {
         </div>
         <div>
           <label className="label">Fal.ai API key</label>
-          <input type={showKeys?'text':'password'} value={s.falKey||''} onChange={e=>set({ falKey:e.target.value })} placeholder="fal_..." />
+          <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.falKey||''} onChange={e=>set({ falKey:e.target.value })} placeholder="fal_..." />
           <div className="help">Paste your Fal.ai key — the app immediately uses Seedance 2.0 for all cinematic scenes.</div>
         </div>
       </div>
@@ -4187,11 +4218,11 @@ function PhaseThreeProvidersCard() {
         <div className="grid2">
           <div>
             <label className="label">Higgsfield API Key</label>
-            <input type={showKeys?'text':'password'} value={s.higgsfieldKey||''} onChange={e=>set({ higgsfieldKey:e.target.value })} placeholder="your_api_key" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.higgsfieldKey||''} onChange={e=>set({ higgsfieldKey:e.target.value })} placeholder="your_api_key" />
           </div>
           <div>
             <label className="label">Higgsfield API Secret</label>
-            <input type={showKeys?'text':'password'} value={s.higgsfieldSecret||''} onChange={e=>set({ higgsfieldSecret:e.target.value })} placeholder="your_api_secret" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.higgsfieldSecret||''} onChange={e=>set({ higgsfieldSecret:e.target.value })} placeholder="your_api_secret" />
             <div className="help">Both key and secret are on the same API Keys page.</div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
@@ -4224,7 +4255,7 @@ function PhaseThreeProvidersCard() {
         <div className="grid2">
           <div>
             <label className="label">ElevenLabs API key</label>
-            <input type={showKeys?'text':'password'} value={s.elevenLabsKey} onChange={e=>set({ elevenLabsKey:e.target.value })} placeholder="sk_..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.elevenLabsKey} onChange={e=>set({ elevenLabsKey:e.target.value })} placeholder="sk_..." />
             <div className="help">elevenlabs.io → Profile → API Keys.</div>
           </div>
           <div>
@@ -4241,7 +4272,7 @@ function PhaseThreeProvidersCard() {
         <div className="grid2">
           <div>
             <label className="label">Hedra API key</label>
-            <input type={showKeys?'text':'password'} value={s.hedraKey} onChange={e=>set({ hedraKey:e.target.value })} placeholder="hdr_..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.hedraKey} onChange={e=>set({ hedraKey:e.target.value })} placeholder="hdr_..." />
             <div className="help">Hedra → Profile (E icon) → Settings → API → Create new key.</div>
           </div>
           <div style={{gridColumn:'1/-1'}}>
@@ -4311,7 +4342,7 @@ function PhaseThreeProvidersCard() {
         <div className="grid2">
           <div>
             <label className="label">Google Vertex AI key (Veo 3)</label>
-            <input type={showKeys?'text':'password'} value={s.veoKey} onChange={e=>set({ veoKey:e.target.value })} placeholder="ya29... or service-account JSON" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.veoKey} onChange={e=>set({ veoKey:e.target.value })} placeholder="ya29... or service-account JSON" />
           </div>
           <div>
             <label className="label">Google Cloud Project ID</label>
@@ -4319,7 +4350,7 @@ function PhaseThreeProvidersCard() {
           </div>
           <div>
             <label className="label">OpenAI API key (Sora 2)</label>
-            <input type={showKeys?'text':'password'} value={s.openaiKey} onChange={e=>set({ openaiKey:e.target.value })} placeholder="sk-..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.openaiKey} onChange={e=>set({ openaiKey:e.target.value })} placeholder="sk-..." />
           </div>
         </div>
         <div className="help" style={{marginTop:8}}>Stubs throw a clear error if used. Implementation lands when provider APIs stabilise. (Runway is now wired up — see the dedicated card above.)</div>
@@ -4515,6 +4546,7 @@ function SettingsPage() {
   const s = state.settings;
   const set = (patch) => dispatch({ type:'SET_SETTINGS', patch });
   const [showKeys, setShowKeys] = useState(false);
+  const workerManaged = !!(s.workerUrl || '').trim();
   const [avatars, setAvatars] = useState(null);
   const [voices, setVoices] = useState(null);
   const [fetching, setFetching] = useState('');
@@ -4581,18 +4613,24 @@ function SettingsPage() {
 
       <div className="card" style={{marginBottom:14}}>
         <div className="card-title">API Keys</div>
-        <div className="alert alert-warn" style={{marginBottom:14}}>
-          These stay in <code>localStorage</code> on this device. Don't share screenshots that include them. To reset: clear site data.
-        </div>
+        {workerManaged ? (
+          <div className="alert" style={{marginBottom:14, color:'var(--accent)', borderColor:'var(--accent)', background:'var(--accent-dim)'}}>
+            ✓ Managed by your Worker. Generation keys live as Cloudflare Worker secrets and are injected server-side — the browser never holds a real key, so these fields are locked. Clear the Worker URL (Phase 3 card) to enter keys directly.
+          </div>
+        ) : (
+          <div className="alert alert-warn" style={{marginBottom:14}}>
+            These stay in <code>localStorage</code> on this device. Don't share screenshots that include them. To reset: clear site data.
+          </div>
+        )}
         <div className="grid2">
           <div>
             <label className="label">Anthropic API key (Claude)</label>
-            <input type={showKeys?'text':'password'} value={s.anthropicKey} onChange={e=>set({ anthropicKey:e.target.value })} placeholder="sk-ant-..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.anthropicKey} onChange={e=>set({ anthropicKey:e.target.value })} placeholder="sk-ant-..." />
             <div className="help">Get from console.anthropic.com → API Keys.</div>
           </div>
           <div>
             <label className="label">HeyGen API key</label>
-            <input type={showKeys?'text':'password'} value={s.heygenKey} onChange={e=>set({ heygenKey:e.target.value })} placeholder="..." />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.heygenKey} onChange={e=>set({ heygenKey:e.target.value })} placeholder="..." />
             <div className="help">HeyGen → Settings → Subscriptions → API → Create API Token.</div>
           </div>
           <div>
@@ -4639,7 +4677,7 @@ function SettingsPage() {
           {fetchErr && <div className="alert alert-err" style={{gridColumn:'1/-1'}}>{fetchErr}</div>}
           <div>
             <label className="label">Pexels API key (B-roll)</label>
-            <input type={showKeys?'text':'password'} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.pexelsKey} onChange={e=>set({ pexelsKey:e.target.value })} placeholder="optional" />
             <div className="help">Free at pexels.com/api. Leave blank to skip B-roll search.</div>
           </div>
           <div style={{gridColumn:'1 / -1'}}>
@@ -4647,14 +4685,14 @@ function SettingsPage() {
               Google AI Studio API key (Veo 3 cinematic, free tier)
               <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style={{fontSize:11, color:'var(--accent)'}}>get key →</a>
             </label>
-            <input type={showKeys?'text':'password'} value={s.googleAiKey} onChange={e=>set({ googleAiKey:e.target.value })} placeholder="AIzaSy... (optional)" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.googleAiKey} onChange={e=>set({ googleAiKey:e.target.value })} placeholder="AIzaSy... (optional)" />
             <div className="help">
               Optional but transformative. With this set, the app renders <strong>Veo 3 cinematic per-scene</strong> — true walking-shot, environment, multi-angle output (matches the Mat-style/QuidSquid reference look). Free tier: ~50 generations/day, enough for ~8 videos/day. Get a key at <code>aistudio.google.com/apikey</code> — no payment required.
             </div>
           </div>
           <div>
             <label className="label">Buffer Access Token (optional)</label>
-            <input type={showKeys?'text':'password'} value={s.bufferToken} onChange={e=>set({ bufferToken:e.target.value })} placeholder="optional" />
+            <input type={showKeys?'text':'password'} disabled={workerManaged} value={s.bufferToken} onChange={e=>set({ bufferToken:e.target.value })} placeholder="optional" />
             <div className="help">Phase 1 just opens Buffer compose URL; token is reserved for the phase 2 worker integration.</div>
           </div>
         </div>
