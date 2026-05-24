@@ -60,6 +60,21 @@ test('generate sends avatar + audio voice input and returns video_id', async () 
   assert.deepEqual(body.dimension, { width: 720, height: 1280 });
 });
 
+test('generate uses a talking_photo character when configured', async () => {
+  let body;
+  const http = {
+    postJson: async (url, b) => {
+      body = b;
+      return { data: { video_id: 'vid456' } };
+    },
+  };
+  const hg = createHeygen({ config: baseConfig({ characterType: 'talking_photo' }), http });
+  await hg.generate({ audioUrl: 'https://a/audio.mp3' });
+  assert.equal(body.video_inputs[0].character.type, 'talking_photo');
+  assert.equal(body.video_inputs[0].character.talking_photo_id, 'elliot-v');
+  assert.equal(body.video_inputs[0].character.avatar_id, undefined);
+});
+
 test('waitForCompletion polls through processing then completed', async () => {
   const states = ['processing', 'processing', 'completed'];
   let i = 0;

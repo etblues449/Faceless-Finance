@@ -33,16 +33,24 @@ export function createHeygen({ config, http, logger }) {
     return { assetId: id, audioUrl: url };
   }
 
+  function buildCharacter() {
+    // A photo-built twin (Avatar IV) is a `talking_photo`; a studio avatar is `avatar`.
+    if (config.heygen.characterType === 'talking_photo') {
+      return { type: 'talking_photo', talking_photo_id: config.heygen.avatarId() };
+    }
+    return {
+      type: 'avatar',
+      avatar_id: config.heygen.avatarId(),
+      avatar_style: config.heygen.avatarStyle,
+    };
+  }
+
   async function generate({ audioUrl }) {
     const dimension = aspectToDimension(config.aspect);
     const body = {
       video_inputs: [
         {
-          character: {
-            type: 'avatar',
-            avatar_id: config.heygen.avatarId(),
-            avatar_style: config.heygen.avatarStyle,
-          },
+          character: buildCharacter(),
           voice: { type: 'audio', audio_url: audioUrl },
         },
       ],

@@ -38,18 +38,23 @@ export function createPostiz({ config, http, logger }) {
 
   function buildPayload({ captions, media, when }) {
     const integrations = parseIntegrations(config.postiz.integrationIds());
+    const image = [{ id: media.id, ...(media.path ? { path: media.path } : {}) }];
     const posts = integrations.map(({ id, platform }) => {
       const c = captionFor(captions, platform);
-      const settings = platform === 'youtube' && c.title ? { title: c.title } : {};
+      // Postiz requires a per-provider `__type` on settings; YouTube also takes a title.
+      const settings = {
+        ...(platform ? { __type: platform } : {}),
+        ...(platform === 'youtube' && c.title ? { title: c.title } : {}),
+      };
       return {
         integration: { id },
-        value: [{ content: c.caption, image: [{ id: media.id }] }],
+        value: [{ content: c.caption, image }],
         settings,
       };
     });
-    const payload = { type: when?.date ? 'schedule' : 'now', posts };
-    if (when?.date) payload.date = when.date;
-    return payload;
+    // Postiz expects a `date` even for immediate posts.
+    const date = when?.date || new Date().toISOString();
+    return { type: when?.date ? 'schedule' : 'now', date, posts };
   }
 
   async function publish({ captions, media, when }) {

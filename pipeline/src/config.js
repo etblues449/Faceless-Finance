@@ -39,6 +39,11 @@ export function loadConfig(env = process.env) {
     throw new Error(`CHANNEL_TONE must be one of: ${Object.keys(TONES).join(', ')}`);
   }
 
+  const heygenCharacterType = opt(env, 'HEYGEN_CHARACTER_TYPE', 'avatar');
+  if (!['avatar', 'talking_photo'].includes(heygenCharacterType)) {
+    throw new Error("HEYGEN_CHARACTER_TYPE must be 'avatar' or 'talking_photo'");
+  }
+
   return {
     logLevel: opt(env, 'LOG_LEVEL', 'info'),
     aspect: opt(env, 'VIDEO_ASPECT', '9:16'),
@@ -63,6 +68,9 @@ export function loadConfig(env = process.env) {
       // The Avatar V "twin" you create in the HeyGen dashboard (the walking,
       // talk-to-camera Elliot). Its id goes here.
       avatarId: () => req(env, 'HEYGEN_AVATAR_ID'),
+      // 'avatar' = a HeyGen studio avatar; 'talking_photo' = a photo-built twin
+      // (Avatar IV), which is what a face built from reference photos usually is.
+      characterType: heygenCharacterType,
       avatarStyle: opt(env, 'HEYGEN_AVATAR_STYLE', 'normal'),
       apiBase: opt(env, 'HEYGEN_API_BASE', 'https://api.heygen.com'),
       uploadBase: opt(env, 'HEYGEN_UPLOAD_BASE', 'https://upload.heygen.com'),

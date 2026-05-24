@@ -121,8 +121,14 @@ test/            28 unit tests (node:test, no network)
 - **Avatar V realism ceiling (2026):** the twin is *waist-up, moving,
   scene-changing* — convincing as a handheld walk-and-talk, but not yet a
   flawless full-leg street vlog. Set creative expectations accordingly.
-- **Third-party API shapes** (HeyGen Avatar V fields, Postiz public API field
-  names) can change between releases. Each provider is isolated in its own file
-  with response-shape tolerance, so adapting to a change touches one module. Do
-  a single live `--dry-run` then one real run after entering your keys to confirm
-  the field mappings against your accounts.
+- **Third-party API shapes** (HeyGen fields, Postiz public API field names) can
+  change between releases. Each provider is isolated in its own file with
+  response-shape tolerance, so adapting to a change touches one module. The
+  mappings were checked against the published docs (HeyGen v2 `/v2/video/generate`
+  with `voice.type: "audio"` — v1/v2 supported through 2026-10-31; Postiz
+  `/public/v1` requiring `settings.__type` and a `date` on every post), but still
+  do a single live `--dry-run` then one real run after entering your keys to
+  confirm them against your own accounts.
+- **HeyGen character type:** set `HEYGEN_CHARACTER_TYPE=talking_photo` if Elliot
+  was built from reference photos (Avatar IV); leave it `avatar` for a HeyGen
+  studio avatar. `HEYGEN_AVATAR_ID` holds whichever id applies.
