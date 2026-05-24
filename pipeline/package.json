@@ -1,0 +1,20 @@
+{
+  "name": "faceless-finance-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated pipeline: topic -> script -> ElevenLabs voice -> HeyGen Avatar V video -> auto-post via Postiz",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "fincast": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "ideas": "node src/cli.js ideas",
+    "run": "node src/cli.js run",
+    "test": "node --test"
+  },
+  "license": "UNLICENSED"
+}
