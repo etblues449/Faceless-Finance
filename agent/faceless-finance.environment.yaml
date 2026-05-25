@@ -1,0 +1,11 @@
+name: faceless-finance-cloud
+description: Cloud sandbox for the Faceless Finance video pipeline worker.
+config:
+  type: cloud
+  # web_search / web_fetch need egress. The provider API calls (Runway,
+  # Higgsfield, ElevenLabs, Pexels, Google AI) run host-side in run-session.ts,
+  # NOT from this container — so the container itself only needs general web
+  # access for research. Lock this down with `type: limited` + allowed_hosts
+  # if you want to restrict egress.
+  networking:
+    type: unrestricted
