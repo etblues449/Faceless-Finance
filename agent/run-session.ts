@@ -8,11 +8,11 @@
  *   FF_AGENT_ID=... FF_ENVIRONMENT_ID=... ANTHROPIC_API_KEY=... \
  *   FF_VIDEO_VAULT_ID=...   # optional: vault with the Higgsfield mcp_oauth credential (enables rendering) \
  *   PEXELS_KEY=... ELEVENLABS_KEY=... ELEVENLABS_VOICE_ID=... \
- *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" matStyle
+ *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" matStyle [--render]
  *
- * Produces script.txt + storyboard.json. With FF_VIDEO_VAULT_ID set (mint it via
- * higgsfield-oauth.mjs) and a request that asks to render, the agent renders the
- * scenes through the Higgsfield MCP server. You can also render interactively
+ * Produces script.txt + storyboard.json. Add --render (and set FF_VIDEO_VAULT_ID,
+ * minted via higgsfield-oauth.mjs) to also render the scenes through the
+ * Higgsfield MCP server and write renders.json. You can also render interactively
  * with the render-storyboard skill in a Claude Code session.
  *
  * Note: this is the data-plane / orchestrator. It must run somewhere with a
@@ -31,6 +31,8 @@ const ENV_ID = required("FF_ENVIRONMENT_ID");
 const topic = process.argv[2] ?? "Topic: how the UK personal savings allowance works";
 // Tone keys match the app's TONE_PRESETS (index.html).
 const tone = (process.argv[3] ?? "matStyle") as "matStyle" | "rebeccaStyle" | "neutral";
+// --render (or RENDER=1) tells the agent to also render via the Higgsfield MCP server.
+const render = process.argv.slice(2).includes("--render") || process.env.RENDER === "1";
 
 function required(name: string): string {
   const v = process.env[name];
@@ -121,7 +123,10 @@ async function main() {
         text:
           `${topic}\nTone: ${tone}.\n` +
           `Produce script.txt and storyboard.json per your output contract. ` +
-          `Cinematic b-roll only — no talking head. Do not render; script + storyboard only.`,
+          `Cinematic b-roll only — no talking head. ` +
+          (render
+            ? `Then render each scene via the higgsfield tools (preflight cost first) and write renders.json.`
+            : `Do not render; script + storyboard only.`),
       },
     ],
   };
