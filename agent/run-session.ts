@@ -6,8 +6,9 @@
  *
  *   npm i @anthropic-ai/sdk
  *   FF_AGENT_ID=... FF_ENVIRONMENT_ID=... ANTHROPIC_API_KEY=... \
- *   PEXELS_KEY=... RUNWAY_KEY=... HIGGSFIELD_KEY=... ELEVENLABS_KEY=... GOOGLE_AI_KEY=... \
- *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" mat
+ *   FF_VIDEO_VAULT_ID=...        # vault holding the video_studio MCP credential (rendering) \
+ *   PEXELS_KEY=... ELEVENLABS_KEY=... ELEVENLABS_VOICE_ID=... \
+ *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" matStyle
  *
  * Note: this is the data-plane / orchestrator. It must run somewhere with a
  * long-lived execution context (a Node process, a queue consumer, or a
@@ -38,19 +39,12 @@ async function runCustomTool(name: string, input: any): Promise<string> {
   switch (name) {
     case "pexels_search":
       return pexelsSearch(input);
-    // Render/voiceover/image tools — gated off by the system prompt in the
-    // default script+storyboard flow. Implement the provider calls here when
-    // you enable preview rendering.
-    case "runway_generate":
-      return notWired("runway_generate", "RUNWAY_KEY");
-    case "higgsfield_generate":
-      return notWired("higgsfield_generate", "HIGGSFIELD_KEY");
     case "elevenlabs_tts":
-      return notWired("elevenlabs_tts", "ELEVENLABS_KEY");
-    case "google_ai_generate":
-      return notWired("google_ai_generate", "GOOGLE_AI_KEY");
+      return elevenLabsTTS(input);
     default:
-      return `Unknown tool: ${name}`;
+      // generate_image / generate_video / show_characters etc. are MCP tools —
+      // executed server-side by Anthropic via the video_studio toolset, not here.
+      return `Unknown custom tool: ${name}`;
   }
 }
 
@@ -81,22 +75,38 @@ async function pexelsSearch(input: {
   return JSON.stringify({ query: input.query, clips }, null, 2);
 }
 
-function notWired(tool: string, keyEnv: string): string {
-  // Returned to the agent if it calls a preview tool in the default flow.
-  return (
-    `${tool} is not enabled in script/storyboard mode. The app renders ` +
-    `downstream. (To enable preview rendering, implement the ${keyEnv}-backed ` +
-    `call in run-session.ts.)`
+async function elevenLabsTTS(input: { text: string; voice_id?: string }): Promise<string> {
+  const key = process.env.ELEVENLABS_KEY;
+  if (!key) return "ELEVENLABS_KEY not set on the orchestrator.";
+  const voiceId = input.voice_id ?? process.env.ELEVENLABS_VOICE_ID;
+  if (!voiceId) return "No voice_id provided and ELEVENLABS_VOICE_ID not set.";
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+    {
+      method: "POST",
+      headers: { "xi-api-key": key, "content-type": "application/json" },
+      body: JSON.stringify({ text: input.text, model_id: "eleven_multilingual_v2" }),
+    },
   );
+  if (!res.ok) return `ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 300)}`;
+  fs.mkdirSync("outputs/vo", { recursive: true });
+  const file = `outputs/vo/${Date.now()}.mp3`;
+  fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+  return `Saved voiceover to ${file}`;
 }
 
 // ---- Session loop --------------------------------------------------------
 
 async function main() {
+  // Attach the vault holding the video_studio MCP credential, if configured.
+  const vaultIds = process.env.FF_VIDEO_VAULT_ID
+    ? [process.env.FF_VIDEO_VAULT_ID]
+    : undefined;
   const session = await client.beta.sessions.create({
     agent: AGENT_ID,
     environment_id: ENV_ID,
     title: `FF video: ${topic.slice(0, 60)}`,
+    ...(vaultIds ? { vault_ids: vaultIds } : {}),
   });
   console.log(
     `Watch in Console: https://platform.claude.com/workspaces/default/sessions/${session.id}\n`,
@@ -133,6 +143,8 @@ async function main() {
         }
       } else if (event.type === "agent.custom_tool_use") {
         toolCalls.push({ id: event.id, name: event.name, input: event.input });
+      } else if (event.type === "agent.mcp_tool_use") {
+        console.log(`\n[mcp ${event.name}]`); // executed server-side by Anthropic
       } else if (event.type === "session.error") {
         console.error("\n[session.error]", JSON.stringify(event));
       } else if (event.type === "session.status_terminated") {

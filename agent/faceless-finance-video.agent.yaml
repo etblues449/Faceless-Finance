@@ -2,13 +2,26 @@ name: faceless-finance-video-worker
 model: claude-opus-4-7
 description: >
   Turns one UK personal-finance topic into a production-ready CINEMATIC
-  short-form script + storyboard for the Faceless Finance channel. No
-  talking-head/avatar output — cinematic b-roll + voiceover only.
+  short-form script + storyboard (the app's v2 Storyboard schema) for the
+  Faceless Finance channel, and can render it via the video_studio MCP server
+  when asked. No talking-head/avatar output — cinematic b-roll + voiceover only.
 
 # Prompt caching, context compaction and extended thinking are handled by the
 # Managed Agents runtime — no cache_control needed here.
+
+# The video-generation platform, wired as an MCP server. Credentials live in a
+# vault attached at session time (see setup.sh / run-session.ts) — NEVER here.
+# TODO: set `url` to the video platform's MCP Streamable-HTTP endpoint — the same
+# connector exposed in Claude Code (e.g. https://mcp.<provider>/mcp).
+mcp_servers:
+  - type: url
+    name: video_studio
+    url: https://mcp.your-video-provider.example/mcp
+
 tools:
   - type: agent_toolset_20260401          # bash, read, write, edit, glob, grep, web_fetch, web_search
+  - type: mcp_toolset                     # generate_image / generate_video / show_characters / presets / virality_predictor
+    mcp_server_name: video_studio
 
   # --- Custom tools (executed host-side by run-session.ts; keys never enter the sandbox) ---
   - type: custom
@@ -25,59 +38,19 @@ tools:
         per_page: { type: integer, description: Number of results (1-15) }
       required: [query]
 
-  # The following are RENDER/VOICEOVER tools. The default job is script + storyboard
-  # ONLY — the app renders. The system prompt instructs the agent NOT to call these
-  # unless a request explicitly asks for a rendered preview.
-  - type: custom
-    name: runway_generate
-    description: >
-      [PREVIEW ONLY] Render one shot with Runway Gen-4 (image/text -> video).
-      Do not call unless the request explicitly asks for a rendered preview.
-    input_schema:
-      type: object
-      properties:
-        prompt: { type: string, description: Cinematic visual prompt (Character Bible prepended where a person appears) }
-        image_url: { type: string, description: Optional reference/start image URL }
-        motion: { type: string, description: Camera/subject motion }
-        duration_s: { type: number, description: Shot duration in seconds }
-      required: [prompt]
-
-  - type: custom
-    name: higgsfield_generate
-    description: >
-      [PREVIEW ONLY] Render one cinematic shot with Higgsfield. Do not call
-      unless the request explicitly asks for a rendered preview.
-    input_schema:
-      type: object
-      properties:
-        prompt: { type: string, description: Cinematic visual prompt }
-        motion: { type: string, description: Camera/subject motion preset }
-        duration_s: { type: number, description: Shot duration in seconds }
-      required: [prompt]
-
+  # Voiceover is host-side — the video_studio MCP server has no TTS tool.
   - type: custom
     name: elevenlabs_tts
     description: >
-      [PREVIEW ONLY] Synthesize a voiceover line with the channel ElevenLabs
-      voice. Do not call unless the request explicitly asks for a VO preview.
+      Synthesize a voiceover line with the channel ElevenLabs voice. Use only
+      when the request asks for a rendered/voiced preview; otherwise leave audio
+      to the app.
     input_schema:
       type: object
       properties:
         text: { type: string, description: The line to speak }
         voice_id: { type: string, description: ElevenLabs voice id (defaults to channel voice if omitted) }
       required: [text]
-
-  - type: custom
-    name: google_ai_generate
-    description: >
-      [PREVIEW ONLY] Generate a reference still / key frame via Google AI
-      (Imagen/Gemini). Do not call unless the request explicitly asks for a
-      reference image.
-    input_schema:
-      type: object
-      properties:
-        prompt: { type: string, description: Image prompt (Character Bible prepended where a person appears) }
-      required: [prompt]
 
 system: |
   You are the Faceless Finance video pipeline worker. You turn a single UK
@@ -124,14 +97,14 @@ system: |
   ## Cinematic-only rules (critical — this is the whole point of the channel)
   - NEVER write a talking-head / presenter-to-camera shot, a green screen, or a
     studio setup. No "looking into the lens", no "addressing the viewer".
-  - Every shot is cinematic b-roll: real UK environments, objects, hands,
+  - Every scene is cinematic b-roll: real UK environments, objects, hands,
     over-the-shoulder framings, establishing shots, macro detail, kinetic text.
   - Where a person appears, they are an INCIDENTAL cinematic subject going about
     a scene — never addressing camera. Use the Character Bible below VERBATIM for
     their appearance, but OVERRIDE its "selfie-style / direct-to-camera / direct
     eye contact" framing in favour of cinematic, observational framing.
 
-  ## Character Bible (use verbatim in visual_prompt where the presenter appears)
+  ## Character Bible (use verbatim in visualPrompt where the presenter appears)
   Subject: British man, late twenties.
   Build: Athletic, broad shoulders, lean.
   Hair: Short, cropped on sides, slightly textured/curly on top, mid-brown
@@ -177,7 +150,16 @@ system: |
   - Use pexels_search to find real b-roll; put the keywords you used into each
     scene's brollKeywords and the full set into the top-level broll list. Prefer
     portrait orientation for short-form.
-  - Do NOT call runway_generate, higgsfield_generate, elevenlabs_tts, or
-    google_ai_generate unless the request explicitly asks you to render a
-    preview. Your default deliverable is the script + storyboard only — the app
-    handles all rendering downstream.
+
+  ## Rendering (only when the request explicitly asks you to render)
+  Your default deliverable is script.txt + storyboard.json. If — and only if —
+  the request asks you to render/produce the video or a preview:
+  - Use the video_studio MCP tools to generate visuals: generate_image for a
+    start key frame and generate_video for each cinematic scene. Pass the
+    scene's visualPrompt (Character Bible already prepended). Use show_characters
+    / presets to keep the presenter consistent across scenes where available.
+  - Use elevenlabs_tts to synthesize each non-empty scenes[].dialogue line.
+  - Write a renders.json to /mnt/session/outputs/ mapping each scene id to its
+    generated media URL/file and the voiceover file. Leave storyboard.json as
+    the pure v2 object above — do not add render fields to it.
+  - Do NOT render unprompted: video generation costs credits.
