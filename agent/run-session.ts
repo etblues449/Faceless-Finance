@@ -6,13 +6,14 @@
  *
  *   npm i @anthropic-ai/sdk
  *   FF_AGENT_ID=... FF_ENVIRONMENT_ID=... ANTHROPIC_API_KEY=... \
+ *   FF_VIDEO_VAULT_ID=...   # optional: vault with the Higgsfield mcp_oauth credential (enables rendering) \
  *   PEXELS_KEY=... ELEVENLABS_KEY=... ELEVENLABS_VOICE_ID=... \
  *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" matStyle
  *
- * This produces script.txt + storyboard.json. To turn the storyboard into
- * actual cinematic clips, run the render-storyboard skill in a Claude Code
- * session (the Higgsfield connector lives there) — see
- * .claude/skills/render-storyboard/SKILL.md.
+ * Produces script.txt + storyboard.json. With FF_VIDEO_VAULT_ID set (mint it via
+ * higgsfield-oauth.mjs) and a request that asks to render, the agent renders the
+ * scenes through the Higgsfield MCP server. You can also render interactively
+ * with the render-storyboard skill in a Claude Code session.
  *
  * Note: this is the data-plane / orchestrator. It must run somewhere with a
  * long-lived execution context (a Node process, a queue consumer, or a
@@ -100,10 +101,13 @@ async function elevenLabsTTS(input: { text: string; voice_id?: string }): Promis
 // ---- Session loop --------------------------------------------------------
 
 async function main() {
+  // Attach the vault holding the Higgsfield mcp_oauth credential, if configured.
+  const vaultIds = process.env.FF_VIDEO_VAULT_ID ? [process.env.FF_VIDEO_VAULT_ID] : undefined;
   const session = await client.beta.sessions.create({
     agent: AGENT_ID,
     environment_id: ENV_ID,
     title: `FF video: ${topic.slice(0, 60)}`,
+    ...(vaultIds ? { vault_ids: vaultIds } : {}),
   });
   console.log(
     `Watch in Console: https://platform.claude.com/workspaces/default/sessions/${session.id}\n`,

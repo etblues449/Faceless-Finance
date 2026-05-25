@@ -13,15 +13,17 @@ description: >
 Turns the v2 `storyboard.json` produced by the faceless-finance-video agent into
 real cinematic clips, one per scene, via the **Higgsfield** MCP connector.
 
-## Why this is a skill, not a headless agent step
+## When to use this skill vs. the headless agent
 
-The Higgsfield video tools (`generate_image`, `generate_video`, `job_display`,
-`balance`, `models_explore`, `show_plans_and_credits`, `show_characters`, …) are
-exposed as a **Claude Code connector** scoped to the current session — there is no
-reusable public URL/credential, so a Managed Agent cannot call them headlessly.
-This skill therefore runs in a Claude Code session (interactive, scheduled via
-`/loop`, or triggered on Claude Code web) where the connector is authenticated to
-the user's Higgsfield account.
+Two ways to render exist:
+- **Headless** — the faceless-finance-video agent declares the Higgsfield MCP
+  server (`https://mcp.higgsfield.ai/mcp`) and renders on request when its session
+  is given a vault holding the OAuth credential (see `agent/setup.sh` +
+  `agent/higgsfield-oauth.mjs`).
+- **Interactive (this skill)** — render from a Claude Code session using the
+  Higgsfield connector authenticated to your account. Best for hands-on,
+  cost-controlled runs (you confirm each preflight cost before spending) and for
+  ad-hoc rendering without standing up the vault/agent.
 
 The tool names below are the connector's; in-session they are prefixed with the
 connector id (e.g. `mcp__<uuid>__generate_video`). Find them with ToolSearch if

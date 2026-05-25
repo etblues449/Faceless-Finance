@@ -3,16 +3,33 @@ model: claude-opus-4-7
 description: >
   Turns one UK personal-finance topic into a production-ready CINEMATIC
   short-form script + storyboard (the app's v2 Storyboard schema) for the
-  Faceless Finance channel. No talking-head/avatar output — cinematic b-roll
-  + voiceover only. Rendering to actual clips is done downstream (the app, or a
-  Claude Code session via the Higgsfield connector — see the render-storyboard
-  skill).
+  Faceless Finance channel, and can render the scenes to clips via the
+  Higgsfield MCP server when asked. No talking-head/avatar output — cinematic
+  b-roll + voiceover only.
 
 # Prompt caching, context compaction and extended thinking are handled by the
 # Managed Agents runtime — no cache_control needed here.
 
+# Higgsfield video platform as a remote MCP server. Its auth is OAuth 2.0
+# (authorization_code + PKCE, refresh tokens) — NOT a static key. Supply auth at
+# session time via a vault whose mcp_oauth credential's mcp_server_url EXACTLY
+# matches the url below. Mint that credential with agent/higgsfield-oauth.mjs;
+# see setup.sh. Never put tokens in this file.
+mcp_servers:
+  - type: url
+    name: higgsfield
+    url: https://mcp.higgsfield.ai/mcp
+
 tools:
   - type: agent_toolset_20260401          # bash, read, write, edit, glob, grep, web_fetch, web_search
+  - type: mcp_toolset                     # generate_image / generate_video / job_display / models_explore / show_characters
+    mcp_server_name: higgsfield
+    default_config:
+      # Auto-approve Higgsfield tools so unattended render runs don't stall on
+      # confirmation. NOTE: these tools spend Higgsfield credits — the system
+      # prompt requires a get_cost preflight and renders only on explicit request.
+      permission_policy:
+        type: always_allow
 
   # --- Custom tools (executed host-side by run-session.ts; keys never enter the sandbox) ---
   - type: custom
@@ -142,9 +159,20 @@ system: |
     scene's brollKeywords and the full set into the top-level broll list. Prefer
     portrait orientation for short-form.
 
-  ## Rendering (downstream — not your job)
-  Your deliverable ends at script.txt + storyboard.json. Turning the storyboard
-  into actual clips happens downstream: the Faceless Finance app, or a Claude
-  Code session running the render-storyboard skill against the Higgsfield
-  connector. Use elevenlabs_tts ONLY if a request explicitly asks for a
-  voiceover preview; otherwise leave all media generation to the renderer.
+  ## Rendering (only when the request explicitly asks you to render)
+  Your default deliverable is script.txt + storyboard.json. If — and only if —
+  the request asks you to render/produce the clips, use the higgsfield MCP tools:
+  - Preflight first: call generate_image/generate_video with get_cost:true for one
+    representative scene, multiply by scene count, and state the credit cost. If a
+    call returns recovery_tool 'show_plans_and_credits' (out of credits), stop and
+    surface it — never retry-loop.
+  - Per scene, in order: generate_image (model nano_banana_pro, aspect_ratio 9:16)
+    from the scene's visualPrompt for a start key frame; poll job_display until
+    completed; then generate_video (model cinematic_studio_video_v2, 9:16,
+    duration = clamp(round(durationSec),3,12)) with
+    medias:[{role:start_image, value:<image job id>}]; poll job_display until done.
+    Keep framing cinematic/observational — never talking-head or direct-to-camera.
+  - Use elevenlabs_tts for voiceover only if the request asks for it.
+  - Write renders.json to /mnt/session/outputs/ mapping each scene id to its image
+    and video URLs + job ids. Leave storyboard.json a pure v2 object — no render
+    fields. Do NOT render unprompted: generation costs Higgsfield credits.
