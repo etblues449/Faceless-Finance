@@ -100,8 +100,22 @@ async function handleProxy(request, env, parts) {
   if (!ALLOWED_HOSTS.has(targetHost)) {
     return error(env, request, `proxy: host '${targetHost}' not in allowlist`, 403);
   }
+  // Require the shared proxy token (when configured) so the injected keys can't
+  // be used by anyone who merely knows the Worker URL. Accept it from a header
+  // OR a `__pt` query param (the latter so <video>/<img> src loads work).
+  if (env.PROXY_TOKEN) {
+    const provided =
+      request.headers.get('x-proxy-token') ||
+      new URL(request.url).searchParams.get('__pt') ||
+      '';
+    if (provided !== env.PROXY_TOKEN) {
+      return error(env, request, 'proxy: missing or invalid proxy token', 401);
+    }
+  }
+
   const targetPath = parts.slice(2).join('/');
   const incoming = new URL(request.url);
+  incoming.searchParams.delete('__pt'); // never forward the proxy token upstream
   const targetUrl = `https://${targetHost}/${targetPath}${incoming.search}`;
 
   // Build outgoing headers — only forward whitelisted header names.
@@ -185,6 +199,7 @@ export default {
           features: {
             proxy: true,
             key_injection: true,
+            proxy_token_required: !!env.PROXY_TOKEN,
             oauth: !!env.TOKENS,
             publish: !!env.TOKENS,
           },

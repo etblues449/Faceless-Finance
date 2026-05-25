@@ -97,6 +97,7 @@ Tokens stored in KV are encrypted at rest by Cloudflare PLUS by an additional AE
 
 - The proxy host allowlist (`ALLOWED_HOSTS` in `src/index.js`) prevents abuse — only specific provider domains can be proxied.
 - **Generation keys live as Worker secrets and are injected server-side (Design A).** The browser never holds a real key; for a managed host the Worker drops any client-sent auth header and substitutes the secret. Keys are never logged and never returned to the client.
+- **Lock the proxy with `PROXY_TOKEN`.** Because keys are injected, anyone who knows the Worker URL could otherwise spend them. Set `PROXY_TOKEN` (any long random string) and the matching value in the app (Settings → Proxy token); `/proxy/*` then requires it via the `X-Proxy-Token` header or a `__pt` query param, which the Worker strips before forwarding. Note `ALLOWED_ORIGIN` is CORS-only (browser-enforced) and does **not** stop non-browser callers — the token is the real access control.
 - For OAuth tokens (Phase 2 only), the encryption layer prevents leakage if KV is compromised.
 - Set `ALLOWED_ORIGIN` in `wrangler.toml` to lock proxy access to your own GitHub Pages URL only. Default empty = any origin (fine for personal use).
 

@@ -30,6 +30,25 @@ npx wrangler secret put PEXELS_KEY        # B-roll
 Dormant providers (only if you turn them on): `HEYGEN_KEY`, `HEDRA_KEY`,
 `HIGGSFIELD_KEY` + `HIGGSFIELD_SECRET`, `FAL_KEY`.
 
+### Lock the proxy with a token (recommended)
+
+Because the Worker now injects your keys, anyone who knows the Worker URL could
+spend them. Set a shared token so only your app can use the proxy:
+
+```bash
+npx wrangler secret put PROXY_TOKEN   # paste any long random string
+```
+
+Then in the app → **Settings → Proxy token**, paste the **same** string. The app
+sends it on every proxied call; the Worker rejects calls without it.
+
+> Order matters: if you set `PROXY_TOKEN` on the Worker but not in the app, every
+> call returns 401 until you add it in Settings. Leave both blank if you're not
+> ready. Verify with `GET /` → `proxy_token_required: true`.
+
+`ALLOWED_ORIGIN` only sets the CORS header (browser-side) — it does **not** block
+non-browser callers, so the token is the real lock.
+
 Verify what's set:
 
 ```bash

@@ -25,6 +25,14 @@ APP_ROOT_PATH = "/Faceless-Finance"
 #   wrangler secret put FAL_KEY
 # A host with no secret set falls back to passthrough, so nothing hard-breaks.
 # Verify what's set via GET / → "managed_hosts".
+#
+# STRONGLY RECOMMENDED once keys are injected: a shared proxy token so only your
+# app can use the proxy (the key injection means anyone with the Worker URL could
+# otherwise spend your keys). Pick any long random string and set it BOTH here and
+# in the app (Settings → Proxy token):
+#   wrangler secret put PROXY_TOKEN
+# When set, /proxy/* requires it (via X-Proxy-Token header or ?__pt=). When unset,
+# the proxy stays open (back-compat). Verify via GET / → "proxy_token_required".
 
 # OPTIONAL: KV namespace for storing OAuth tokens (Phase 2 auto-publish only).
 # The /proxy/* endpoint works WITHOUT this — only OAuth + /publish/* need it.

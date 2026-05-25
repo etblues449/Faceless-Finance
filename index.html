@@ -296,6 +296,7 @@ const DEFAULT_SETTINGS = {
   hedraStartKeyframeUrl: '',      // Public URL to your reference photo (used as start_keyframe_url)
   hedraStartKeyframeId: '',       // OR upload photo to Hedra and paste asset ID here (alternative to URL)
   workerUrl: '',                  // Faceless Finance Worker URL — handles CORS + multipart for ALL providers. One-click deploy from worker/ folder.
+  proxyToken: '',                 // Must match the Worker's PROXY_TOKEN secret. Sent on every proxied call so only this app can use the key-injecting proxy.
   elevenLabsKey: '',              // Direct ElevenLabs audio generation (provider-agnostic voice track)
   elevenLabsVoiceId: '',          // PVC voice ID
   higgsfieldKey: '',              // Higgsfield AI API key (cloud.higgsfield.ai/api-keys) — Key AND Secret both required
@@ -673,6 +674,10 @@ function proxiedUrl(originalUrl, settings) {
   // ?key= secret (e.g. Google AI Studio / Veo). Otherwise it would be persisted
   // into saved render URLs / app state — the original key-leak vector.
   u.searchParams.delete('key');
+  // Present the proxy access token (if set) so the Worker accepts the call.
+  // Sent in the URL, not a header, so <video>/<img> src loads work too.
+  const token = (settings?.proxyToken || '').trim();
+  if (token) u.searchParams.set('__pt', token);
   return `${worker}/proxy/${u.host}${u.pathname}${u.search}`;
 }
 
@@ -4323,6 +4328,11 @@ function PhaseThreeProvidersCard() {
           <div style={{gridColumn:'1/-1', padding:10, background:'rgba(155,180,255,0.08)', borderRadius:8, marginTop:6}}>
             <label className="label" style={{fontWeight:600, fontSize:13}}>Faceless Finance Worker URL · REQUIRED for Hedra + ElevenLabs</label>
             <input value={s.workerUrl} onChange={e=>set({ workerUrl:e.target.value })} placeholder="https://fincast-worker.your-account.workers.dev" />
+            <label className="label" style={{fontWeight:600, fontSize:13, marginTop:10}}>Proxy token · must match the Worker's PROXY_TOKEN secret</label>
+            <input type={showKeys?'text':'password'} value={s.proxyToken||''} onChange={e=>set({ proxyToken:e.target.value })} placeholder="the same random string you set via wrangler secret put PROXY_TOKEN" />
+            <div className="help" style={{marginTop:4, marginBottom:8}}>
+              Because the Worker now injects your API keys, anyone who knows the Worker URL could use them. Set <code>PROXY_TOKEN</code> as a Worker secret and paste the same value here so only this app can use the proxy. Leave blank only if you haven't set the Worker secret yet.
+            </div>
             <div className="help" style={{marginTop:8}}>
               Why: Hedra and ElevenLabs both have CORS allowlists — browsers can't call them directly. The Faceless Finance Worker is a free Cloudflare proxy that solves this for ALL providers in one move.
               <br /><br />
