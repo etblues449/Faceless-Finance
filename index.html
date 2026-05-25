@@ -1797,7 +1797,25 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
     }
   }
 
-  // FAST PATH 0 — Veo 3 cinematic per-scene render (Google AI Studio).
+  // FAST PATH 0 (promoted) — Higgsfield (DoP) image-to-video. Moved to the top
+  // so prepaid Higgsfield credits get used first, and because animating a fixed
+  // reference photo keeps the presenter consistent. Needs higgsfieldKey +
+  // higgsfieldSecret (Worker secrets under Design A) AND a reference photo URL;
+  // if the photo URL is missing it throws and falls through to free Veo 3 below.
+  if (settings.higgsfieldKey && settings.higgsfieldSecret) {
+    logEvent('orchestrate', 'higgsfield_start', { totalDuration, sceneCount: storyboard.scenes.length });
+    try {
+      const { jobs } = await HiggsfieldProvider.startRender({
+        storyboard, scenes: storyboard.scenes, settings, aspect,
+      });
+      return { jobs, cost };
+    } catch (e) {
+      logEvent('orchestrate', 'higgsfield_failed_fallback', { error: e.message });
+      // Fall through to the free Veo 3 path below on any Higgsfield failure.
+    }
+  }
+
+  // FAST PATH 1 — Veo 3 cinematic per-scene render (Google AI Studio).
   // PROMOTED to top priority because Google AI Studio's free tier covers Veo 3
   // generations up to a daily quota — effectively £0 per video when the user
   // has only a Google key set. Falls through to paid Runway/Fal/etc on quota
@@ -1847,24 +1865,7 @@ async function orchestrateRender({ storyboard, settings, aspect = '9:16' }) {
       return { jobs, cost };
     } catch (e) {
       logEvent('orchestrate', 'fal_seedance2_failed_fallback', { error: e.message });
-      // Fall through to Higgsfield / Veo 3 / HeyGen / Hedra
-    }
-  }
-
-  // FAST PATH 0b — Higgsfield Seedance v1 Pro (image-to-video).
-  // Requires a reference photo URL (your face → Higgsfield animates it with
-  // cinematic motion). Needs both higgsfieldKey AND higgsfieldSecret from
-  // cloud.higgsfield.ai/api-keys. Basic plan $9/mo.
-  if (settings.higgsfieldKey && settings.higgsfieldSecret) {
-    logEvent('orchestrate', 'higgsfield_start', { totalDuration, sceneCount: storyboard.scenes.length });
-    try {
-      const { jobs } = await HiggsfieldProvider.startRender({
-        storyboard, scenes: storyboard.scenes, settings, aspect,
-      });
-      return { jobs, cost };
-    } catch (e) {
-      logEvent('orchestrate', 'higgsfield_failed_fallback', { error: e.message });
-      // Fall through to Veo 3 / HeyGen / Hedra if Higgsfield fails
+      // Fall through to HeyGen / Hedra
     }
   }
 
@@ -4455,10 +4456,10 @@ function SmartFallbackCard() {
   // notes how we detect it's configured.
   const LADDER = [
     { id:'longcat_avatar', label:'LongCat-Avatar (HF Space)', why:'cinematic + lip-sync (experimental)', ok: !!s.longcatAvatarEnabled && !!s.elevenLabsKey && !!s.elevenLabsVoiceId && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
+    { id:'higgsfield',    label:'Higgsfield · DoP',   why:'cinematic, image→video · uses your credits (PROMOTED)', ok: !!s.higgsfieldKey && !!s.higgsfieldSecret && (!!s.higgsfieldImageUrl || !!s.hedraStartKeyframeUrl) },
     { id:'veo3',          label:'Google Veo 3',       why:'cinematic · FREE (Google AI Studio quota)',  ok: !!s.googleAiKey },
     { id:'runway_gen4',   label:'Runway Gen-4 Turbo', why:'paid cinematic backup', ok: !!s.runwayKey && (!!s.runwayImageUrl || !!s.hedraStartKeyframeUrl || !!s.higgsfieldImageUrl) },
     { id:'fal_seedance2', label:'Fal.ai · Seedance 2.0', why:'cinematic, text→video', ok: !!s.falKey },
-    { id:'higgsfield',    label:'Higgsfield · DoP',   why:'cinematic, image→video', ok: !!s.higgsfieldKey && !!s.higgsfieldSecret },
     { id:'heygen',        label:'HeyGen multi-input', why:'talking-head + b-roll', ok: !!s.heygenKey && !!s.heygenAvatarId && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
     { id:'hedra_act_two', label:'Hedra Act-Two',      why:'talking-head, slow',    ok: !!s.hedraKey && !!s.hedraActTwoModelId && (!!s.hedraStartKeyframeId || !!s.hedraStartKeyframeUrl) && !!s.elevenLabsKey && !!s.elevenLabsVoiceId },
   ];
