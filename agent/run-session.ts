@@ -23,7 +23,8 @@ const AGENT_ID = required("FF_AGENT_ID");
 const ENV_ID = required("FF_ENVIRONMENT_ID");
 
 const topic = process.argv[2] ?? "Topic: how the UK personal savings allowance works";
-const tone = (process.argv[3] ?? "neutral") as "mat" | "rebecca" | "neutral";
+// Tone keys match the app's TONE_PRESETS (index.html).
+const tone = (process.argv[3] ?? "matStyle") as "matStyle" | "rebeccaStyle" | "neutral";
 
 function required(name: string): string {
   const v = process.env[name];
