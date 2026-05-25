@@ -6,9 +6,13 @@
  *
  *   npm i @anthropic-ai/sdk
  *   FF_AGENT_ID=... FF_ENVIRONMENT_ID=... ANTHROPIC_API_KEY=... \
- *   FF_VIDEO_VAULT_ID=...        # vault holding the video_studio MCP credential (rendering) \
  *   PEXELS_KEY=... ELEVENLABS_KEY=... ELEVENLABS_VOICE_ID=... \
  *   npx tsx run-session.ts "Topic: maxing your 2025/26 ISA allowance" matStyle
+ *
+ * This produces script.txt + storyboard.json. To turn the storyboard into
+ * actual cinematic clips, run the render-storyboard skill in a Claude Code
+ * session (the Higgsfield connector lives there) — see
+ * .claude/skills/render-storyboard/SKILL.md.
  *
  * Note: this is the data-plane / orchestrator. It must run somewhere with a
  * long-lived execution context (a Node process, a queue consumer, or a
@@ -42,8 +46,6 @@ async function runCustomTool(name: string, input: any): Promise<string> {
     case "elevenlabs_tts":
       return elevenLabsTTS(input);
     default:
-      // generate_image / generate_video / show_characters etc. are MCP tools —
-      // executed server-side by Anthropic via the video_studio toolset, not here.
       return `Unknown custom tool: ${name}`;
   }
 }
@@ -98,15 +100,10 @@ async function elevenLabsTTS(input: { text: string; voice_id?: string }): Promis
 // ---- Session loop --------------------------------------------------------
 
 async function main() {
-  // Attach the vault holding the video_studio MCP credential, if configured.
-  const vaultIds = process.env.FF_VIDEO_VAULT_ID
-    ? [process.env.FF_VIDEO_VAULT_ID]
-    : undefined;
   const session = await client.beta.sessions.create({
     agent: AGENT_ID,
     environment_id: ENV_ID,
     title: `FF video: ${topic.slice(0, 60)}`,
-    ...(vaultIds ? { vault_ids: vaultIds } : {}),
   });
   console.log(
     `Watch in Console: https://platform.claude.com/workspaces/default/sessions/${session.id}\n`,
@@ -143,8 +140,6 @@ async function main() {
         }
       } else if (event.type === "agent.custom_tool_use") {
         toolCalls.push({ id: event.id, name: event.name, input: event.input });
-      } else if (event.type === "agent.mcp_tool_use") {
-        console.log(`\n[mcp ${event.name}]`); // executed server-side by Anthropic
       } else if (event.type === "session.error") {
         console.error("\n[session.error]", JSON.stringify(event));
       } else if (event.type === "session.status_terminated") {

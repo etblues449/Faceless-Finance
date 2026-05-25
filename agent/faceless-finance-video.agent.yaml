@@ -3,25 +3,16 @@ model: claude-opus-4-7
 description: >
   Turns one UK personal-finance topic into a production-ready CINEMATIC
   short-form script + storyboard (the app's v2 Storyboard schema) for the
-  Faceless Finance channel, and can render it via the video_studio MCP server
-  when asked. No talking-head/avatar output — cinematic b-roll + voiceover only.
+  Faceless Finance channel. No talking-head/avatar output — cinematic b-roll
+  + voiceover only. Rendering to actual clips is done downstream (the app, or a
+  Claude Code session via the Higgsfield connector — see the render-storyboard
+  skill).
 
 # Prompt caching, context compaction and extended thinking are handled by the
 # Managed Agents runtime — no cache_control needed here.
 
-# The video-generation platform, wired as an MCP server. Credentials live in a
-# vault attached at session time (see setup.sh / run-session.ts) — NEVER here.
-# TODO: set `url` to the video platform's MCP Streamable-HTTP endpoint — the same
-# connector exposed in Claude Code (e.g. https://mcp.<provider>/mcp).
-mcp_servers:
-  - type: url
-    name: video_studio
-    url: https://mcp.your-video-provider.example/mcp
-
 tools:
   - type: agent_toolset_20260401          # bash, read, write, edit, glob, grep, web_fetch, web_search
-  - type: mcp_toolset                     # generate_image / generate_video / show_characters / presets / virality_predictor
-    mcp_server_name: video_studio
 
   # --- Custom tools (executed host-side by run-session.ts; keys never enter the sandbox) ---
   - type: custom
@@ -38,7 +29,7 @@ tools:
         per_page: { type: integer, description: Number of results (1-15) }
       required: [query]
 
-  # Voiceover is host-side — the video_studio MCP server has no TTS tool.
+  # Voiceover is host-side (ElevenLabs) — optional VO preview only.
   - type: custom
     name: elevenlabs_tts
     description: >
@@ -151,15 +142,9 @@ system: |
     scene's brollKeywords and the full set into the top-level broll list. Prefer
     portrait orientation for short-form.
 
-  ## Rendering (only when the request explicitly asks you to render)
-  Your default deliverable is script.txt + storyboard.json. If — and only if —
-  the request asks you to render/produce the video or a preview:
-  - Use the video_studio MCP tools to generate visuals: generate_image for a
-    start key frame and generate_video for each cinematic scene. Pass the
-    scene's visualPrompt (Character Bible already prepended). Use show_characters
-    / presets to keep the presenter consistent across scenes where available.
-  - Use elevenlabs_tts to synthesize each non-empty scenes[].dialogue line.
-  - Write a renders.json to /mnt/session/outputs/ mapping each scene id to its
-    generated media URL/file and the voiceover file. Leave storyboard.json as
-    the pure v2 object above — do not add render fields to it.
-  - Do NOT render unprompted: video generation costs credits.
+  ## Rendering (downstream — not your job)
+  Your deliverable ends at script.txt + storyboard.json. Turning the storyboard
+  into actual clips happens downstream: the Faceless Finance app, or a Claude
+  Code session running the render-storyboard skill against the Higgsfield
+  connector. Use elevenlabs_tts ONLY if a request explicitly asks for a
+  voiceover preview; otherwise leave all media generation to the renderer.

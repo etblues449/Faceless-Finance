@@ -18,34 +18,14 @@ echo "Save these as Wrangler/CI secrets (used by run-session.ts):"
 echo "  FF_AGENT_ID=$AGENT_ID"
 echo "  FF_ENVIRONMENT_ID=$ENV_ID"
 
-# --- Vault for the video_studio MCP server (needed only for rendering) -----
-# The agent declares the MCP server URL but no auth. Credentials live in a vault
-# attached to the session via vault_ids. Anthropic matches the credential to the
-# server by URL and auto-refreshes the OAuth token.
-#
-# 1. Set the real MCP endpoint in faceless-finance-video.agent.yaml
-#    (mcp_servers[0].url) — the same video-platform connector you use in Claude
-#    Code. Re-run the agent update after editing.
-# 2. Obtain an OAuth access+refresh token for that MCP server (via the provider's
-#    auth flow), then create the vault + credential:
-#
-#   VAULT_ID=$(ant beta:vaults create --name faceless-finance-video --transform id -r)
-#   ant beta:vaults:credentials create --vault-id "$VAULT_ID" --auth '{
-#     type: mcp_oauth,
-#     mcp_server_url: "https://mcp.your-video-provider.example/mcp",
-#     access_token: "<access-token>",
-#     expires_at: "<iso8601>",
-#     refresh: {
-#       refresh_token: "<refresh-token>",
-#       client_id: "<oauth-client-id>",
-#       token_endpoint: "https://<provider>/oauth/token",
-#       token_endpoint_auth: { type: none }
-#     }
-#   }'
-#   echo "FF_VIDEO_VAULT_ID=$VAULT_ID"
-#
-# Rendering also needs ELEVENLABS_KEY + ELEVENLABS_VOICE_ID on the orchestrator
-# (voiceover is host-side; the MCP server has no TTS tool).
+# --- Rendering -------------------------------------------------------------
+# This agent produces script.txt + storyboard.json only. The video platform
+# (Higgsfield) is exposed as a Claude Code connector, not a standalone server
+# with a reusable URL/credential, so the Managed Agent cannot render headlessly.
+# To render the storyboard into cinematic clips, run the render-storyboard skill
+# in a Claude Code session (where the Higgsfield connector is live):
+#   .claude/skills/render-storyboard/SKILL.md
+# Optional VO preview needs ELEVENLABS_KEY + ELEVENLABS_VOICE_ID on the orchestrator.
 
 # --- CI sync (after editing the YAML) -------------------------------------
 # Agents/environments are versioned; update in place instead of re-creating:
