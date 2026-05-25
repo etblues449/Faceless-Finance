@@ -2,7 +2,7 @@
 
 A Cloudflare Worker that does two things:
 
-1. **`/proxy/<host>/<path>`** — generic CORS-busting passthrough for any provider Faceless Finance App calls (Hedra, ElevenLabs, HeyGen, Anthropic, Pexels). Solves CORS allowlists + multipart upload corruption that public proxies introduce.
+1. **`/proxy/<host>/<path>`** — CORS-busting passthrough for any provider Faceless Finance App calls (Claude, Veo 3, Runway, ElevenLabs, Pexels + dormant Hedra/HeyGen/Higgsfield/fal). It also **injects the provider key server-side from a Worker secret** (Design A), so the browser never holds a real generation key. Solves CORS allowlists + multipart upload corruption that public proxies introduce.
 2. **`/oauth/*` + `/auth/*` + `/publish/*`** — Phase 2 social-media auto-publishing (TikTok / YouTube / Instagram). Optional. Requires KV namespace + provider secrets if you want it.
 
 ## One-click deploy
@@ -21,15 +21,25 @@ Paste that URL into Faceless Finance App → Settings → Phase 3 → **Faceless
 
 The worker is **stateless and free** for personal use. Cloudflare's free tier gives 100,000 requests/day — well above what a 4-videos-per-week channel will use.
 
-## What works without any extra setup
+## Set your generation keys (Design A)
 
-Just the proxy. Which is all you need for video generation:
+The proxy injects provider keys server-side, so paste your keys ONCE as Worker
+secrets — the browser never holds a real key. Set the 5 core providers:
 
-- ✅ Hedra (Character-2 cinematic, Avatar talking-head, asset upload)
-- ✅ ElevenLabs (TTS for voice)
-- ✅ HeyGen (fallback talking-head)
-- ✅ Anthropic (script generation — works browser-direct too, but routing through worker is cleaner)
-- ✅ Pexels (B-roll search)
+```bash
+wrangler secret put ANTHROPIC_KEY     # Claude — script
+wrangler secret put GOOGLE_AI_KEY     # Google AI Studio — Veo 3
+wrangler secret put RUNWAY_KEY        # Runway Gen-4
+wrangler secret put ELEVENLABS_KEY    # voice
+wrangler secret put PEXELS_KEY        # B-roll
+```
+
+Dormant providers (HeyGen, Hedra, Higgsfield, fal) inject only if you also set
+their secret. A host with no secret falls back to passthrough, so nothing
+hard-breaks. Confirm what's set with `GET /` → `managed_hosts`.
+
+Then in the app → Settings paste the Worker URL; the key fields lock and show
+"managed by Worker". Full walkthrough in the repo root `SETUP.md`.
 
 ## What needs extra setup (Phase 2 — auto-publishing)
 
@@ -73,7 +83,7 @@ proxiedUrl() → workerUrl + /proxy/{host}/{path}
     ▼
 Cloudflare Worker (this repo)
     │
-    ├── /proxy/* → fetch upstream(host) verbatim, return with CORS headers
+    ├── /proxy/* → inject key from Worker secret, fetch upstream(host), return with CORS headers
     │
     ├── /oauth/{platform}/init → return auth URL
     ├── /oauth/{platform}/callback → exchange code, store encrypted tokens in KV
@@ -86,7 +96,8 @@ Tokens stored in KV are encrypted at rest by Cloudflare PLUS by an additional AE
 ## Security notes
 
 - The proxy host allowlist (`ALLOWED_HOSTS` in `src/index.js`) prevents abuse — only specific provider domains can be proxied.
-- API keys are NEVER stored on the worker — they pass through in client request headers.
+- **Generation keys live as Worker secrets and are injected server-side (Design A).** The browser never holds a real key; for a managed host the Worker drops any client-sent auth header and substitutes the secret. Keys are never logged and never returned to the client.
+- **Lock the proxy with `PROXY_TOKEN`.** Because keys are injected, anyone who knows the Worker URL could otherwise spend them. Set `PROXY_TOKEN` (any long random string) and the matching value in the app (Settings → Proxy token); `/proxy/*` then requires it via the `X-Proxy-Token` header or a `__pt` query param, which the Worker strips before forwarding. Note `ALLOWED_ORIGIN` is CORS-only (browser-enforced) and does **not** stop non-browser callers — the token is the real access control.
 - For OAuth tokens (Phase 2 only), the encryption layer prevents leakage if KV is compromised.
 - Set `ALLOWED_ORIGIN` in `wrangler.toml` to lock proxy access to your own GitHub Pages URL only. Default empty = any origin (fine for personal use).
 

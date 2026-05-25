@@ -1,8 +1,13 @@
 name: Deploy to GitHub Pages
 
+# Deploys ONLY the static front-end (index.html + the COI service worker +
+# reference assets) from the single default branch. The Worker (worker/) and the
+# automation pipeline (pipeline/) are deployed separately and must never be
+# published to the public Pages site.
+
 on:
   push:
-    branches: [main, Faceless-Finance-App]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -22,9 +27,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Stage static site
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp coi-serviceworker.js _site/
+          if [ -d visual-references ]; then cp -r visual-references _site/; fi
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

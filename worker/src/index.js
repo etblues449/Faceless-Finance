@@ -65,6 +65,33 @@ const ALLOWED_HOSTS = new Set([
   'api.dev.runwayml.com',              // Runway Developer API (Gen-4 Turbo image-to-video)
 ]);
 
+// ── Design A: server-side key injection ──────────────────────────────────────
+// Generation keys live ONLY as Worker secrets (`wrangler secret put`). For these
+// hosts the Worker injects the real credential and DROPS whatever the browser
+// sent, so a provider secret never has to exist in the client. A host whose
+// secret isn't set returns null here and falls through to plain passthrough,
+// so nothing hard-breaks.
+const SECRET_INJECTION = {
+  'api.anthropic.com':                 (env) => env.ANTHROPIC_KEY   && { headers: { 'x-api-key': env.ANTHROPIC_KEY } },
+  'generativelanguage.googleapis.com': (env) => env.GOOGLE_AI_KEY   && { query:   { key: env.GOOGLE_AI_KEY } }, // Veo 3
+  'api.dev.runwayml.com':              (env) => env.RUNWAY_KEY      && { headers: { authorization: `Bearer ${env.RUNWAY_KEY}` } },
+  'api.runwayml.com':                  (env) => env.RUNWAY_KEY      && { headers: { authorization: `Bearer ${env.RUNWAY_KEY}` } },
+  'api.elevenlabs.io':                 (env) => env.ELEVENLABS_KEY  && { headers: { 'xi-api-key': env.ELEVENLABS_KEY } },
+  'api.pexels.com':                    (env) => env.PEXELS_KEY      && { headers: { authorization: env.PEXELS_KEY } },
+  // Dormant providers — only injected if you choose to set their secret.
+  'api.hedra.com':                     (env) => env.HEDRA_KEY       && { headers: { 'x-api-key': env.HEDRA_KEY } },
+  'api.heygen.com':                    (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
+  'upload.heygen.com':                 (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
+  'platform.higgsfield.ai':            (env) => env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET && { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } },
+  'fal.run':                           (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
+  'queue.fal.run':                     (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
+  'rest.alpha.fal.ai':                 (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
+};
+
+// Auth headers the client might send; dropped before injecting so a stale or
+// placeholder browser key never reaches upstream on a Worker-managed host.
+const CLIENT_AUTH_HEADERS = ['authorization', 'x-api-key', 'xi-api-key', 'x-hedra-key', 'x-anthropic-key'];
+
 async function handleProxy(request, env, parts) {
   // Path shape: /proxy/<host>/<...rest> → upstream URL https://<host>/<rest>
   // Also supports query string passthrough.
@@ -73,8 +100,22 @@ async function handleProxy(request, env, parts) {
   if (!ALLOWED_HOSTS.has(targetHost)) {
     return error(env, request, `proxy: host '${targetHost}' not in allowlist`, 403);
   }
+  // Require the shared proxy token (when configured) so the injected keys can't
+  // be used by anyone who merely knows the Worker URL. Accept it from a header
+  // OR a `__pt` query param (the latter so <video>/<img> src loads work).
+  if (env.PROXY_TOKEN) {
+    const provided =
+      request.headers.get('x-proxy-token') ||
+      new URL(request.url).searchParams.get('__pt') ||
+      '';
+    if (provided !== env.PROXY_TOKEN) {
+      return error(env, request, 'proxy: missing or invalid proxy token', 401);
+    }
+  }
+
   const targetPath = parts.slice(2).join('/');
   const incoming = new URL(request.url);
+  incoming.searchParams.delete('__pt'); // never forward the proxy token upstream
   const targetUrl = `https://${targetHost}/${targetPath}${incoming.search}`;
 
   // Build outgoing headers — only forward whitelisted header names.
@@ -92,6 +133,22 @@ async function handleProxy(request, env, parts) {
     outgoingHeaders.set('x-runway-version', '2024-11-06');
   }
 
+  // Design A: inject the server-side secret for Worker-managed hosts and drop
+  // whatever auth the client sent, so a real provider key never has to live in
+  // the browser. Hosts with no secret set fall through to plain passthrough.
+  let finalUrl = targetUrl;
+  const injector = SECRET_INJECTION[targetHost];
+  const injection = injector ? injector(env) : null;
+  if (injection) {
+    for (const h of CLIENT_AUTH_HEADERS) outgoingHeaders.delete(h);
+    for (const [k, v] of Object.entries(injection.headers || {})) outgoingHeaders.set(k, v);
+    if (injection.query) {
+      const injected = new URL(targetUrl);
+      for (const [k, v] of Object.entries(injection.query)) injected.searchParams.set(k, v);
+      finalUrl = injected.toString();
+    }
+  }
+
   // Forward the request. For non-GET/HEAD, stream the body as-is — preserves
   // multipart boundaries (which is the whole point of having a backend proxy).
   const init = {
@@ -106,7 +163,7 @@ async function handleProxy(request, env, parts) {
     init.duplex = 'half';
   }
 
-  const upstream = await fetch(targetUrl, init);
+  const upstream = await fetch(finalUrl, init);
 
   // Build response. Forward whitelisted upstream headers + add CORS.
   const respHeaders = new Headers(corsHeaders(env, request));
@@ -141,9 +198,14 @@ export default {
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
             proxy: true,
+            key_injection: true,
+            proxy_token_required: !!env.PROXY_TOKEN,
             oauth: !!env.TOKENS,
             publish: !!env.TOKENS,
           },
+          // Hosts whose generation secret is currently set — for verifying
+          // `wrangler secret put` worked. Names only, never the key values.
+          managed_hosts: Object.keys(SECRET_INJECTION).filter((h) => SECRET_INJECTION[h](env)),
         });
       }
 
