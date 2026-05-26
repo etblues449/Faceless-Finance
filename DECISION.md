@@ -70,14 +70,18 @@ real outputs, not mockups.
 The dashboard and the publish Worker were already here. The missing piece was the
 automated render brain — now added.
 
-## Honest status — the cinematic engine is the next build
+## Status — the cinematic engine is BUILT and self-tested
 
-The committed `pipeline/faceless_finance.py` renders **one** lip-synced shot. The
-target — a **cinematic multi-shot** edit (hook to-camera → walking transition →
-b-roll over voiceover → payoff, stitched) — is **designed but not yet coded**.
-The *look* is proven (the two clips above); the *orchestration* is the remaining
-work. See `pipeline/README.md` for the adapter interface and the exact build steps.
-Do not treat the baseline as the finished cinematic product.
+The **cinematic multi-shot engine** is implemented in `pipeline/cinematic.py` +
+`pipeline/render/` + `pipeline/edit.py`. It builds a 4-shot plan (hook to-camera →
+walk → b-roll over voiceover → payoff), renders each shot, lays narration over the
+motion shots, stitches to 1080×1920 and burns captions. `python pipeline/cinematic.py
+--selftest` runs the whole flow offline and produces a real 1080×1920 captioned mp4
+(verified). Default render engine is **Hedra** (server-callable, your existing
+credits); **Higgsfield** is wired as the premium motion adapter behind a validation
+flag. The only step left is the **first live run on real keys** (burns Hedra credits)
+— a button press, not a build. The render *look* is already proven (jobs `11cc9d03`
+walk, `bd1ddf1e` lip-sync). The original single-shot script remains as a fallback.
 
 ## Archiving the retired repos
 
