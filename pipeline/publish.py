@@ -9,6 +9,16 @@ def _host_tmpfiles(path: str) -> str:
     r.raise_for_status(); u = r.json()["data"]["url"]
     return u.replace("tmpfiles.org/", "tmpfiles.org/dl/")
 
+def report_to_app(final_path: str, plan, cfg) -> str:
+    """Host the mp4 and tell the Worker so the app review screen shows it."""
+    if not cfg.worker_ingest_url or not cfg.ingest_secret:
+        return "app ingest skipped (set WORKER_INGEST_URL + INGEST_SECRET)"
+    url = _host_tmpfiles(final_path)
+    r = requests.post(cfg.worker_ingest_url,
+        headers={"x-ingest-secret": cfg.ingest_secret, "content-type":"application/json"},
+        json={"video_url": url, "title": plan.title, "caption": plan.caption}, timeout=120)
+    r.raise_for_status(); return f"app ingest ok -> {url}"
+
 def publish(final_path: str, plan, cfg) -> str:
     if cfg.worker_url:
         with open(final_path,"rb") as f:

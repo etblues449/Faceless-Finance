@@ -75,8 +75,14 @@ def run(cfg: Config, topic=None, dry_run=False, selftest=False) -> str:
     edit.stitch(plan.shots, final, os.path.join(cfg.out_dir,"work"))
     print(f"[4/5] stitched -> {final}")
 
+    if not selftest:
+        try:
+            import publish; print(f"[*] {publish.report_to_app(final, plan, cfg)}")
+        except Exception as e:
+            print(f"  app ingest failed: {e}")
+
     if selftest or dry_run or not cfg.post_enabled:
-        print(f"[5/5] publish skipped -> {final}")
+        print(f"[5/5] publish skipped (review in the app) -> {final}")
     else:
         import publish; print(f"[5/5] {publish.publish(final, plan, cfg)}")
     return final

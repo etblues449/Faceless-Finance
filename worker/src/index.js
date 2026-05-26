@@ -181,6 +181,91 @@ async function handleProxy(request, env, parts) {
   });
 }
 
+// ── App control API ──────────────────────────────────────────────────────────
+// Lets the mobile app trigger the proven GitHub Actions render pipeline and review
+// the result, all without a GitHub token in the browser. KV (TOKENS) stores the
+// latest render so the app can play + approve it; publishing reuses /publish/*.
+async function ghFetch(env, path, init = {}) {
+  return fetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${env.GH_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'fincast-worker',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(init.headers || {}),
+    },
+  });
+}
+
+async function handleApi(request, env, parts, url) {
+  const sub = parts[1];
+
+  // POST /api/render {topic?} → dispatch the GitHub Actions workflow (test render, no publish)
+  if (sub === 'render' && request.method === 'POST') {
+    if (env.PROXY_TOKEN) {
+      const t = request.headers.get('x-proxy-token') || url.searchParams.get('__pt') || '';
+      if (t !== env.PROXY_TOKEN) return error(env, request, 'invalid token', 401);
+    }
+    if (!env.GH_TOKEN || !env.GH_OWNER || !env.GH_REPO)
+      return error(env, request, 'render not configured: set GH_TOKEN, GH_OWNER, GH_REPO', 503);
+    const body = await request.json().catch(() => ({}));
+    const wf = env.GH_WORKFLOW || 'faceless.yml';
+    const ref = env.GH_REF || 'main';
+    const inputs = {};
+    if (body.topic) inputs.topic = String(body.topic);
+    const r = await ghFetch(env, `/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${wf}/dispatches`, {
+      method: 'POST', body: JSON.stringify({ ref, inputs }),
+    });
+    if (r.status !== 204) return error(env, request, `dispatch failed: ${r.status} ${await r.text()}`, 502);
+    return jsonResponse(env, request, { dispatched: true, workflow: wf, ref });
+  }
+
+  // GET /api/runs → recent workflow runs (status for the app)
+  if (sub === 'runs' && request.method === 'GET') {
+    if (!env.GH_TOKEN || !env.GH_OWNER || !env.GH_REPO)
+      return error(env, request, 'runs not configured', 503);
+    const wf = env.GH_WORKFLOW || 'faceless.yml';
+    const r = await ghFetch(env, `/repos/${env.GH_OWNER}/${env.GH_REPO}/actions/workflows/${wf}/runs?per_page=5`);
+    if (!r.ok) return error(env, request, `runs failed: ${r.status}`, 502);
+    const j = await r.json();
+    const runs = (j.workflow_runs || []).map((x) => ({
+      id: x.id, status: x.status, conclusion: x.conclusion, created_at: x.created_at, html_url: x.html_url,
+    }));
+    return jsonResponse(env, request, { runs });
+  }
+
+  // The rest need KV.
+  if (!env.TOKENS) return error(env, request, 'this endpoint needs KV namespace TOKENS', 503);
+
+  // POST /api/ingest {video_url,title,caption} — the pipeline reports a finished video
+  if (sub === 'ingest' && request.method === 'POST') {
+    if (!env.INGEST_SECRET || request.headers.get('x-ingest-secret') !== env.INGEST_SECRET)
+      return error(env, request, 'invalid ingest secret', 401);
+    const b = await request.json().catch(() => ({}));
+    if (!b.video_url) return error(env, request, 'video_url required', 400);
+    const item = { video_url: b.video_url, title: b.title || '', caption: b.caption || '', ts: Date.now(), status: 'review' };
+    await env.TOKENS.put('render:latest', JSON.stringify(item));
+    const hist = JSON.parse((await env.TOKENS.get('render:history')) || '[]');
+    hist.unshift(item);
+    await env.TOKENS.put('render:history', JSON.stringify(hist.slice(0, 20)));
+    return jsonResponse(env, request, { ok: true });
+  }
+
+  // GET /api/latest — newest render awaiting review
+  if (sub === 'latest' && request.method === 'GET') {
+    const v = await env.TOKENS.get('render:latest');
+    return jsonResponse(env, request, v ? JSON.parse(v) : { empty: true });
+  }
+
+  // GET /api/history — recent renders
+  if (sub === 'history' && request.method === 'GET') {
+    return jsonResponse(env, request, { items: JSON.parse((await env.TOKENS.get('render:history')) || '[]') });
+  }
+
+  return error(env, request, 'unknown /api route', 404);
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return preflight(env, request);
@@ -193,7 +278,7 @@ export default {
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
           ok: true,
-          version: '1.4.1',
+          version: '1.5.0',
           allowed_origin: env.ALLOWED_ORIGIN,
           proxy_hosts: Array.from(ALLOWED_HOSTS),
           features: {
@@ -202,6 +287,8 @@ export default {
             proxy_token_required: !!env.PROXY_TOKEN,
             oauth: !!env.TOKENS,
             publish: !!env.TOKENS,
+            app_render: !!(env.GH_TOKEN && env.GH_OWNER && env.GH_REPO),
+            app_review: !!env.TOKENS,
           },
           // Hosts whose generation secret is currently set — for verifying
           // `wrangler secret put` worked. Names only, never the key values.
@@ -212,6 +299,11 @@ export default {
       // /proxy/<host>/<path> — generic CORS-busting passthrough (no auth needed; client passes their key)
       if (parts[0] === 'proxy') {
         return handleProxy(request, env, parts);
+      }
+
+      // /api/* — app control plane (render trigger, review, history)
+      if (parts[0] === 'api') {
+        return handleApi(request, env, parts, url);
       }
 
       // Below endpoints require KV (TOKENS namespace). Return clear error if not configured.

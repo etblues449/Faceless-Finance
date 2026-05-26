@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Faceless Finance — Control</title>
+<style>
+  :root{
+    --bg:#0b0d12; --card:#141821; --card2:#1b212d; --line:#262d3b;
+    --txt:#e8edf6; --mut:#8a94a6; --accent:#36d399; --accent2:#2bb3ff;
+    --danger:#ff5d6c; --warn:#ffcc66; --radius:16px;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       padding:max(14px,env(safe-area-inset-top)) 14px calc(110px + env(safe-area-inset-bottom));-webkit-font-smoothing:antialiased}
+  header{display:flex;align-items:center;gap:10px;margin:4px 2px 16px}
+  .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+        display:grid;place-items:center;font-weight:800;color:#06210f}
+  h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.2px}
+  .sub{color:var(--mut);font-size:12px;margin-top:2px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:12px 0}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 12px;font-weight:600}
+  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 5px}
+  input,textarea,select{width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+        border-radius:11px;padding:12px;font-size:15px;outline:none}
+  input:focus,textarea:focus{border-color:var(--accent2)}
+  textarea{resize:vertical;min-height:64px}
+  button{appearance:none;border:0;border-radius:12px;padding:13px 16px;font-size:15px;font-weight:700;
+         color:#06210f;background:var(--accent);width:100%;cursor:pointer;transition:.15s}
+  button:active{transform:scale(.985)} button.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+  button.ghost{background:transparent;color:var(--accent2);border:1px solid var(--line)}
+  button:disabled{opacity:.5}
+  .row{display:flex;gap:10px} .row>*{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+  .dot.ok{background:var(--accent)} .dot.bad{background:var(--danger)} .dot.run{background:var(--warn);animation:p 1s infinite}
+  @keyframes p{50%{opacity:.35}}
+  video{width:100%;border-radius:12px;background:#000;margin-top:8px}
+  .muted{color:var(--mut);font-size:13px}
+  .runs div{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+  .runs div:first-child{border-top:0}
+  a{color:var(--accent2);text-decoration:none}
+  .platforms label.chk{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);
+        border-radius:11px;padding:11px 12px;margin:8px 0;color:var(--txt);font-size:14px;cursor:pointer}
+  .platforms input[type=checkbox]{width:auto;transform:scale(1.25);accent-color:var(--accent)}
+  .platforms .conn{margin-left:auto;font-size:12px;color:var(--mut)}
+  .actionbar{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+        background:linear-gradient(180deg,transparent,#0b0d12 26%);display:flex;gap:10px}
+  .actionbar button{box-shadow:0 8px 30px rgba(0,0,0,.5)}
+  #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#000a;backdrop-filter:blur(8px);
+        border:1px solid var(--line);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;opacity:0;
+        transition:.25s;pointer-events:none;max-width:90vw}
+  #toast.show{opacity:1}
+  details summary{color:var(--mut);font-size:12px;cursor:pointer;list-style:none}
+  .settings input{font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">JB</div>
+  <div>
+    <h1>Faceless Finance</h1>
+    <div class="sub">Control panel · <span id="wstatus" class="pill"><span class="dot"></span>connecting…</span></div>
+  </div>
+</header>
+
+<div class="card">
+  <h2>Make a video</h2>
+  <label>Topic <span class="muted">(blank = auto-pick for today)</span></label>
+  <input id="topic" placeholder="e.g. ISA allowance before 5 April"/>
+  <div style="height:10px"></div>
+  <button id="btnRender">▶ Generate test video</button>
+  <p class="muted" style="margin:10px 2px 0">Runs the cinematic pipeline on GitHub Actions. Nothing is posted — you review it below first.</p>
+</div>
+
+<div class="card">
+  <h2>Render activity</h2>
+  <div id="runs" class="runs"><span class="muted">No runs yet.</span></div>
+</div>
+
+<div class="card">
+  <h2>Review latest</h2>
+  <div id="review"><span class="muted">Your finished video appears here when a render completes.</span></div>
+</div>
+
+<div class="card platforms">
+  <h2>Publish to</h2>
+  <label class="chk"><input type="checkbox" id="p_tiktok"/> TikTok <span class="conn" id="c_tiktok">—</span></label>
+  <label class="chk"><input type="checkbox" id="p_youtube"/> YouTube <span class="conn" id="c_youtube">—</span></label>
+  <label class="chk"><input type="checkbox" id="p_instagram"/> Instagram <span class="conn" id="c_instagram">—</span></label>
+  <div class="row" style="margin-top:6px">
+    <button class="ghost" data-conn="tiktok">Connect TikTok</button>
+    <button class="ghost" data-conn="youtube">Connect YT</button>
+    <button class="ghost" data-conn="instagram">Connect IG</button>
+  </div>
+</div>
+
+<div class="card settings">
+  <details>
+    <summary>⚙︎ Settings (Worker URL, identity, token)</summary>
+    <label>Worker URL</label>
+    <input id="worker" placeholder="https://fincast-worker.<you>.workers.dev"/>
+    <label>User ID (for your social connections)</label>
+    <input id="userId" value="elliot"/>
+    <label>Proxy token <span class="muted">(only if you set PROXY_TOKEN)</span></label>
+    <input id="ptoken" placeholder="optional"/>
+    <div style="height:10px"></div>
+    <button class="sec" id="btnSave">Save settings</button>
+  </details>
+</div>
+
+<div class="actionbar">
+  <button class="sec" id="btnRefresh" style="flex:.5">↻</button>
+  <button id="btnPublish" disabled>Approve &amp; Publish</button>
+</div>
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const S={get(){return JSON.parse(localStorage.getItem('ff_cfg')||'{}')},set(v){localStorage.setItem('ff_cfg',JSON.stringify(v))}};
+let cfg=S.get(), latest=null;
+$('worker').value=cfg.worker||''; $('userId').value=cfg.userId||'elliot'; $('ptoken').value=cfg.ptoken||'';
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._);t._=setTimeout(()=>t.classList.remove('show'),2600);}
+function hdr(extra){const h={'content-type':'application/json',...extra};if(cfg.ptoken)h['x-proxy-token']=cfg.ptoken;return h;}
+const W=()=> (cfg.worker||'').replace(/\/$/,'');
+
+async function ping(){
+  const el=$('wstatus'); if(!W()){el.innerHTML='<span class="dot bad"></span>set Worker URL';return;}
+  try{const r=await fetch(W()+'/');const j=await r.json();
+    const f=j.features||{};
+    el.innerHTML='<span class="dot ok"></span>v'+j.version+(f.app_render?' · render✓':' · render off')+(f.publish?' · publish✓':'');
+  }catch(e){el.innerHTML='<span class="dot bad"></span>unreachable';}
+}
+async function loadRuns(){
+  if(!W())return; try{
+    const r=await fetch(W()+'/api/runs',{headers:hdr()}); if(!r.ok)return;
+    const {runs}=await r.json(); const box=$('runs');
+    if(!runs||!runs.length){box.innerHTML='<span class="muted">No runs yet.</span>';return;}
+    box.innerHTML=runs.map(x=>{
+      const s=x.status==='completed'?(x.conclusion==='success'?'ok':'bad'):'run';
+      const lbl=x.status==='completed'?x.conclusion:x.status;
+      return `<div><span><span class="dot ${s}"></span> ${lbl}</span><a href="${x.html_url}" target="_blank">log ↗</a></div>`;
+    }).join('');
+  }catch(e){}
+}
+async function loadLatest(){
+  if(!W())return; try{
+    const r=await fetch(W()+'/api/latest',{headers:hdr()}); const j=await r.json();
+    const box=$('review');
+    if(j.empty||!j.video_url){box.innerHTML='<span class="muted">Your finished video appears here when a render completes.</span>';$('btnPublish').disabled=true;return;}
+    latest=j;
+    box.innerHTML=`<strong>${j.title||'Untitled'}</strong>
+      <video src="${j.video_url}" controls playsinline></video>
+      <label>Caption</label><textarea id="cap">${j.caption||''}</textarea>
+      <p class="muted">Rendered ${new Date(j.ts).toLocaleString()}</p>`;
+    $('btnPublish').disabled=false;
+  }catch(e){}
+}
+async function connStatus(){
+  if(!W())return;
+  for(const p of ['tiktok','youtube','instagram']){
+    try{const r=await fetch(`${W()}/auth/${p}/status?user_id=${encodeURIComponent(cfg.userId||'elliot')}`);
+      const j=await r.json(); $('c_'+p).textContent=j.connected?'connected ✓':'not connected';
+      $('c_'+p).style.color=j.connected?'var(--accent)':'var(--mut)';
+    }catch(e){$('c_'+p).textContent='—';}
+  }
+}
+function refresh(){ping();loadRuns();loadLatest();connStatus();}
+
+$('btnSave').onclick=()=>{cfg={worker:$('worker').value.trim(),userId:$('userId').value.trim()||'elliot',ptoken:$('ptoken').value.trim()};S.set(cfg);toast('Saved');refresh();};
+$('btnRender').onclick=async()=>{
+  if(!W())return toast('Set your Worker URL first (Settings)');
+  $('btnRender').disabled=true;
+  try{const r=await fetch(W()+'/api/render',{method:'POST',headers:hdr(),body:JSON.stringify({topic:$('topic').value.trim()})});
+    const j=await r.json();
+    toast(r.ok&&j.dispatched?'Render started — check activity':'Error: '+(j.error||r.status));
+  }catch(e){toast('Failed: '+e.message);}
+  setTimeout(()=>{$('btnRender').disabled=false;loadRuns();},1500);
+};
+document.querySelectorAll('[data-conn]').forEach(b=>b.onclick=async()=>{
+  if(!W())return toast('Set Worker URL first');
+  const p=b.dataset.conn;
+  try{const r=await fetch(`${W()}/oauth/${p}/init?user_id=${encodeURIComponent(cfg.userId||'elliot')}&redirect_to=${encodeURIComponent(location.href)}`,{headers:hdr()});
+    const j=await r.json(); if(j.authUrl)location.href=j.authUrl; else toast('Connect error: '+(j.error||'no url'));
+  }catch(e){toast('Connect failed: '+e.message);}
+});
+$('btnPublish').onclick=async()=>{
+  if(!latest)return; const caption=($('cap')&&$('cap').value)||latest.caption||'';
+  const sel=['tiktok','youtube','instagram'].filter(p=>$('p_'+p).checked);
+  if(!sel.length)return toast('Pick at least one platform');
+  if(!confirm(`Publish to ${sel.join(', ')}? This posts publicly.`))return;
+  $('btnPublish').disabled=true;
+  for(const p of sel){
+    try{const r=await fetch(`${W()}/publish/${p}`,{method:'POST',headers:hdr(),
+        body:JSON.stringify({user_id:cfg.userId||'elliot',video_url:latest.video_url,caption,title:latest.title||''})});
+      toast(`${p}: ${r.ok?'published ✓':'failed'}`);
+    }catch(e){toast(`${p}: ${e.message}`);}
+  }
+  $('btnPublish').disabled=false;
+};
+$('btnRefresh').onclick=refresh;
+refresh(); setInterval(()=>{loadRuns();loadLatest();},15000);
+</script>
+</body>
+</html>

@@ -25,7 +25,8 @@ class Config:
         self.hedra_omnia_model  = e.get("HEDRA_OMNIA_MODEL_ID",  "ab372b84-432f-44f5-bacc-c2542465f712")
         # Higgsfield (premium / optional)
         self.hf_token         = e.get("HIGGSFIELD_TOKEN", "")
-        self.hf_base          = e.get("HIGGSFIELD_API_BASE", "")     # set once validated
+        self.hf_base          = e.get("HIGGSFIELD_API_BASE", "https://api.higgsfield.ai/v1")
+        self.hf_video_model   = e.get("HIGGSFIELD_VIDEO_MODEL", "")  # slug from docs.higgsfield.ai
         self.hf_soul_id       = e.get("HIGGSFIELD_SOUL_ID", "64da88e0-fe5f-4af6-a2da-3b8de23fad64")
         # images
         self.presenter_url    = e.get("PRESENTER_IMAGE_URL", "")     # head-and-shoulders still (lip-sync)
@@ -36,6 +37,9 @@ class Config:
         self.worker_secret    = e.get("WORKER_SECRET", "")
         self.blotato_key      = e.get("BLOTATO_API_KEY", "")
         self.blotato_account  = e.get("BLOTATO_TIKTOK_ACCOUNT_ID", "")
+        # app review (pipeline reports finished video to the Worker so the app can review it)
+        self.worker_ingest_url= e.get("WORKER_INGEST_URL", "")
+        self.ingest_secret    = e.get("INGEST_SECRET", "")
         # output
         self.out_dir          = e.get("OUT_DIR", os.path.join(os.path.dirname(__file__), "out"))
 

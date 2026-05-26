@@ -92,3 +92,25 @@ been given a `SUPERSEDED.md` pointing here. To finish:
 > **Settings** → scroll to **Danger Zone** → **Archive this repository**.
 
 One tap each. Read-only after that; nothing is deleted.
+
+## App + Worker control plane (added)
+
+You now have a **mobile app** (`app.html`, served from GitHub Pages) that drives the
+proven pipeline without any key on the phone:
+
+- **`app.html`** — control panel: enter a topic → *Generate test video* → watch render
+  activity → review the finished video → tick platforms → *Approve & Publish*. Settings
+  (Worker URL, user id, optional proxy token) persist locally.
+- **Worker `/api/*`** (added to `worker/src/index.js`, KV-backed, no new infra):
+  `POST /api/render` dispatches the GitHub Actions render; `GET /api/runs` shows status;
+  `POST /api/ingest` is how the pipeline reports a finished video; `GET /api/latest` /
+  `GET /api/history` feed the review screen. Publishing reuses the existing
+  `/publish/<platform>` OAuth path — it only fires when you tap Approve.
+- **Higgsfield** is now wired headless to the official REST API
+  (`api.higgsfield.ai/v1`, Bearer) in `pipeline/render/higgsfield.py`; set
+  `HIGGSFIELD_TOKEN` + `HIGGSFIELD_VIDEO_MODEL` and `RENDER_MOTION=higgsfield` to use the
+  cinematic Soul walk instead of Hedra Omnia.
+
+Flow: **app → Worker → GitHub Actions (render) → Worker (review) → app → Worker (publish)**.
+Deploy of the Worker and Cloudflare/GitHub tokens are the only steps that require your
+own accounts; everything else is in this repo and self-tested.

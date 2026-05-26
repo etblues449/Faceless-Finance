@@ -37,6 +37,8 @@ jobs:
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
           BLOTATO_API_KEY: ${{ secrets.BLOTATO_API_KEY }}
           BLOTATO_TIKTOK_ACCOUNT_ID: ${{ secrets.BLOTATO_TIKTOK_ACCOUNT_ID }}
+          WORKER_INGEST_URL: ${{ secrets.WORKER_INGEST_URL }}
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
           OUT_DIR: pipeline/out
         run: python pipeline/cinematic.py ${{ github.event.inputs.topic && format('--topic "{0}"', github.event.inputs.topic) || '' }}
       - if: always()
