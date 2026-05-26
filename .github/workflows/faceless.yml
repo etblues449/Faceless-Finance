@@ -1,0 +1,38 @@
+name: Faceless Finance
+
+# Times are UTC (GitHub cron has no timezone). Late May = BST (UTC+1), so these hit
+# 16:00 Wed / 17:00 Fri / 11:00 Sun London. Bump each hour by 1 in winter for exactness.
+on:
+  schedule:
+    - cron: "0 15 * * 3"   # Wed 16:00 London (BST)
+    - cron: "0 16 * * 5"   # Fri 17:00 London (BST)
+    - cron: "0 10 * * 0"   # Sun 11:00 London (BST)
+  workflow_dispatch: {}
+
+jobs:
+  make-and-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Run pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          HEDRA_API_KEY: ${{ secrets.HEDRA_API_KEY }}
+          PRESENTER_IMAGE_URL: ${{ secrets.PRESENTER_IMAGE_URL }}
+          POST_TO_TIKTOK: ${{ vars.POST_TO_TIKTOK }}
+          BLOTATO_API_KEY: ${{ secrets.BLOTATO_API_KEY }}
+          BLOTATO_TIKTOK_ACCOUNT_ID: ${{ secrets.BLOTATO_TIKTOK_ACCOUNT_ID }}
+        run: python pipeline/faceless_finance.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-video
+          path: pipeline/out/*.mp4
+          if-no-files-found: ignore
