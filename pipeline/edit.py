@@ -1,11 +1,22 @@
-"""ffmpeg editor: normalize -> (mux narration over motion) -> concat -> burn captions.
-All clips become 1080x1920 / 30fps / yuv420p / stereo aac so concat is seamless."""
+"""ffmpeg editor: normalize -> concat -> burn punchy chunked captions.
+All clips become 1080x1920 / 30fps / yuv420p / stereo aac so concat is seamless.
+Captions are short word-groups (karaoke-style), not full static sentences, which
+reads as a real Short rather than a documentary subtitle."""
 from __future__ import annotations
 import os, subprocess, json, textwrap
 
 W, H, FPS = 1080, 1920, 30
 VF = (f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
       f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={FPS},format=yuv420p")
+
+# Punchy, readable caption style. Heavy outline + shadow so it survives any background.
+CAPTION_STYLE = (
+    "FontName=DejaVu Sans,Fontsize=11,Bold=1,"
+    "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H00000000,"
+    "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=120"
+)
+CAPTION_MAX_WORDS = 3          # words per on-screen chunk
+CAPTION_UPPERCASE = True       # the recognisable Shorts caption look
 
 def _run(cmd):
     p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -50,13 +61,35 @@ def normalize_clip(video: str, out: str, narration: str | None = None) -> float:
     _run(cmd); return probe_duration(out)
 
 def _ts(t: float) -> str:
-    h=int(t//3600); m=int((t%3600)//60); s=int(t%60); ms=int((t-int(t))*1000)
+    h=int(t//3600); m=int((t%3600)//60); s=int(t%60); ms=int(round((t-int(t))*1000))
+    if ms==1000: s+=1; ms=0
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+def chunk_captions(text: str, start: float, end: float,
+                   max_words: int = CAPTION_MAX_WORDS) -> list[tuple[float,float,str]]:
+    """Split one spoken line into short on-screen chunks, time-sliced across the
+    shot proportionally to each chunk's word count. This is what makes captions
+    feel paced to the voice instead of a static block."""
+    words = text.strip().split()
+    if not words:
+        return []
+    groups = [words[i:i+max_words] for i in range(0, len(words), max_words)]
+    span = max(end - start, 0.001)
+    total = len(words)
+    segs, t = [], start
+    for g in groups:
+        share = span * (len(g) / total)
+        a, b = t, min(t + share, end)
+        txt = " ".join(g)
+        if CAPTION_UPPERCASE: txt = txt.upper()
+        segs.append((a, b, txt))
+        t = b
+    return segs
 
 def build_srt(segments: list[tuple[float,float,str]], path: str):
     lines=[]
     for i,(a,b,txt) in enumerate(segments,1):
-        wrapped="\n".join(textwrap.wrap(txt.strip(), width=20)[:2]) or " "
+        wrapped="\n".join(textwrap.wrap(txt.strip(), width=18)[:2]) or " "
         lines.append(f"{i}\n{_ts(a)} --> {_ts(b)}\n{wrapped}\n")
     open(path,"w").write("\n".join(lines))
 
@@ -67,9 +100,7 @@ def concat(norm_paths: list[str], out: str):
     os.remove(lst)
 
 def burn_captions(video: str, srt: str, out: str):
-    style=("FontName=DejaVu Sans,Fontsize=8,Bold=1,PrimaryColour=&H00FFFFFF,"
-           "OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90")
-    _run(["ffmpeg","-y","-i",video,"-vf",f"subtitles={srt}:force_style='{style}'",
+    _run(["ffmpeg","-y","-i",video,"-vf",f"subtitles={srt}:force_style='{CAPTION_STYLE}'",
           "-c:v","libx264","-preset","veryfast","-crf","20","-c:a","copy",out])
 
 def stitch(shots, out_path: str, work_dir: str) -> str:
@@ -81,10 +112,11 @@ def stitch(shots, out_path: str, work_dir: str) -> str:
             raise RuntimeError(f"shot {s.id}: missing clip")
         np_=os.path.join(work_dir,f"norm_{s.id}.mp4")
         # Every shot's clip already carries its audio (Hedra bakes the voice in),
-        # so we normalise and keep the clip's own track — no re-muxing.
+        # so we normalise and keep the clip's own track - no re-muxing.
         dur=normalize_clip(s.clip_path, np_, None)
         norm.append(np_)
-        if s.vo.strip(): segs.append((t, t+dur, s.vo))
+        if s.vo.strip():
+            segs.extend(chunk_captions(s.vo, t, t+dur))
         t+=dur
     joined=os.path.join(work_dir,"_joined.mp4")
     concat(norm, joined)
