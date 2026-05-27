@@ -2,20 +2,24 @@
 from __future__ import annotations
 import json, requests
 from render.base import Shot, ShotPlan
-
 SYSTEM = (
  "You are the director+writer for a faceless UK personal-finance short fronted by a "
- "Chartered Accountant. Output a CINEMATIC multi-shot plan for a 30-45s vertical (9:16) video. "
- "Rules: UK context (ISA, pension, HMRC, £). Credible, specific, no hype, no emojis. "
- "Open with a 1-line hook to camera, then move through walking/b-roll shots with voiceover, "
- "end on a payoff to camera. 4 shots total."
+ "Chartered Accountant. Output a CINEMATIC plan for a ~30s vertical (9:16) video. "
+ "UK context (ISA, pension, HMRC, GBP). Credible, specific, punchy, no hype, no emojis. "
+ "The presenter is a real person in their real setting; you CANNOT teleport them to new "
+ "locations. Shots are either 'to_camera' (speaking to camera) or 'motion' (the SAME "
+ "presenter with cinematic CAMERA MOVEMENT - slow push-in, gentle pan, rack focus - and "
+ "subtle natural motion). Never describe a different place or object-only b-roll."
 )
 INSTRUCT = (
  "Return ONLY valid JSON, no markdown, no preamble, with this exact shape:\n"
  '{"title": str, "caption": str (<=150 chars, 2-3 hashtags), '
- '"shots": [{"kind": "to_camera|walk|broll", "prompt": str (cinematic visual: camera move, '
- 'setting, lighting, wardrobe smart-casual), "vo": str (the spoken line), "seconds": int 4-8}]}'
+ '"shots": [{"kind": "to_camera|motion", "prompt": str (camera move + mood only, e.g. '
+ "'slow cinematic push-in, shallow depth of field, confident'), \"vo\": str (ONE short "
+ 'spoken sentence, max ~14 words), "seconds": int 4-7}]}. '
+ "Exactly 4 shots, total spoken time ~30s: open to_camera, two motion shots, close to_camera."
 )
+
 
 def parse_plan(text: str) -> ShotPlan:
     t = text.strip()
@@ -42,21 +46,18 @@ def generate(topic: str, cfg) -> ShotPlan:
     txt = "".join(b.get("text","") for b in r.json().get("content",[]) if b.get("type")=="text")
     return parse_plan(txt)
 
+
 def fallback_plan(topic: str) -> ShotPlan:
     return ShotPlan(
         title=f"{topic} (auto)",
-        caption=f"{topic} explained by a UK accountant. #UKfinance #money #ISA",
+        caption=f"{topic} - explained by a UK accountant. #UKfinance #money #ISA",
         shots=[
-          Shot(1,"to_camera",
-               "Medium close-up, presenter to camera, smart-casual, soft window light, shallow depth of field.",
-               f"Here's what most people get wrong about {topic}.", 5),
-          Shot(2,"walk",
-               "Tracking dolly shot, presenter walking through a sunlit modern city street, golden hour, cinematic.",
-               "The rules quietly reward the people who plan ahead.", 7),
-          Shot(3,"broll",
-               "Close-up b-roll of a phone showing a banking app and rising chart, clean desk, daylight.",
-               "A small move now compounds into thousands later.", 6),
-          Shot(4,"to_camera",
-               "Medium close-up, presenter to camera, confident, soft light, plain modern background.",
-               "Do this before the tax year ends. Follow for more.", 5),
+          Shot(1,"to_camera","Medium close-up, presenter to camera, soft light, confident.",
+               f"Most people get {topic} completely wrong.", 5),
+          Shot(2,"motion","Slow cinematic push-in on the presenter, shallow depth of field, subtle motion.",
+               "The tax rules quietly reward whoever plans ahead.", 7),
+          Shot(3,"motion","Gentle pan across the presenter, golden tone, calm confident energy.",
+               "A small move now compounds into thousands later.", 7),
+          Shot(4,"to_camera","Medium close-up, presenter to camera, direct and warm.",
+               "Sort it before the tax year ends. Follow for more.", 6),
         ])

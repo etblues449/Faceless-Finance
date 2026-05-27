@@ -46,7 +46,7 @@ class HedraEngine:
         body = {"type": "video", "ai_model_id": model_id,
                 "start_keyframe_id": image_id, "audio_id": audio_id,
                 "generated_video_inputs": {"text_prompt": prompt or "",
-                                           "aspect_ratio": "9:16", "resolution": "540p"}}
+                                           "aspect_ratio": "9:16", "resolution": self.cfg.hedra_resolution}}
         r = requests.post(f"{self.base}/generations", headers=self.h, json=body, timeout=120)
         if r.status_code not in (200, 201, 202):
             raise RenderError(f"Hedra generations {r.status_code}: {r.text[:400]}")
