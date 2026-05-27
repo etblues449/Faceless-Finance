@@ -80,8 +80,9 @@ def stitch(shots, out_path: str, work_dir: str) -> str:
         if not s.clip_path or not os.path.exists(s.clip_path):
             raise RuntimeError(f"shot {s.id}: missing clip")
         np_=os.path.join(work_dir,f"norm_{s.id}.mp4")
-        narration = s.audio_path if s.kind!="to_camera" else None
-        dur=normalize_clip(s.clip_path, np_, narration)
+        # Every shot's clip already carries its audio (Hedra bakes the voice in),
+        # so we normalise and keep the clip's own track — no re-muxing.
+        dur=normalize_clip(s.clip_path, np_, None)
         norm.append(np_)
         if s.vo.strip(): segs.append((t, t+dur, s.vo))
         t+=dur

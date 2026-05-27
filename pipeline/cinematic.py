@@ -38,7 +38,7 @@ class MockEngine:
         subprocess.run(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
         return out
     def render_to_camera(self,shot,image_url): return self._make(shot,"navy",True)
-    def render_motion(self,shot,image_url):     return self._make(shot,"teal",False)
+    def render_motion(self,shot,image_url):     return self._make(shot,"teal",True)
 
 def run(cfg: Config, topic=None, dry_run=False, selftest=False) -> str:
     os.makedirs(cfg.out_dir, exist_ok=True)
@@ -61,9 +61,12 @@ def run(cfg: Config, topic=None, dry_run=False, selftest=False) -> str:
 
     presenter = cfg.presenter_url; fullbody = cfg.fullbody_url or cfg.presenter_url
     for s in plan.shots:
-        if s.vo.strip():
-            ap=os.path.join(cfg.out_dir,f"vo_{s.id}.mp3")
-            s.audio_path = voice.silent(min(s.seconds,6), ap) if selftest else voice.tts(s.vo, cfg, ap)
+        # Hedra (both Avatar and Omnia) needs an audio track on every shot.
+        ap=os.path.join(cfg.out_dir,f"vo_{s.id}.mp3")
+        if selftest or not s.vo.strip():
+            s.audio_path = voice.silent(min(s.seconds,6), ap)
+        else:
+            s.audio_path = voice.tts(s.vo, cfg, ap)
         if s.kind=="to_camera":
             s.clip_path = tc.render_to_camera(s, presenter)
         else:
