@@ -56,7 +56,7 @@ def _ts(t: float) -> str:
 def build_srt(segments: list[tuple[float,float,str]], path: str):
     lines=[]
     for i,(a,b,txt) in enumerate(segments,1):
-        wrapped="\n".join(textwrap.wrap(txt.strip(), width=28)[:3]) or " "
+        wrapped="\n".join(textwrap.wrap(txt.strip(), width=20)[:2]) or " "
         lines.append(f"{i}\n{_ts(a)} --> {_ts(b)}\n{wrapped}\n")
     open(path,"w").write("\n".join(lines))
 
@@ -67,8 +67,8 @@ def concat(norm_paths: list[str], out: str):
     os.remove(lst)
 
 def burn_captions(video: str, srt: str, out: str):
-    style=("FontName=DejaVu Sans,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,"
-           "OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=140")
+    style=("FontName=DejaVu Sans,Fontsize=8,Bold=1,PrimaryColour=&H00FFFFFF,"
+           "OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=90")
     _run(["ffmpeg","-y","-i",video,"-vf",f"subtitles={srt}:force_style='{style}'",
           "-c:v","libx264","-preset","veryfast","-crf","20","-c:a","copy",out])
 

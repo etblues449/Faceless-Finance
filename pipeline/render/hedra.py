@@ -29,12 +29,18 @@ class HedraEngine:
         if r.status_code not in (200, 201): raise RenderError(f"upload {r.status_code}: {r.text[:300]}")
         return asset_id
 
-    def _image_asset(self, url):
-        if url in self._img_cache: return self._img_cache[url]
-        data = requests.get(url, timeout=120).content
-        aid = self._create_asset("presenter.png", "image")
-        self._upload(aid, data, "presenter.png", "image/png")
-        self._img_cache[url] = aid; return aid
+    def _image_asset(self, ref):
+        if ref in self._img_cache: return self._img_cache[ref]
+        if os.path.exists(ref):                      # committed repo image (robust: works private or public)
+            data = open(ref, "rb").read()
+            ext = os.path.splitext(ref)[1].lower()
+            ct = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+            fn = os.path.basename(ref)
+        else:
+            data = requests.get(ref, timeout=120).content; ct = "image/png"; fn = "presenter.png"
+        aid = self._create_asset(fn, "image")
+        self._upload(aid, data, fn, ct)
+        self._img_cache[ref] = aid; return aid
 
     def _audio_asset(self, path):
         aid = self._create_asset(os.path.basename(path), "audio")
