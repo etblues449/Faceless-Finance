@@ -32,8 +32,8 @@ jobs:
           RENDER_TO_CAMERA: hedra
           RENDER_MOTION: hedra
           HEDRA_API_KEY: ${{ secrets.HEDRA_API_KEY }}
-          PRESENTER_IMAGE_URL: https://raw.githubusercontent.com/etblues449/Faceless-Finance/main/visual-references/elliot-headshot-walk.png
-          FULLBODY_IMAGE_URL: https://raw.githubusercontent.com/etblues449/Faceless-Finance/main/visual-references/elliot-fullbody-walk.png
+          PRESENTER_IMAGE_URL: visual-references/elliot-headshot-walk.png
+          FULLBODY_IMAGE_URL: visual-references/elliot-fullbody-walk.png
           POST_TO_TIKTOK: ${{ vars.POST_TO_TIKTOK }}
           WORKER_PUBLISH_URL: ${{ secrets.WORKER_PUBLISH_URL }}
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
