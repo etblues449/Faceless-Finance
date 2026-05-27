@@ -7,6 +7,10 @@ compatibility_date = "2026-05-01"
 [vars]
 ALLOWED_ORIGIN = ""
 APP_ROOT_PATH = "/Faceless-Finance"
+GH_OWNER = "etblues449"
+GH_REPO = "Faceless-Finance"
+GH_WORKFLOW = "faceless.yml"
+GH_REF = "main"
 
 # ── Generation secrets (Design A) ───────────────────────────────────────────
 # The /proxy/* endpoint injects these server-side so the browser never holds a
@@ -51,3 +55,12 @@ APP_ROOT_PATH = "/Faceless-Finance"
 #   wrangler secret put META_APP_ID
 #   wrangler secret put META_APP_SECRET
 #   wrangler secret put ENCRYPTION_KEY     (random 32+ char string)
+
+# ── App control plane (the mobile app's /api/* endpoints) ────────────────────
+# Lets the app trigger the GitHub Actions render and review the result.
+# GH_OWNER/GH_REPO/GH_WORKFLOW can be plain vars; GH_TOKEN + INGEST_SECRET are secrets.
+#
+# Secrets to set:
+#   wrangler secret put GH_TOKEN        (fine-grained PAT: Actions read+write on Faceless-Finance)
+#   wrangler secret put INGEST_SECRET   (any long random string; also a GitHub repo Secret of the same name)
+# Reuse the existing KV (TOKENS) for review storage — enable the [[kv_namespaces]] block above.

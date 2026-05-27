@@ -1,0 +1,7 @@
+# build / run artifacts
+pipeline/out/
+**/__pycache__/
+*.pyc
+*.env
+.env
+node_modules/
