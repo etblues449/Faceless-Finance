@@ -23,6 +23,7 @@ class Config:
         self.hedra_base       = e.get("HEDRA_BASE", "https://api.hedra.com/web-app/public")
         self.hedra_avatar_model = e.get("HEDRA_AVATAR_MODEL_ID", "26f0fc66-152b-40ab-abed-76c43df99bc8")
         self.hedra_omnia_model  = e.get("HEDRA_OMNIA_MODEL_ID",  "ab372b84-432f-44f5-bacc-c2542465f712")
+        self.hedra_resolution   = e.get("HEDRA_RESOLUTION", "720p")
         # Higgsfield (premium / optional)
         self.hf_token         = e.get("HIGGSFIELD_TOKEN", "")
         self.hf_base          = e.get("HIGGSFIELD_API_BASE", "https://api.higgsfield.ai/v1")
