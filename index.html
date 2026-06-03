@@ -210,6 +210,7 @@ textarea.input{min-height:90px;resize:vertical;font-family:'DM Mono',monospace;f
   <button class="tab" data-tab="schedule"><div class="tab-i">◫</div><div>Cal</div></button>
   <button class="tab" data-tab="ideas"><div class="tab-i">✦</div><div>Ideas</div></button>
   <button class="tab" data-tab="script"><div class="tab-i">◈</div><div>Script</div></button>
+  <button class="tab" data-tab="avatar"><div class="tab-i">🎬</div><div>Avatar</div></button>
   <button class="tab" data-tab="history"><div class="tab-i">↗</div><div>Runs</div></button>
 </nav>
 
@@ -763,6 +764,90 @@ PAGES.script = () => {
         };
         const text = await callClaude(sys, prompts[mode]);
         out.textContent = text;
+      } catch(e){
+        out.textContent = `Error: ${e.message}`;
+      }
+      out.classList.remove('loading');
+    };
+  }, 0);
+
+  return el;
+};
+
+PAGES.avatar = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  el.innerHTML = html`
+    <div class="page-title">Avatar Video</div>
+    <div class="page-sub"><span class="accent">Higgsfield Soul + Seedance 2.0</span> · voice + cinematic</div>
+
+    <div class="card">
+      <div class="card-title">Voice</div>
+      <select class="input" id="avatar-voice" style="margin-bottom:12px">
+        <option value="elevenlabs-pvc" selected>ElevenLabs PVC — "JB Blues Script"</option>
+        <option value="elevenlabs-professional">ElevenLabs — Other Professional</option>
+        <option value="google-tts">Google TTS (EN-GB)</option>
+      </select>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Selected voice will be used for lip-sync reference in animation.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Script</div>
+      <textarea class="input" id="avatar-script" placeholder="Paste your 15–60s script here (or generate from Script tab)…" style="min-height:120px;margin-bottom:12px"></textarea>
+      <button class="btn btn-accent" id="render-avatar">▶ Render Avatar Video</button>
+      <div class="ai-output" id="avatar-out" style="margin-top:12px">Enter script and tap render…</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Character Reference</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.6">
+        <strong>British man, late twenties</strong> — athletic build, short cropped brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm.
+        <br><br>Smart-casual British everyday: fitted plain tees, polos, open-collar fitted shirts, thin gold chain at neckline. Confident, friendly, direct eye contact.
+        <br><br><a href="CHARACTER_BIBLE.md" style="color:var(--accent);text-decoration:none">Full Character Bible →</a>
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    const btn = $('#render-avatar');
+    const voice = $('#avatar-voice');
+    const script = $('#avatar-script');
+    const out = $('#avatar-out');
+
+    btn.onclick = async () => {
+      const scriptText = script.value.trim();
+      const voiceOption = voice.value;
+
+      if(!scriptText){
+        out.textContent = 'Please enter a script first.';
+        return;
+      }
+
+      out.classList.add('loading');
+      out.textContent = '⬡ Initializing avatar render…\nThis will create a Soul keyframe, generate audio, and animate with Seedance 2.0.\nExpect 5–10 minutes for a 15–30s clip.';
+
+      try {
+        const payload = {
+          source: 'avatar-pipeline',
+          script: scriptText,
+          voice: voiceOption,
+          soul_id: 'JB-FF-2026',
+          location_hint: 'generic-london-street',
+          duration_hint: Math.min(Math.ceil(scriptText.split(' ').length / 140 * 60), 60)
+        };
+
+        const res = await fetch(CONFIG.WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if(!res.ok){
+          const t = await res.text().catch(()=>res.statusText);
+          throw new Error(`Render trigger failed (${res.status}): ${t}`);
+        }
+
+        out.textContent = '✓ Render queued. Check History tab for progress.\n\nPipeline:\n1. Generate ElevenLabs audio from script\n2. Create Soul keyframe (avatar at location)\n3. Animate with Seedance 2.0 (audio reference for lip-sync)\n4. Stitch final video\n5. Add TikTok AI label + FCA disclaimer';
       } catch(e){
         out.textContent = `Error: ${e.message}`;
       }
