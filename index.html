@@ -848,9 +848,288 @@ PAGES.avatar = () => {
 
   return el;
 };
-PAGES.library = stub('Library', 'All renders, searchable',         'Thumbnail grid of every render with status, filter, and one-tap download. Lands next.');
-PAGES.publish = stub('Publish', 'TikTok caption + disclosure',     'Caption templates, hashtag presets, auto-disclosure pinned comment. Manual paste flow. Lands next.');
-PAGES.settings = stub('Settings', 'Keys, character, schedule',     'API key management (server-side via Worker), avatar character spec, posting schedule. Lands next.');
+PAGES.library = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  const all = State.renders || [];
+  const filter = Storage.get('libraryFilter', 'all');
+
+  el.innerHTML = html`
+    <div class="page-title">Library</div>
+    <div class="page-sub"><span class="accent">${all.length}</span> renders · tap to inspect</div>
+
+    <div class="card">
+      <div class="card-title">Filter</div>
+      <div class="btn-row">
+        ${['all','success','running','pending','error'].map(f => html`
+          <button class="btn btn-sm ${filter === f ? 'btn-accent' : ''}" data-filter="${f}">${esc(f.toUpperCase())}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Renders</div>
+      <div id="lib-list">${all.length === 0 ? '<div class="empty">No renders yet. Go to Avatar to create one.</div>' : ''}</div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    const list = $('#lib-list');
+    const draw = () => {
+      const f = Storage.get('libraryFilter', 'all');
+      const filtered = f === 'all' ? all : all.filter(x => x.status === f);
+      if (filtered.length === 0) { list.innerHTML = '<div class="empty">No renders match "' + esc(f) + '".</div>'; return; }
+      list.innerHTML = filtered.map(x => html`
+        <div class="row" data-id="${esc(x.id)}" style="align-items:flex-start;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px;width:100%">
+            <div class="row-dot ${esc(x.status)}"></div>
+            <div class="row-main">
+              <div class="row-title">${esc((x.script || 'Render').slice(0, 80))}${x.script && x.script.length > 80 ? '…' : ''}</div>
+              <div class="row-meta">${esc(fmtDate(x.createdAt))} · ${esc(x.provider || 'wan2_7')} · ${esc(x.cost ? x.cost + ' cr' : '—')}</div>
+            </div>
+            <div class="row-tag">${esc((x.status || 'pending').toUpperCase())}</div>
+          </div>
+          ${x.videoUrl ? html`
+            <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="${esc(x.videoUrl)}"></video>
+            <div class="btn-row" style="width:100%">
+              <a class="btn btn-sm" href="${esc(x.videoUrl)}" download target="_blank" rel="noopener">⤓ Download</a>
+              <button class="btn btn-sm" data-copy="${esc(x.videoUrl)}">⧉ Copy URL</button>
+            </div>
+          ` : ''}
+          ${x.error ? '<div class="banner banner-error" style="margin:0;width:100%;font-size:12px">' + esc(x.error) + '</div>' : ''}
+        </div>
+      `).join('');
+      list.querySelectorAll('[data-copy]').forEach(b => {
+        b.onclick = async (e) => {
+          e.stopPropagation();
+          try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = '✓ Copied'; setTimeout(() => b.textContent = '⧉ Copy URL', 1200); }
+          catch { alert('Copy failed.'); }
+        };
+      });
+    };
+
+    el.querySelectorAll('[data-filter]').forEach(b => {
+      b.onclick = () => {
+        Storage.set('libraryFilter', b.dataset.filter);
+        el.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('btn-accent', x.dataset.filter === b.dataset.filter));
+        draw();
+      };
+    });
+    if (all.length) draw();
+  }, 0);
+
+  return el;
+};
+
+PAGES.publish = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  const lastSuccess = (State.renders || []).find(x => x.status === 'success');
+  const draft = Storage.get('publishDraft', { topic: '', hook: '', hashtags: '#UKFinance #PersonalFinance #TaxSaving #NotFinancialAdvice #AIGenerated' });
+
+  el.innerHTML = html`
+    <div class="page-title">Publish</div>
+    <div class="page-sub">TikTok caption · auto-disclosure · <span class="accent">manual paste</span> for safety</div>
+
+    ${lastSuccess && lastSuccess.videoUrl ? html`
+      <div class="card glow">
+        <div class="card-title">Most recent render — ready to publish</div>
+        <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000;margin-bottom:10px" src="${esc(lastSuccess.videoUrl)}"></video>
+        <div class="btn-row">
+          <a class="btn btn-accent" href="${esc(lastSuccess.videoUrl)}" download target="_blank" rel="noopener">⤓ Download MP4</a>
+          <a class="btn" href="https://www.tiktok.com/upload" target="_blank" rel="noopener">↗ Open TikTok upload</a>
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="card">
+      <div class="card-title">Caption builder</div>
+      <input class="input" id="p-topic" placeholder="Topic — e.g. £100k tax taper" style="margin-bottom:8px" value="${esc(draft.topic)}">
+      <input class="input" id="p-hook" placeholder="Hook line — e.g. Most people get this wrong" style="margin-bottom:8px" value="${esc(draft.hook)}">
+      <input class="input" id="p-hashtags" placeholder="Hashtags" style="margin-bottom:0" value="${esc(draft.hashtags)}">
+    </div>
+
+    <div class="card">
+      <div class="card-title">Generated caption</div>
+      <textarea class="input" id="p-caption" readonly style="min-height:160px;font-family:var(--mono);font-size:12px"></textarea>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-accent" id="p-copy-caption">⧉ Copy caption</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pinned comment (post first reply)</div>
+      <textarea class="input" id="p-pinned" readonly style="min-height:140px;font-family:var(--mono);font-size:12px"></textarea>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-accent" id="p-copy-pinned">⧉ Copy pinned</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Posting checklist</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.8">
+        ☐ Download MP4 (top of page)<br>
+        ☐ Open TikTok upload, attach MP4<br>
+        ☐ Paste the caption<br>
+        ☐ Toggle on TikTok's "AI-generated content" disclosure label<br>
+        ☐ Post · then immediately reply with the pinned comment<br>
+        ☐ Pin your reply (long-press → Pin comment)<br>
+        ☐ Log the post URL in Library / your spreadsheet
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    const topic = $('#p-topic');
+    const hook  = $('#p-hook');
+    const tags  = $('#p-hashtags');
+    const cap   = $('#p-caption');
+    const pin   = $('#p-pinned');
+
+    const draw = () => {
+      const t = topic.value || '[topic]';
+      const h = hook.value || '[hook line]';
+      cap.value = h + '\n\n'
+        + '🇬🇧 UK personal finance education.\n\n'
+        + '⚠️ This video is AI-generated.\n'
+        + '🤖 Avatar: Higgsfield Soul · Animation: Wan 2.7\n'
+        + '🎤 Voice: ElevenLabs voice clone\n\n'
+        + 'Learn more: https://github.com/etblues449/Faceless-Finance\n\n'
+        + tags.value;
+      pin.value = '🔔 IMPORTANT DISCLOSURE\n\n'
+        + 'This video is educational content about UK personal finance.\n\n'
+        + '❌ This is NOT financial advice.\n'
+        + '❌ I am NOT an FCA-authorised adviser.\n\n'
+        + '✅ Always consult an FCA-authorised adviser about your specific situation.\n'
+        + '✅ Tax laws change. Verify current rules before acting.\n\n'
+        + '🤖 AI-GENERATED:\n'
+        + '✓ Avatar: Higgsfield Soul (locked character)\n'
+        + '✓ Animation: Wan 2.7 (audio-driven lip-sync)\n'
+        + '✓ Voice: ElevenLabs voice clone\n'
+        + 'The presenter is not a real person.\n\n'
+        + 'C2PA metadata embedded — verify at https://verify.contentauthenticity.org/';
+      Storage.set('publishDraft', { topic: topic.value, hook: hook.value, hashtags: tags.value });
+    };
+    [topic, hook, tags].forEach(inp => { inp.oninput = draw; });
+    draw();
+
+    const copyOf = (sel, btn) => async () => {
+      try { await navigator.clipboard.writeText($(sel).value); btn.textContent = '✓ Copied'; setTimeout(() => btn.textContent = btn.dataset.orig, 1200); }
+      catch { alert('Copy failed.'); }
+    };
+    const cc = $('#p-copy-caption'); cc.dataset.orig = cc.textContent; cc.onclick = copyOf('#p-caption', cc);
+    const cp = $('#p-copy-pinned');  cp.dataset.orig = cp.textContent; cp.onclick = copyOf('#p-pinned', cp);
+  }, 0);
+
+  return el;
+};
+
+PAGES.settings = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  const s = State.settings || {};
+
+  el.innerHTML = html`
+    <div class="page-title">Settings</div>
+    <div class="page-sub">Keys · character · schedule · <span class="accent">stored locally</span> until Worker proxy lands</div>
+
+    <div class="banner banner-warn">
+      <b>⚠ Local storage only (for now).</b> API keys stay in your browser's localStorage on this device. The Cloudflare Worker proxy with server-side key injection is the next phase — when that ships, keys move to Worker secrets and the browser stops seeing them.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Anthropic (Claude — for Script tab)</div>
+      <input class="input" id="set-anthropicKey" type="password" placeholder="sk-ant-…" value="${esc(s.anthropicKey || '')}" style="margin-bottom:8px">
+      <select class="input" id="set-anthropicModel">
+        <option value="claude-sonnet-4-5" ${(s.anthropicModel || 'claude-sonnet-4-5') === 'claude-sonnet-4-5' ? 'selected' : ''}>Claude Sonnet 4.5</option>
+        <option value="claude-opus-4-1" ${s.anthropicModel === 'claude-opus-4-1' ? 'selected' : ''}>Claude Opus 4.1</option>
+        <option value="claude-haiku-4-5" ${s.anthropicModel === 'claude-haiku-4-5' ? 'selected' : ''}>Claude Haiku 4.5 (cheap)</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-title">ElevenLabs (voice)</div>
+      <input class="input" id="set-elevenlabsKey" type="password" placeholder="API key" value="${esc(s.elevenlabsKey || '')}" style="margin-bottom:8px">
+      <input class="input" id="set-elevenlabsVoiceId" placeholder="Voice ID (your PVC)" value="${esc(s.elevenlabsVoiceId || '')}" style="margin-bottom:8px">
+      <select class="input" id="set-elevenlabsModel">
+        <option value="eleven_flash_v2" ${(s.elevenlabsModel || 'eleven_flash_v2') === 'eleven_flash_v2' ? 'selected' : ''}>eleven_flash_v2 (fast, cheap)</option>
+        <option value="eleven_multilingual_v2" ${s.elevenlabsModel === 'eleven_multilingual_v2' ? 'selected' : ''}>eleven_multilingual_v2</option>
+        <option value="eleven_turbo_v2_5" ${s.elevenlabsModel === 'eleven_turbo_v2_5' ? 'selected' : ''}>eleven_turbo_v2_5</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Higgsfield (avatar + animation)</div>
+      <input class="input" id="set-higgsfieldKey" type="password" placeholder="API key" value="${esc(s.higgsfieldKey || '')}" style="margin-bottom:8px">
+      <input class="input" id="set-higgsfieldSecret" type="password" placeholder="API secret" value="${esc(s.higgsfieldSecret || '')}" style="margin-bottom:8px">
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.5">
+        Get from <a href="https://cloud.higgsfield.ai/api-keys" target="_blank" rel="noopener">cloud.higgsfield.ai/api-keys</a>. Key AND secret are both required (auth header: <code>Key key:secret</code>).
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Character (locked)</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+        <b style="color:var(--text)">JB-FF-2026</b> · soul_id <code>${esc(CONFIG.AVATAR.soul_id)}</code><br>
+        British man, late 20s, athletic, brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm. Smart-casual British everyday.<br><br>
+        To swap character, generate a new Higgsfield Soul and update <code>CONFIG.AVATAR.soul_id</code> in source.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Schedule</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+        Current cadence: <b style="color:var(--text)">Mon · Wed · Fri</b> at <b style="color:var(--text)">09:00 London time</b>.<br>
+        Edit <code>CONFIG.POST_DAYS</code> + <code>CONFIG.POST_TIMES</code> in source to change. (UI editor in a future phase.)
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Data</div>
+      <div class="btn-row">
+        <button class="btn" id="set-export">⤓ Export settings + renders (JSON)</button>
+        <button class="btn" id="set-reset" style="border-color:var(--red);color:var(--red)">⌫ Reset all data</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Save</div>
+      <button class="btn btn-accent" id="set-save">✓ Save settings</button>
+      <span id="set-saved" style="margin-left:10px;font-size:12px;color:var(--primary);font-family:var(--mono);opacity:0;transition:opacity .2s">Saved</span>
+    </div>
+  `;
+
+  setTimeout(() => {
+    $('#set-save').onclick = () => {
+      const next = {
+        anthropicKey:        $('#set-anthropicKey').value.trim(),
+        anthropicModel:      $('#set-anthropicModel').value,
+        elevenlabsKey:       $('#set-elevenlabsKey').value.trim(),
+        elevenlabsVoiceId:   $('#set-elevenlabsVoiceId').value.trim(),
+        elevenlabsModel:     $('#set-elevenlabsModel').value,
+        higgsfieldKey:       $('#set-higgsfieldKey').value.trim(),
+        higgsfieldSecret:    $('#set-higgsfieldSecret').value.trim(),
+      };
+      set({ settings: next });
+      const saved = $('#set-saved'); saved.style.opacity = '1';
+      setTimeout(() => { saved.style.opacity = '0'; }, 1500);
+    };
+    $('#set-export').onclick = () => {
+      const blob = new Blob([JSON.stringify({ settings: State.settings, renders: State.renders }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'faceless-finance-' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+    };
+    $('#set-reset').onclick = () => {
+      if (!confirm('Wipe all local settings AND render history? This cannot be undone.')) return;
+      Storage.del('settings'); Storage.del('renders'); Storage.del('scriptDraft'); Storage.del('avatarScript'); Storage.del('publishDraft'); Storage.del('libraryFilter');
+      set({ settings: {}, renders: [] });
+    };
+  }, 0);
+
+  return el;
+};
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderApp() {
