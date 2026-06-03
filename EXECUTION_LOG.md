@@ -92,16 +92,34 @@ to a real FFmpeg service.
 
 User supplied 5 voice files via uploads. Selected `a916aa0b-4.m4a` (1:55, shortest = most focused take). Trimmed with FFmpeg to seconds 3–18 to skip intro silence, mono 44.1kHz AAC. Uploaded to Higgsfield as audio media. Seedance render fired.
 
-### Seedance Job
+### Render Attempts
 
-- **Job ID**: `222b410c-15c2-46d7-881d-9cd19bc0a899`
-- **Model**: Seedance 2.0 (Bytedance)
-- **Status**: `pending` → in progress (queued ~05:17 UTC)
-- **Start image**: `9685f267-3273-4eda-8dca-c77fa4ce9d21` (Soul keyframe, Southwark street)
-- **Audio reference**: `6cd8b16f-0429-4cf1-9379-472572cdc296` (user's voice, 15s)
-- **Output spec**: 1080p, 9:16, 15s, std mode
-- **Cost**: 135 credits (balance: 2,823 → ~2,688 after)
-- **ETA**: ~60 minutes (~06:17 UTC)
+**Attempt 1 — Seedance 2.0 @ 1080p std (FAILED — refunded)**
+- Job: `222b410c-15c2-46d7-881d-9cd19bc0a899`
+- Failed in ~23s; root cause: server auto-set `generate_audio: true`
+  which conflicts with passing an audio reference (mutually exclusive).
+- 135 credits refunded.
+
+**Attempt 2 — Seedance 2.0 @ 720p std (FAILED — refunded)**
+- Job: `a1f5c7d7-636d-4cb5-88a7-463bad488dc0`
+- Same auto-applied `generate_audio: true` conflict.
+- Credits refunded.
+
+**Attempt 3 — Wan 2.7 @ 720p (IN FLIGHT)**
+- Job: `e7a6c9f6-0f9a-4a02-a580-50171109d83b`
+- Model selected because its description literally says "Synchronized
+  audio, character-consistent video" and audio is a first-class media role.
+- Status: `pending`
+- No conflicting params auto-applied
+- Cost: 22.5 credits (6× cheaper than Seedance)
+- Same inputs: keyframe `9685f267…` + audio `6cd8b16f…`
+- Spec: 720p, 9:16, 15s
+
+### Lesson Captured
+
+Seedance 2.0's `generate_audio` auto-default conflicts with audio reference.
+For talking-head lip-sync, use **Wan 2.7** (purpose-built for sync+audio)
+or pre-validate Seedance params to ensure `generate_audio: false` is forced.
 
 ### Acceptance Criteria
 
