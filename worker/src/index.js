@@ -271,6 +271,59 @@ async function handleApi(request, env, parts, url) {
   return error(env, request, 'unknown /api route', 404);
 }
 
+// ── Audio hosting (so Higgsfield/Wan can fetch ElevenLabs output) ─────────────
+// POST /audio/upload body: raw audio bytes (Content-Type: audio/*).
+// Stores in KV with 24h TTL. Returns { url } pointing back to the Worker.
+// GET /audio/<id>.mp3 streams the bytes back with the original content-type.
+// Limits keep KV cheap and prevent it being abused as a generic blob host.
+const MAX_AUDIO_BYTES = 5 * 1024 * 1024;     // 5MB — plenty for 60s ElevenLabs
+const AUDIO_TTL_SECONDS = 24 * 60 * 60;      // 24h
+
+async function handleAudioUpload(request, env, url) {
+  if (!env.TOKENS) return error(env, request, '/audio/upload needs KV namespace TOKENS', 503);
+  if (env.PROXY_TOKEN) {
+    const t = request.headers.get('x-proxy-token') || url.searchParams.get('__pt') || '';
+    if (t !== env.PROXY_TOKEN) return error(env, request, 'invalid proxy token', 401);
+  }
+  const ct = request.headers.get('content-type') || 'application/octet-stream';
+  if (!ct.startsWith('audio/')) return error(env, request, 'content-type must be audio/*', 415);
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength === 0) return error(env, request, 'empty body', 400);
+  if (buf.byteLength > MAX_AUDIO_BYTES) return error(env, request, `audio too large (max ${MAX_AUDIO_BYTES} bytes)`, 413);
+  // Random URL-safe id. crypto.randomUUID strips dashes for a tighter URL.
+  const id = crypto.randomUUID().replace(/-/g, '');
+  const key = 'audio:' + id;
+  await env.TOKENS.put(key, buf, {
+    expirationTtl: AUDIO_TTL_SECONDS,
+    metadata: { ct, size: buf.byteLength, created: Date.now() },
+  });
+  const base = `${url.protocol}//${url.host}`;
+  const ext = ct === 'audio/mpeg' ? 'mp3' : ct === 'audio/wav' ? 'wav' : ct === 'audio/mp4' ? 'm4a' : 'bin';
+  const publicUrl = `${base}/audio/${id}.${ext}`;
+  return jsonResponse(env, request, { url: publicUrl, id, content_type: ct, size: buf.byteLength, ttl_seconds: AUDIO_TTL_SECONDS });
+}
+
+async function handleAudioFetch(request, env, parts) {
+  if (!env.TOKENS) return error(env, request, '/audio/<id> needs KV namespace TOKENS', 503);
+  // parts[1] = "<id>.<ext>" — strip the extension; the id alone is the lookup key.
+  const idWithExt = parts[1] || '';
+  const id = idWithExt.replace(/\.[a-z0-9]+$/i, '');
+  if (!/^[a-f0-9]{32}$/i.test(id)) return error(env, request, 'invalid id', 400);
+  const { value, metadata } = await env.TOKENS.getWithMetadata('audio:' + id, { type: 'arrayBuffer' });
+  if (!value) return error(env, request, 'audio not found (expired or never uploaded)', 404);
+  const ct = (metadata && metadata.ct) || 'audio/mpeg';
+  return new Response(value, {
+    status: 200,
+    headers: {
+      ...corsHeaders(env, request),
+      'Content-Type': ct,
+      'Content-Length': String(value.byteLength),
+      'Cache-Control': `public, max-age=${AUDIO_TTL_SECONDS}, immutable`,
+      'X-Hosted-By': 'fincast-worker',
+    },
+  });
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return preflight(env, request);
@@ -279,6 +332,13 @@ export default {
     const parts = url.pathname.replace(/^\/|\/$/g, '').split('/');
 
     try {
+      // /audio/* — bring-your-own-blob host so Higgsfield can fetch ElevenLabs output
+      if (parts[0] === 'audio') {
+        if (parts[1] === 'upload' && request.method === 'POST') return handleAudioUpload(request, env, url);
+        if (parts.length >= 2 && request.method === 'GET') return handleAudioFetch(request, env, parts);
+        return error(env, request, 'unknown /audio route', 404);
+      }
+
       // GET / → status
       if (parts[0] === '' || parts[0] === 'health') {
         return jsonResponse(env, request, {
@@ -294,6 +354,7 @@ export default {
             publish: !!env.TOKENS,
             app_render: !!(env.GH_TOKEN && env.GH_OWNER && env.GH_REPO),
             app_review: !!env.TOKENS,
+            audio_host: !!env.TOKENS,    // /audio/* needs KV TOKENS
           },
           // Hosts whose generation secret is currently set — for verifying
           // `wrangler secret put` worked. Names only, never the key values.

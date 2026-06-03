@@ -821,14 +821,11 @@ PAGES.avatar = () => {
         }
 
         if ((voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro') && !audioUrl) {
-          if (!settings.elevenlabsKey || !settings.elevenlabsVoiceId) {
-            throw new Error('ElevenLabs not configured. Add the API key + voice ID in Settings, or paste an audio URL.');
+          if (!settings.elevenlabsVoiceId) {
+            throw new Error('No ElevenLabs voice ID. Add it in Settings, or paste an audio URL.');
           }
           status.innerHTML = '<span class="row-dot running"></span> Generating voice with ElevenLabs…';
-          // Route via Worker proxy — ELEVENLABS_KEY is injected server-side
-          // (Design A), but the proxy also passes through xi-api-key from
-          // the browser, so either works. We send no key from the browser
-          // and rely on the Worker secret.
+          // Worker injects ELEVENLABS_KEY server-side (Design A).
           const ttsRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
@@ -839,13 +836,20 @@ PAGES.avatar = () => {
             }),
           });
           if (!ttsRes.ok) throw new Error('ElevenLabs ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
-          const blob = await ttsRes.blob();
-          // Higgsfield needs a public URL, not a blob. For now we surface the
-          // blob locally and require the user to host it. Next phase: POST to
-          // Worker /audio/upload (R2-backed) to get a public URL.
-          audioUrl = URL.createObjectURL(blob);
-          result.innerHTML = '<div class="banner banner-info">✓ Voice generated locally. <a href="' + audioUrl + '" download="' + id + '.mp3">Download MP3</a> and paste a public URL in the Voice card to continue. (R2 audio-upload endpoint is the next phase.)</div>';
-          throw new Error('Audio is generated but lives in browser memory only. Wan 2.7 needs a public URL. Download it and paste a public-host URL in the Voice card.');
+          const audioBlob = await ttsRes.blob();
+
+          // Upload to Worker /audio/upload to get a public URL Higgsfield
+          // can fetch. 24h TTL is plenty for a render that finishes in 3 min.
+          status.innerHTML = '<span class="row-dot running"></span> Hosting audio (' + Math.round(audioBlob.size / 1024) + ' KB)…';
+          const upRes = await fetch(CONFIG.WORKER_BASE + '/audio/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': audioBlob.type || 'audio/mpeg' },
+            body: audioBlob,
+          });
+          if (!upRes.ok) throw new Error('Audio upload ' + upRes.status + ': ' + (await upRes.text()).slice(0, 200));
+          const upJson = await upRes.json();
+          audioUrl = upJson.url;
+          if (!audioUrl) throw new Error('Audio upload OK but no url in response: ' + JSON.stringify(upJson).slice(0, 200));
         }
 
         if (!audioUrl) {
