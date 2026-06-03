@@ -505,7 +505,151 @@ const stub = (title, sub, msg) => () => {
   return el;
 };
 
-PAGES.script  = stub('Script',  'AI-written, FCA-checked',         'Claude-powered script writer with live FCA review. Lands next.');
+PAGES.script = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  const draft = Storage.get('scriptDraft', { topic: '', mode: 'full', text: '' });
+
+  el.innerHTML = html`
+    <div class="page-title">Script</div>
+    <div class="page-sub">AI-written · <span class="accent">FCA-checked</span> · ready for Avatar tab</div>
+
+    <div class="card">
+      <div class="card-title">Brief</div>
+      <input class="input" id="s-topic" placeholder="Topic — e.g. £100k tax taper, ISA vs SIPP, salary sacrifice…" style="margin-bottom:10px" value="${esc(draft.topic)}">
+      <select class="input" id="s-mode" style="margin-bottom:12px">
+        <option value="full">Full 15–60s script</option>
+        <option value="hook">3 hook variations</option>
+        <option value="outline">Outline only</option>
+      </select>
+      <div class="btn-row">
+        <button class="btn btn-accent" id="s-generate">✦ Generate</button>
+        <button class="btn" id="s-clear">Clear</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Script</div>
+      <textarea class="input" id="s-text" placeholder="AI output appears here, or paste/type your own…">${esc(draft.text)}</textarea>
+      <div id="s-fca" style="margin-top:10px"></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-accent" id="s-send" disabled>→ Send to Avatar</button>
+        <button class="btn" id="s-copy">⧉ Copy</button>
+        <span id="s-meta" style="margin-left:auto;font-size:11px;color:var(--text-dim);font-family:var(--mono);align-self:center"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">House style — what's safe</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+        <b style="color:var(--text)">Education-first framing.</b> Explain how the rules work; let the viewer apply them.
+        <br><br>
+        ✓ "How the £100k allowance taper works" · "Consider whether X applies to you" · "Many people in your bracket might benefit from…"
+        <br>
+        ✗ "Guaranteed returns" · "You should buy X" · "I recommend Y" · "Best investment for everyone"
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    const topic = $('#s-topic');
+    const mode  = $('#s-mode');
+    const text  = $('#s-text');
+    const fca   = $('#s-fca');
+    const meta  = $('#s-meta');
+    const send  = $('#s-send');
+    mode.value = draft.mode || 'full';
+
+    const save = () => Storage.set('scriptDraft', { topic: topic.value, mode: mode.value, text: text.value });
+
+    const refresh = () => {
+      const t = text.value.trim();
+      const wc = t ? t.split(/\s+/).length : 0;
+      const dur = Math.round(wc / 140 * 60);
+      meta.textContent = wc + ' words · ~' + dur + 's at 140 wpm';
+      const r = reviewFCA(t);
+      if (r.ok === null) {
+        fca.innerHTML = '';
+        send.disabled = true;
+      } else if (r.ok) {
+        fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed — disclaimer auto-injects on render.</div>';
+        send.disabled = false;
+      } else {
+        fca.innerHTML = '<div class="banner banner-error" style="margin:0"><b>⚠ FCA risk in script:</b> '
+          + r.hits.map(h => '"' + esc(h) + '"').join(', ')
+          + '<br><span style="opacity:.85">Reframe as "Consider whether…" / "Depending on…" — never recommend or guarantee.</span></div>';
+        send.disabled = true;
+      }
+      save();
+    };
+
+    topic.oninput = save;
+    mode.onchange = save;
+    text.oninput = refresh;
+    refresh();
+
+    $('#s-clear').onclick = () => {
+      if (!text.value || confirm('Clear the script?')) {
+        text.value = ''; topic.value = '';
+        refresh();
+      }
+    };
+
+    $('#s-copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(text.value); $('#s-copy').textContent = '✓ Copied'; setTimeout(() => $('#s-copy').textContent = '⧉ Copy', 1200); }
+      catch { alert('Copy failed — long-press the script to select manually.'); }
+    };
+
+    $('#s-send').onclick = () => {
+      Storage.set('avatarScript', text.value);
+      go('avatar');
+    };
+
+    $('#s-generate').onclick = async () => {
+      const tp = topic.value.trim();
+      if (!tp) { topic.focus(); return; }
+      const settings = State.settings || {};
+      if (!settings.anthropicKey) {
+        fca.innerHTML = '<div class="banner banner-warn" style="margin:0">No Anthropic key set. Add one in <b>Settings</b> to enable AI generation. You can still write/paste a script manually.</div>';
+        return;
+      }
+      const btn = $('#s-generate');
+      btn.disabled = true; btn.textContent = '⬡ Writing…';
+      fca.innerHTML = '<div class="banner banner-info" style="margin:0">Calling Claude…</div>';
+      try {
+        const promptByMode = {
+          outline: 'Write a tight 15–30s TikTok script OUTLINE about: "' + tp + '". UK personal finance education. Format: hook (one line), 2–3 beats, CTA. Plain text only.',
+          hook:    'Write 3 distinct 5-second opening HOOKS for a UK personal finance TikTok about: "' + tp + '". Number them 1, 2, 3. Each on one line. Use a stat, a pain, and a curiosity gap.',
+          full:    'Write a full 15–25s TikTok script for a UK personal finance video about: "' + tp + '". Hook, 2–3 punchy beats, CTA. ~50 words. Education only — never recommend products or guarantee returns. Plain text, no headers.',
+        };
+        const system = 'You are a UK personal-finance educator writing TikTok scripts. UK terms (£, HMRC, ISA, SIPP, FCA). Punchy, simple. Strictly educational: never use "guaranteed", "should buy", "I recommend", "best option", "everyone should". Reframe as "Consider", "Depending on", "Many people may".';
+        const data = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': settings.anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: settings.anthropicModel || 'claude-sonnet-4-5',
+            max_tokens: 800,
+            system,
+            messages: [{ role: 'user', content: promptByMode[mode.value] }],
+          }),
+        }).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error('Claude ' + r.status + ': ' + t.slice(0, 200)); }));
+        text.value = (data.content && data.content[0] && data.content[0].text || '').trim();
+        refresh();
+      } catch (e) {
+        fca.innerHTML = '<div class="banner banner-error" style="margin:0">Generation failed: ' + esc(e.message) + '</div>';
+      } finally {
+        btn.disabled = false; btn.textContent = '✦ Generate';
+      }
+    };
+  }, 0);
+
+  return el;
+};
 PAGES.avatar  = stub('Avatar',  'Soul keyframe + Wan 2.7 lip-sync', 'Render flow with audio + keyframe + lip-sync video. Lands next.');
 PAGES.library = stub('Library', 'All renders, searchable',         'Thumbnail grid of every render with status, filter, and one-tap download. Lands next.');
 PAGES.publish = stub('Publish', 'TikTok caption + disclosure',     'Caption templates, hashtag presets, auto-disclosure pinned comment. Manual paste flow. Lands next.');
