@@ -64,9 +64,27 @@ Keyframe complete. Now triggering Seedance 2.0 animation with test audio referen
 **Status Summary**:
 - ✅ Soul keyframe generated (9685f267-3273-4eda-8dca-c77fa4ce9d21)
 - ✅ n8n orchestration workflow designed and deployed
+- ✅ **Workflow mock-tested — both paths verified** (see below)
 - ⏳ Audio reference needed for Phase 2 completion
-- ⏳ Credentials need configuration in n8n
+- ⏳ Credentials need configuration in n8n (ElevenLabs + Higgsfield)
 - ⏳ Phase 3 (location strategy) + Phase 6-7 (compliance/disclosure) ready for implementation
+
+### Phase 4-5 Mock Test Results (2026-06-03 05:02 UTC)
+
+Workflow `chNmZYOshgKUHdRS` tested with pin data (external APIs simulated):
+
+| Test | Input | Execution | Result | Verdict |
+|------|-------|-----------|--------|---------|
+| Happy path | Clean tax-education script | #64 | APPROVED → audio → keyframe → wait (paused on timer) | ✅ Pass |
+| Rejection path | Script with banned phrases | #65 | FCA_VIOLATION (5 caught) → 400 error response | ✅ Pass |
+
+**Key validation**: The FCA gate blocks non-compliant scripts BEFORE any generation
+API is called — zero credits wasted on rejected content. Rejection test caught:
+`guaranteed returns`, `should buy`, `i recommend`, `you should`, `best option`.
+
+**Remaining for production**: configure real ElevenLabs + Higgsfield credentials,
+replace Wait-node timers with proper job-status polling loops, wire the Stitch node
+to a real FFmpeg service.
 
 ---
 

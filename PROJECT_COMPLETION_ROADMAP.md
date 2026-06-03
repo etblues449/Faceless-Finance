@@ -41,13 +41,15 @@ Building a fully automated avatar-based TikTok channel:
 - **Timeline**: Jun 3-4
 - **Deliverable**: Location strategy locked ("use generic, avoid landmarks")
 
-### ⏳ Phase 4-5: n8n Workflow Design & Implementation (QUEUED)
+### 🟡 Phase 4-5: n8n Workflow Design & Implementation (MOCK-TESTED)
 - **Goal**: Fully automated script → audio → keyframe → animation → stitch pipeline
 - **Issues**: #97
-- **Documentation**: N8N_WORKFLOW_DESIGN.md (complete, ready for implementation)
-- **Blocked By**: #96, #93 complete
+- **Documentation**: N8N_WORKFLOW_DESIGN.md (complete)
+- **Implemented**: Workflow `chNmZYOshgKUHdRS` (11 nodes) deployed to n8n
+- **Mock Test**: ✅ Both paths verified (executions #64 happy, #65 rejection)
+- **Remaining**: Real credentials, job-polling loops (replace Wait timers), FFmpeg stitch service
 - **Timeline**: Jun 4-5
-- **Deliverable**: Production-ready n8n workflow (tested end-to-end)
+- **Deliverable**: Production-ready n8n workflow (mock-tested; real test pending credentials)
 
 ### ⏳ Phase 6: FCA Compliance Framework (QUEUED)
 - **Goal**: Auto-block risky scripts, auto-prepend disclaimers
