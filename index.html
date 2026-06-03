@@ -794,8 +794,19 @@ PAGES.avatar = () => {
     <div class="card">
       <div class="card-title">Script</div>
       <textarea class="input" id="avatar-script" placeholder="Paste your 15–60s script here (or generate from Script tab)…" style="min-height:120px;margin-bottom:12px"></textarea>
+      <div id="avatar-fca" style="margin-bottom:12px;font-size:13px"></div>
       <button class="btn btn-accent" id="render-avatar">▶ Render Avatar Video</button>
       <div class="ai-output" id="avatar-out" style="margin-top:12px">Enter script and tap render…</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Auto-disclosures</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.6">
+        Every render auto-injects:
+        <br>• <strong>FCA disclaimer</strong> overlay (last 5s, "Educational content. Not financial advice…")
+        <br>• <strong>TikTok AI label</strong> (🤖 badge, bottom-right corner)
+        <br>• <strong>C2PA metadata</strong> (provenance, verifiable at verify.contentauthenticity.org)
+      </div>
     </div>
 
     <div class="card">
@@ -813,6 +824,37 @@ PAGES.avatar = () => {
     const voice = $('#avatar-voice');
     const script = $('#avatar-script');
     const out = $('#avatar-out');
+    const fca = $('#avatar-fca');
+
+    const FCA_BLOCKLIST = [
+      'guaranteed returns', 'guaranteed profit', 'guaranteed income',
+      'should buy', 'should invest', 'should purchase',
+      'i recommend', 'i advise', 'i suggest',
+      'you need', 'you should', 'you must',
+      'best choice', 'best option', 'best investment',
+      'everyone should', 'anyone should'
+    ];
+
+    const reviewFCA = (text) => {
+      if(!text || !text.trim()) return { ok: null };
+      const lower = text.toLowerCase();
+      const hits = FCA_BLOCKLIST.filter(p => lower.includes(p));
+      return { ok: hits.length === 0, hits };
+    };
+
+    const renderFCA = (result) => {
+      if(result.ok === null){ fca.innerHTML = ''; return; }
+      if(result.ok){
+        fca.innerHTML = '<div style="color:var(--accent);padding:8px 12px;background:rgba(16,242,160,0.08);border-radius:6px">✓ FCA review passed — disclaimer will be auto-added</div>';
+      } else {
+        fca.innerHTML = '<div style="color:var(--red);padding:8px 12px;background:rgba(255,77,109,0.08);border-radius:6px">'
+          + '<strong>⚠ FCA risk:</strong> ' + result.hits.map(h => '"' + h + '"').join(', ')
+          + '<br><span style="font-size:12px;opacity:0.8">Reframe as "Consider whether…" / "Depending on…" — no recommendations or guarantees.</span>'
+          + '</div>';
+      }
+    };
+
+    script.oninput = () => renderFCA(reviewFCA(script.value));
 
     btn.onclick = async () => {
       const scriptText = script.value.trim();
@@ -820,6 +862,13 @@ PAGES.avatar = () => {
 
       if(!scriptText){
         out.textContent = 'Please enter a script first.';
+        return;
+      }
+
+      const fcaResult = reviewFCA(scriptText);
+      renderFCA(fcaResult);
+      if(!fcaResult.ok){
+        out.textContent = '✗ Render blocked: script contains FCA-risky phrases. Fix the highlighted issues above before retrying. (n8n webhook will also reject this, so saving credits client-side.)';
         return;
       }
 
@@ -831,7 +880,7 @@ PAGES.avatar = () => {
           source: 'avatar-pipeline',
           script: scriptText,
           voice: voiceOption,
-          soul_id: 'JB-FF-2026',
+          soul_id: '64da88e0-fe5f-4af6-a2da-3b8de23fad64',
           location_hint: 'generic-london-street',
           duration_hint: Math.min(Math.ceil(scriptText.split(' ').length / 140 * 60), 60)
         };
