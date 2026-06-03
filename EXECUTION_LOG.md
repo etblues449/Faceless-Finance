@@ -105,15 +105,13 @@ User supplied 5 voice files via uploads. Selected `a916aa0b-4.m4a` (1:55, shorte
 - Same auto-applied `generate_audio: true` conflict.
 - Credits refunded.
 
-**Attempt 3 — Wan 2.7 @ 720p (IN FLIGHT)**
+**Attempt 3 — Wan 2.7 @ 720p (✅ COMPLETED)**
 - Job: `e7a6c9f6-0f9a-4a02-a580-50171109d83b`
-- Model selected because its description literally says "Synchronized
-  audio, character-consistent video" and audio is a first-class media role.
-- Status: `pending`
-- No conflicting params auto-applied
-- Cost: 22.5 credits (6× cheaper than Seedance)
-- Same inputs: keyframe `9685f267…` + audio `6cd8b16f…`
-- Spec: 720p, 9:16, 15s
+- Status: `completed` in ~3 minutes (much faster than Seedance's expected 60 min)
+- Cost: 22.5 credits
+- Output: 15.02s MP4, H.264 + AAC, 30fps, 830×1108 (asked 9:16/720p; landed near 3:4 — minor format drift, fixable)
+- Result URL: https://d8j0ntlcm91z4.cloudfront.net/user_3DTLmgHXqDZdcq1wpnNDD4pHteF/hf_20260603_052150_e7a6c9f6-0f9a-4a02-a580-50171109d83b.mp4
+- Delivered to user for visual inspection against 6 acceptance criteria.
 
 ### Lesson Captured
 

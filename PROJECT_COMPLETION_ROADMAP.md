@@ -159,15 +159,22 @@ Phase 10 (Daily operations)
 
 ### Credits (Higgsfield)
 
+**Model choice (revised 2026-06-03 after Phase 2 testing):**
+Seedance 2.0 is **not** the right model for talking-head lip-sync — its server
+auto-sets `generate_audio: true` which conflicts with audio-reference inputs
+(both attempts failed validation, credits refunded). **Wan 2.7** is purpose-built
+for synchronized-audio character-consistent video and is the current target.
+
 | Component | Per Video | Cost | Notes |
 |-----------|-----------|------|-------|
-| Soul keyframe | 1 | 40 cr | Reusable (one per location type) |
-| Seedance animation (15s) | 1 | 100 cr | Main cost |
-| **Total per video** | | **140 cr** | Estimate (could be 100-180 cr) |
+| Soul keyframe | 1 | ~0 cr | Reusable across many videos (one per location) |
+| Wan 2.7 animation (15s, 720p) | 1 | 22 cr | Audio-driven lip-sync |
+| **Total per video** | | **~22 cr** | 6× cheaper than the original Seedance plan |
 
-**Cadence**: 3x/week = 420 credits/week = ~1,680 credits/month (with optimization)
+**Cadence**: 3x/week = 66 credits/week = **~280 credits/month**
 
-**Current balance**: 2,823 credits (enough for ~20 videos at current run)
+**Current balance**: 2,823 credits → at the new cost, ~128 videos of runway
+(vs. ~20 under the original Seedance estimate)
 
 ### Time Per Video
 
