@@ -896,7 +896,7 @@ PAGES.avatar = () => {
           throw new Error(`Render trigger failed (${res.status}): ${t}`);
         }
 
-        out.textContent = '✓ Render queued. Check History tab for progress.\n\nPipeline:\n1. Generate ElevenLabs audio from script\n2. Create Soul keyframe (avatar at location)\n3. Animate with Seedance 2.0 (audio reference for lip-sync)\n4. Stitch final video\n5. Add TikTok AI label + FCA disclaimer';
+        out.textContent = '✓ Render queued. Check History tab for progress.\n\nPipeline:\n1. Generate audio from script (ElevenLabs PVC)\n2. Create Soul keyframe (avatar at generic London location)\n3. Animate with Wan 2.7 (audio-driven lip-sync)\n4. Stitch + burn FCA disclaimer overlay (last 5s)\n5. Burn TikTok AI label (🤖 bottom-right, full duration)\n6. Embed C2PA provenance metadata';
       } catch(e){
         out.textContent = `Error: ${e.message}`;
       }
