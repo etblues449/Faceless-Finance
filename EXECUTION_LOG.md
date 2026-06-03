@@ -88,16 +88,30 @@ to a real FFmpeg service.
 
 ---
 
-## Executable Next Steps
+## Phase 2 Real Render — IN FLIGHT (2026-06-03 05:17 UTC)
 
-### Option A: Pause Phase 2, Execute Phase 3
-Phase 3 (Location Strategy Test) doesn't require audio. Can test whether generic London locations render cleanly vs. named landmarks garble. Would require a different Seedance test (text overlay instead of lip-sync validation).
+User supplied 5 voice files via uploads. Selected `a916aa0b-4.m4a` (1:55, shortest = most focused take). Trimmed with FFmpeg to seconds 3–18 to skip intro silence, mono 44.1kHz AAC. Uploaded to Higgsfield as audio media. Seedance render fired.
 
-### Option B: Proceed with Phases 4-7 Implementation (Parallel)
-All architecture and code documented. Can start:
-- **Phase 4-5**: Build n8n workflow (webhook, Claude review, ElevenLabs integration, Higgsfield orchestration)
-- **Phase 6**: Implement FCA compliance auto-review node
-- **Phase 7**: Implement C2PA metadata + TikTok AI label burn-in
+### Seedance Job
 
-### Option C: Provide Audio, Complete Phase 2 Now
-If you have ElevenLabs credentials or a test MP3, I can immediately trigger Seedance animation and complete voice validation test.
+- **Job ID**: `222b410c-15c2-46d7-881d-9cd19bc0a899`
+- **Model**: Seedance 2.0 (Bytedance)
+- **Status**: `pending` → in progress (queued ~05:17 UTC)
+- **Start image**: `9685f267-3273-4eda-8dca-c77fa4ce9d21` (Soul keyframe, Southwark street)
+- **Audio reference**: `6cd8b16f-0429-4cf1-9379-472572cdc296` (user's voice, 15s)
+- **Output spec**: 1080p, 9:16, 15s, std mode
+- **Cost**: 135 credits (balance: 2,823 → ~2,688 after)
+- **ETA**: ~60 minutes (~06:17 UTC)
+
+### Acceptance Criteria
+
+When render completes:
+- [ ] Video downloads cleanly
+- [ ] Avatar identity matches Soul keyframe (JB-FF-2026)
+- [ ] Lip movement tracks audio waveform (sync error < 100ms)
+- [ ] No cumulative drift across 15s
+- [ ] Face shows natural micro-expressions, not frozen
+- [ ] Background stays generic (no landmark text garbling)
+
+If all ✅ → Phase 2 PASSED → Phase 4-5 ready for real (non-mock) execution.
+If sync fails → fall back to ElevenLabs PVC path (cleaner audio source).
