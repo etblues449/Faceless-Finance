@@ -3,1019 +3,530 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#06090F">
+<meta name="theme-color" content="#0A0F1A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="FinCast">
+<meta name="apple-mobile-web-app-title" content="Faceless Finance">
 <link rel="manifest" href="manifest.webmanifest">
-<title>FinCast — Faceless Finance</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Faceless Finance — UK Tax Saving Studio</title>
+<script src="coi-serviceworker.js"></script>
 <style>
-:root{
-  --bg:#06090F;
-  --surface:#0E131C;
-  --card:#141A26;
-  --card-2:#1B2230;
-  --border:#222B3D;
-  --border-bright:#2F3B54;
-  --accent:#10F2A0;
-  --accent-glow:#10F2A040;
-  --accent-dim:#10F2A015;
-  --gold:#FFC857;
-  --gold-glow:#FFC85730;
-  --purple:#9B6BFF;
-  --pink:#FF5CA8;
-  --coral:#FF7A59;
-  --blue:#4DA3FF;
-  --red:#FF4D6D;
-  --text:#F0F2F8;
-  --text-dim:#9BA3B8;
-  --muted:#5B6478;
-}
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;font-weight:500}
-body{padding-bottom:88px}
-::-webkit-scrollbar{width:0;display:none}
+:root {
+  /* Colors */
+  --bg: #0A0F1A;
+  --surface: #131A29;
+  --card: #1A2237;
+  --card-2: #232D47;
+  --border: #2A3651;
+  --border-bright: #3A4768;
+  --primary: #10F2A0;
+  --primary-glow: rgba(16,242,160,0.18);
+  --primary-dim: rgba(16,242,160,0.08);
+  --gold: #FFC857;
+  --gold-glow: rgba(255,200,87,0.22);
+  --red: #FF4D6D;
+  --red-dim: rgba(255,77,109,0.12);
+  --blue: #5BB6FF;
+  --purple: #9B6BFF;
+  --text: #F0F2F8;
+  --text-dim: #9BA3B8;
+  --muted: #5B6478;
 
-.gradient-bg{position:fixed;inset:0;z-index:-1;background:radial-gradient(ellipse 100% 60% at 50% 0%,#10F2A015 0%,transparent 70%),radial-gradient(ellipse 80% 50% at 100% 30%,#9B6BFF10 0%,transparent 60%),radial-gradient(ellipse 80% 50% at 0% 100%,#FFC85708 0%,transparent 60%)}
+  /* Type */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* Geometry */
+  --r-card: 14px;
+  --r-btn: 10px;
+  --r-input: 10px;
+  --r-pill: 999px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; overflow-x: hidden; }
+body { padding-bottom: 88px; font-size: 15px; line-height: 1.5; }
+::-webkit-scrollbar { width: 0; display: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--primary); text-decoration: none; }
+
+/* Background atmosphere */
+.atmos {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, var(--primary-glow), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 100% 30%, rgba(155,107,255,0.08), transparent 60%);
+}
 
 /* Header */
-.header{padding:20px 20px 12px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;background:linear-gradient(to bottom,var(--bg) 0%,var(--bg) 70%,transparent 100%)}
-.brand{display:flex;align-items:center;gap:10px}
-.brand-mark{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#0EA876);display:flex;align-items:center;justify-content:center;font-weight:800;color:#001A0E;font-size:16px;box-shadow:0 0 24px var(--accent-glow)}
-.brand-name{font-size:18px;font-weight:800;letter-spacing:-0.5px}
-.brand-name .accent{color:var(--accent)}
-.status-pill{display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:999px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text-dim)}
-.status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.header {
+  padding: 16px 20px 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+  background: linear-gradient(to bottom, var(--bg) 70%, transparent);
+  backdrop-filter: blur(10px);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--primary), #0AB07A);
+  color: #001A0E; font-weight: 800; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 24px var(--primary-glow);
+}
+.brand-name { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+.brand-name span { color: var(--primary); }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: var(--r-pill);
+  background: var(--card); border: 1px solid var(--border);
+  font-size: 11px; font-family: var(--mono); color: var(--text-dim);
+}
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 8px var(--primary); }
 
 /* Page */
-.page{padding:0 20px;animation:fadeIn .3s ease-out}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-.page-title{font-size:32px;font-weight:800;letter-spacing:-1px;line-height:1}
-.page-sub{font-family:'DM Mono',monospace;font-size:12px;color:var(--text-dim);margin-top:6px;margin-bottom:24px}
-.page-sub .accent{color:var(--accent)}
+.page { padding: 4px 20px 20px; animation: fadeIn .25s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.page-title { font-size: 30px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+.page-sub { font-size: 13px; color: var(--text-dim); margin-top: 5px; margin-bottom: 18px; }
+.page-sub b { color: var(--text); font-weight: 600; }
+.page-sub .accent { color: var(--primary); }
 
 /* Card */
-.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:14px}
-.card.glow{border-color:var(--border-bright);box-shadow:0 0 0 1px var(--accent-dim) inset}
-.card-title{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-family:'DM Mono',monospace}
-.card-title .live{color:var(--accent);margin-left:6px;animation:pulse 2s infinite}
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r-card); padding: 18px; margin-bottom: 12px;
+}
+.card.glow { border-color: var(--border-bright); box-shadow: inset 0 0 0 1px var(--primary-dim); }
+.card-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 12px; font-family: var(--mono);
+}
+
+/* Hero (next post / countdown) */
+.hero {
+  background: linear-gradient(135deg, var(--card-2), var(--card));
+  border: 1px solid var(--border-bright);
+  border-radius: 16px; padding: 22px; position: relative; overflow: hidden;
+  margin-bottom: 14px;
+}
+.hero::before {
+  content: ''; position: absolute; top: -40%; right: -20%;
+  width: 70%; height: 160%;
+  background: radial-gradient(ellipse, var(--primary-glow), transparent 60%);
+  pointer-events: none;
+}
+.hero-eyebrow { font-size: 10px; font-family: var(--mono); color: var(--text-dim); letter-spacing: 1.4px; text-transform: uppercase; margin-bottom: 8px; position: relative; }
+.hero-headline { font-size: 22px; font-weight: 800; color: var(--primary); position: relative; letter-spacing: -0.5px; }
+.hero-meta { font-size: 13px; color: var(--text-dim); margin-top: 4px; font-family: var(--mono); position: relative; }
+.hero-cta { font-size: 11px; color: var(--gold); margin-top: 12px; font-family: var(--mono); letter-spacing: 0.5px; position: relative; }
 
 /* Stats grid */
-.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
-.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;position:relative;overflow:hidden}
-.stat-card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 60%,var(--accent-dim) 100%);pointer-events:none}
-.stat-val{font-size:30px;font-weight:800;letter-spacing:-1px;line-height:1;position:relative}
-.stat-val.gold{color:var(--gold)}
-.stat-val.accent{color:var(--accent)}
-.stat-label{font-size:10px;color:var(--text-dim);margin-top:8px;font-family:'DM Mono',monospace;letter-spacing:0.5px;text-transform:uppercase;position:relative}
-.stat-delta{font-size:11px;color:var(--accent);margin-top:4px;font-family:'DM Mono',monospace;position:relative}
-.stat-delta.muted{color:var(--muted)}
+.stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 12px; position: relative; overflow: hidden;
+}
+.stat::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, transparent 65%, var(--primary-dim));
+  pointer-events: none;
+}
+.stat-val { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1; position: relative; }
+.stat-val.gold { color: var(--gold); }
+.stat-val.accent { color: var(--primary); }
+.stat-val.dim { color: var(--text-dim); }
+.stat-label { font-size: 10px; color: var(--text-dim); margin-top: 6px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.6px; position: relative; }
 
-/* Next post countdown — hero */
-.next-post{background:linear-gradient(135deg,var(--card-2),var(--card));border:1px solid var(--border-bright);border-radius:18px;padding:22px;position:relative;overflow:hidden}
-.next-post::before{content:'';position:absolute;top:-40%;right:-20%;width:60%;height:160%;background:radial-gradient(ellipse,var(--accent-glow),transparent 60%);pointer-events:none}
-.next-post-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;position:relative}
-.next-post-day{font-size:22px;font-weight:800;color:var(--accent);position:relative;letter-spacing:-0.5px}
-.next-post-when{font-size:13px;color:var(--text-dim);margin-top:4px;font-family:'DM Mono',monospace;position:relative}
-.next-post-countdown{font-size:11px;color:var(--gold);margin-top:10px;font-family:'DM Mono',monospace;position:relative;letter-spacing:1px}
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 14px; border-radius: var(--r-btn);
+  border: 1px solid var(--border-bright); background: var(--card); color: var(--text);
+  font-weight: 600; font-size: 13px; cursor: pointer;
+  transition: transform .12s, background .12s, border-color .12s;
+}
+.btn:active { transform: scale(0.97); }
+.btn-accent { background: var(--primary); color: #001A0E; border-color: var(--primary); }
+.btn-ghost { background: transparent; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-sm { padding: 7px 11px; font-size: 11px; border-radius: 8px; }
+.cta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--primary), #0AB07A);
+  color: #001A0E; border: none; border-radius: 12px;
+  font-family: var(--font); font-weight: 700; font-size: 15px;
+  cursor: pointer; transition: transform .12s;
+  box-shadow: 0 8px 24px -8px var(--primary-glow), inset 0 0 0 1px var(--primary);
+}
+.cta:active { transform: scale(0.98); }
+.cta-icon { font-size: 18px; }
 
-/* Primary CTA */
-.cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:18px;background:linear-gradient(135deg,var(--accent),#0EA876);color:#001A0E;border:none;border-radius:14px;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;letter-spacing:0.5px;cursor:pointer;transition:transform .15s,box-shadow .15s;box-shadow:0 8px 24px -8px var(--accent-glow),0 0 0 1px var(--accent) inset;position:relative;overflow:hidden}
-.cta:active{transform:scale(0.98)}
-.cta:disabled{opacity:0.5;cursor:not-allowed}
-.cta.running{background:linear-gradient(135deg,var(--gold),#D9A640);box-shadow:0 8px 24px -8px var(--gold-glow)}
-.cta-icon{font-size:18px}
+/* Inputs */
+.input {
+  width: 100%; background: var(--card-2); border: 1px solid var(--border);
+  border-radius: var(--r-input); padding: 12px 13px;
+  font-size: 14px; color: var(--text); outline: none;
+  transition: border-color .12s;
+}
+.input:focus { border-color: var(--primary); }
+.input::placeholder { color: var(--muted); }
+textarea.input { min-height: 100px; resize: vertical; font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+select.input { appearance: none; cursor: pointer; padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239BA3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
 
-.btn{padding:11px 16px;border-radius:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1px solid var(--border-bright);background:var(--card);color:var(--text);transition:all .15s}
-.btn:active{transform:scale(0.97)}
-.btn-ghost{background:transparent}
-.btn-accent{background:var(--accent);color:#001A0E;border-color:var(--accent)}
-.btn-row{display:flex;gap:8px;flex-wrap:wrap}
-.btn-sm{padding:7px 12px;font-size:11px;border-radius:8px}
-
-/* Pipeline timeline */
-.pipeline{position:relative;padding:4px 0}
-.pipeline::before{content:'';position:absolute;left:11px;top:14px;bottom:14px;width:1.5px;background:var(--border);border-radius:1px}
-.node{display:flex;align-items:center;gap:14px;padding:10px 0;position:relative}
-.node-dot{width:24px;height:24px;border-radius:50%;background:var(--card-2);border:1.5px solid var(--border-bright);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);position:relative;z-index:1;transition:all .2s}
-.node-label{font-size:14px;font-weight:600;color:var(--text-dim);transition:color .2s}
-.node.done .node-dot{background:var(--accent);border-color:var(--accent);color:#001A0E;box-shadow:0 0 12px var(--accent-glow)}
-.node.done .node-label{color:var(--text)}
-.node.running .node-dot{background:var(--gold);border-color:var(--gold);color:#3D2400;box-shadow:0 0 16px var(--gold-glow);animation:pulse-ring 1.5s ease-out infinite}
-.node.running .node-label{color:var(--gold);font-weight:700}
-.node.error .node-dot{background:var(--red);border-color:var(--red);color:#fff}
-.node.error .node-label{color:var(--red)}
-@keyframes pulse-ring{0%{box-shadow:0 0 0 0 var(--gold-glow),0 0 16px var(--gold-glow)}70%{box-shadow:0 0 0 8px transparent,0 0 16px var(--gold-glow)}100%{box-shadow:0 0 0 0 transparent,0 0 16px var(--gold-glow)}}
-
-/* Result card */
-.result-card{background:linear-gradient(135deg,var(--card-2),var(--card));border:1px solid var(--accent);border-radius:16px;padding:20px;margin-top:14px;box-shadow:0 0 0 1px var(--accent-dim) inset, 0 16px 40px -16px var(--accent-glow)}
-.result-topic{font-size:11px;color:var(--accent);font-family:'DM Mono',monospace;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
-.result-caption{font-size:15px;line-height:1.5;margin-bottom:14px;color:var(--text)}
-.result-meta{display:flex;gap:14px;font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-bottom:14px}
-
-/* Error banner */
-.error-banner{background:linear-gradient(135deg,#FF4D6D20,#FF4D6D10);border:1px solid #FF4D6D60;border-radius:12px;padding:14px;margin-top:12px;color:#FFB3C0;font-size:13px;font-family:'DM Mono',monospace;line-height:1.5;word-break:break-word}
-
-/* Calendar */
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
-.cal-h{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);text-align:center;padding:6px 0;letter-spacing:1px}
-.cal-d{aspect-ratio:1;background:var(--card-2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text-dim);font-weight:600;position:relative}
-.cal-d.post{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
-.cal-d.today{outline:2px solid var(--gold);outline-offset:-2px;color:var(--gold)}
-.cal-d.empty{background:transparent}
-.cal-d.has-video::after{content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 6px var(--gold)}
-
-/* Execution row */
-.exec{padding:14px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
-.exec:last-child{border-bottom:none}
-.exec-status{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.exec-status.success{background:var(--accent);box-shadow:0 0 8px var(--accent)}
-.exec-status.error{background:var(--red);box-shadow:0 0 8px var(--red)}
-.exec-status.running{background:var(--gold);box-shadow:0 0 8px var(--gold);animation:pulse 1.5s infinite}
-.exec-info{flex:1;min-width:0}
-.exec-id{font-size:13px;font-weight:700;color:var(--text)}
-.exec-meta{font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;margin-top:2px}
-.exec-action{font-size:11px;color:var(--accent);font-family:'DM Mono',monospace;font-weight:700}
-
-/* AI Tools */
-.input{width:100%;background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);font-family:'Syne',sans-serif;outline:none;font-weight:500;transition:border-color .15s}
-.input:focus{border-color:var(--accent)}
-.input::placeholder{color:var(--muted)}
-select.input{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239BA3B8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
-textarea.input{min-height:90px;resize:vertical;font-family:'DM Mono',monospace;font-size:12px;line-height:1.5}
-.ai-output{background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:16px;font-family:'DM Mono',monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;color:var(--text-dim);margin-top:12px;min-height:80px;max-height:420px;overflow-y:auto}
-.ai-output.loading{color:var(--accent);animation:pulse 1.5s infinite}
-
-/* Tabs (in-page) */
-.subtabs{display:flex;gap:6px;margin-bottom:14px;background:var(--card);padding:5px;border-radius:12px;border:1px solid var(--border)}
-.subtab{flex:1;padding:9px 12px;font-size:11px;font-weight:700;color:var(--text-dim);background:transparent;border:none;border-radius:8px;cursor:pointer;font-family:'Syne',sans-serif;letter-spacing:0.5px;text-transform:uppercase;transition:all .15s}
-.subtab.active{background:var(--accent-dim);color:var(--accent)}
-
-/* Checklist */
-.check-phase{font-size:10px;font-family:'DM Mono',monospace;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin:14px 0 8px}
-.check{display:flex;align-items:center;gap:12px;padding:10px 0;cursor:pointer;border-bottom:1px solid var(--border)}
-.check:last-child{border-bottom:none}
-.check-box{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--border-bright);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.check-box.on{background:var(--accent);border-color:var(--accent);color:#001A0E;font-size:12px;font-weight:800}
-.check-text{font-size:13px;flex:1}
-.check-text.done{text-decoration:line-through;color:var(--muted)}
-.progress{height:5px;background:var(--card-2);border-radius:3px;overflow:hidden;margin-bottom:18px}
-.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--gold));border-radius:3px;transition:width .3s}
-
-/* Bar chart */
-.bars{display:flex;align-items:flex-end;gap:8px;height:100px;padding:8px 0}
-.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
-.bar{width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--accent),#0EA876);min-height:3px;transition:all .3s}
-.bar.gold{background:linear-gradient(180deg,var(--gold),#D9A640)}
-.bar-l{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace}
-
-/* Bottom nav */
-.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(14,19,28,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;padding:8px 6px calc(env(safe-area-inset-bottom,0) + 8px);z-index:100;justify-content:space-around}
-.tab{flex:1;background:transparent;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;color:var(--muted);font-family:'Syne',sans-serif;font-size:10px;font-weight:700;cursor:pointer;border-radius:10px;letter-spacing:0.5px;text-transform:uppercase;transition:color .15s}
-.tab.on{color:var(--accent)}
-.tab-i{font-size:20px;line-height:1}
-.tab.on .tab-i{filter:drop-shadow(0 0 6px var(--accent))}
-
-/* Topic chips */
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.chip{padding:6px 11px;background:var(--card-2);border:1px solid var(--border);border-radius:999px;font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace;cursor:pointer;transition:all .15s}
-.chip:hover{border-color:var(--accent);color:var(--accent)}
+/* List rows (executions, runs) */
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.row-dot.success { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+.row-dot.error { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.row-dot.running { background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: pulse 1.4s infinite; }
+.row-dot.pending { background: var(--muted); }
+.row-main { flex: 1; min-width: 0; }
+.row-title { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-family: var(--mono); }
+.row-tag { font-size: 11px; color: var(--primary); font-family: var(--mono); font-weight: 600; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* Empty state */
-.empty{padding:32px 16px;text-align:center;color:var(--muted);font-size:13px;font-family:'DM Mono',monospace}
+.empty { padding: 28px 14px; text-align: center; color: var(--muted); font-size: 13px; }
 
-.hidden{display:none!important}
+/* Bottom nav */
+.tabs {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: rgba(19,26,41,0.92); backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: space-around;
+  padding: 8px 4px calc(env(safe-area-inset-bottom, 0) + 8px);
+  z-index: 100;
+}
+.tab {
+  flex: 1; background: transparent; border: none;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 2px; color: var(--muted);
+  font-size: 10px; font-weight: 600; cursor: pointer;
+  border-radius: 8px; text-transform: uppercase; letter-spacing: 0.4px;
+  transition: color .12s;
+}
+.tab.on { color: var(--primary); }
+.tab-i { font-size: 18px; line-height: 1; }
+.tab.on .tab-i { filter: drop-shadow(0 0 6px var(--primary)); }
+
+/* Banners */
+.banner {
+  padding: 12px 14px; border-radius: 10px;
+  font-size: 13px; line-height: 1.5; margin-bottom: 12px;
+}
+.banner-error { background: var(--red-dim); border: 1px solid rgba(255,77,109,0.4); color: #FFB3C0; }
+.banner-info  { background: rgba(91,182,255,0.08); border: 1px solid rgba(91,182,255,0.3); color: #C6E2FF; }
+.banner-warn  { background: rgba(255,200,87,0.08); border: 1px solid rgba(255,200,87,0.3); color: #FFE3A0; }
+
+/* Skeletons */
+.skel { background: linear-gradient(90deg, var(--card-2), var(--card), var(--card-2)); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
+.skel-line { height: 12px; margin: 6px 0; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.hidden { display: none !important; }
 </style>
 </head>
 <body>
-<div class="gradient-bg"></div>
+<div class="atmos"></div>
 
 <header class="header">
   <div class="brand">
-    <div class="brand-mark">F</div>
-    <div class="brand-name">Fin<span class="accent">Cast</span></div>
+    <div class="brand-mark">FF</div>
+    <div class="brand-name">Faceless<span>·</span>Finance</div>
   </div>
-  <div class="status-pill"><div class="status-dot"></div><span id="conn-status">Live</span></div>
+  <div class="pill"><span class="pill-dot"></span><span id="conn-status">Ready</span></div>
 </header>
 
-<main id="page-container"></main>
+<main id="page-root"></main>
 
-<nav class="tabs">
-  <button class="tab on" data-tab="dashboard"><div class="tab-i">▦</div><div>Home</div></button>
-  <button class="tab" data-tab="run"><div class="tab-i">⚡</div><div>Run</div></button>
-  <button class="tab" data-tab="schedule"><div class="tab-i">◫</div><div>Cal</div></button>
-  <button class="tab" data-tab="ideas"><div class="tab-i">✦</div><div>Ideas</div></button>
-  <button class="tab" data-tab="script"><div class="tab-i">◈</div><div>Script</div></button>
-  <button class="tab" data-tab="avatar"><div class="tab-i">🎬</div><div>Avatar</div></button>
-  <button class="tab" data-tab="history"><div class="tab-i">↗</div><div>Runs</div></button>
-</nav>
+<nav class="tabs" id="tabs"></nav>
 
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-// TODO(security): N8N_API_KEY is exposed in this public file. Rotate the JWT
-// in n8n, move the new one to a Cloudflare Worker secret, and have the app
-// call the Worker (Design A pattern from CLAUDE.md) instead of n8n directly.
 const CONFIG = {
-  N8N_BASE:    'https://jellybean1875.app.n8n.cloud',
-  WEBHOOK_URL: 'https://jellybean1875.app.n8n.cloud/webhook/run-faceless-finance',
-  AVATAR_WEBHOOK_URL: 'https://jellybean1875.app.n8n.cloud/webhook/avatar-pipeline',
-  WORKFLOW_ID: 'rFawDSoSv0QUiEJH',
-  N8N_API_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4YTY3MjdjZS05ZmNjLTQyYzYtOTkwNC00N2MwMzZiM2Q5NjkiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMjQ0NDI4OTMtN2VkMi00MGE5LWI0Y2MtMDU4ZDBlMTg3ZDQyIiwiaWF0IjoxNzgwMDk3NjIxfQ.wAh3tzznpdIaFPk7HiAaNnxr33Kfm5qHK0YlUb0GxWg',
-  ANTHROPIC_KEY: '',  // optional - leave empty if you want AI tools disabled
-  PIPELINE: [
-    'Pick Topic','Claude — Write Script','Parse Script','ElevenLabs — Voiceover',
-    'Hedra — Create Audio Asset','Attach Audio Binary','Hedra — Upload Audio',
-    'Hedra — Create Render','Wait for Render','Hedra — Check Render',
-    'Parse Render Status','Render Done?','Make Video URL','Done'
+  WORKER_BASE: 'https://fincast-worker.elliothorton5.workers.dev',
+  POST_DAYS: [1, 3, 5],         // Mon, Wed, Fri
+  POST_TIMES: { 1: '09:00', 3: '09:00', 5: '09:00' },
+  AVATAR: {
+    soul_id: '64da88e0-fe5f-4af6-a2da-3b8de23fad64',
+    soul_name: 'JB-FF-2026',
+    default_location: 'generic-london-street',
+    default_provider: 'wan2_7',
+  },
+  FCA_BLOCKLIST: [
+    'guaranteed returns', 'guaranteed profit', 'guaranteed income',
+    'should buy', 'should invest', 'should purchase',
+    'i recommend', 'i advise', 'i suggest',
+    'you need', 'you should', 'you must',
+    'best choice', 'best option', 'best investment',
+    'everyone should', 'anyone should',
   ],
-  PIPELINE_LABELS: [
-    'Picking topic','Writing script','Parsing script','Generating voice',
-    'Creating audio asset','Attaching audio','Uploading audio',
-    'Starting render','Rendering video…','Checking render',
-    'Processing status','Verifying complete','Building URL','Video ready ✓'
-  ],
-  POST_DAYS: [3,5,0],  // Wed=3, Fri=5, Sun=0
-  POST_TIMES: { 0:'11:00', 3:'16:00', 5:'17:00' },
-  TOPICS: [
-    'The £100k personal allowance taper',
-    'ISA vs SIPP — what most people get wrong',
-    'Stamp duty changes in 2026',
-    'The dividend allowance cut nobody noticed',
-    'Salary sacrifice — the legal tax hack',
-    'How big should your UK emergency fund actually be?'
-  ]
+};
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+const Storage = {
+  get(key, fallback = null) {
+    try { const v = localStorage.getItem('ff.' + key); return v == null ? fallback : JSON.parse(v); }
+    catch { return fallback; }
+  },
+  set(key, value) {
+    try { localStorage.setItem('ff.' + key, JSON.stringify(value)); }
+    catch (e) { console.warn('storage.set failed', key, e); }
+  },
+  del(key) { try { localStorage.removeItem('ff.' + key); } catch {} },
 };
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 const State = {
-  page: 'dashboard',
-  running: false,
-  currentExecution: null,
-  completedNodes: new Set(),
-  result: null,
-  error: null,
-  stats: { total: 0, last7: 0, lastDuration: '–', lastTopic: '–' },
-  executions: [],
-  checklist: JSON.parse(localStorage.getItem('fincast.checklist') || '{}')
+  page: location.hash.replace('#', '') || 'home',
+  renders: Storage.get('renders', []),   // {id, type, status, createdAt, script, voice, videoUrl, cost, ...}
+  settings: Storage.get('settings', {}),
+  balance: null,                          // null = unknown, number = credits
+  listeners: new Set(),
 };
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const $ = sel => document.querySelector(sel);
-const $$ = sel => document.querySelectorAll(sel);
-const html = (strings, ...vals) => strings.reduce((acc, s, i) => acc + s + (vals[i] ?? ''), '');
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function set(patch) {
+  Object.assign(State, patch);
+  if (patch.renders) Storage.set('renders', patch.renders);
+  if (patch.settings) Storage.set('settings', patch.settings);
+  State.listeners.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+}
 
-function nextPostInfo(){
+function onChange(fn) { State.listeners.add(fn); return () => State.listeners.delete(fn); }
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const html = (strings, ...vals) => strings.reduce((a, s, i) => a + s + (vals[i] ?? ''), '');
+const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+
+function nextPost() {
   const now = new Date();
-  for(let i=0;i<8;i++){
-    const d = new Date(now); d.setDate(now.getDate()+i);
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(now); d.setDate(now.getDate() + i);
     const dow = d.getDay();
-    if(CONFIG.POST_DAYS.includes(dow)){
-      const [hh,mm] = CONFIG.POST_TIMES[dow].split(':').map(Number);
-      d.setHours(hh,mm,0,0);
-      if(d > now) {
+    if (CONFIG.POST_DAYS.includes(dow)) {
+      const [hh, mm] = (CONFIG.POST_TIMES[dow] || '09:00').split(':').map(Number);
+      d.setHours(hh, mm, 0, 0);
+      if (d > now) {
         const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dow];
-        const diffMs = d - now;
-        const hours = Math.floor(diffMs / 3600000);
-        const mins  = Math.floor((diffMs % 3600000) / 60000);
-        let cd = '';
-        if(hours >= 24) cd = `in ${Math.floor(hours/24)}d ${hours%24}h`;
-        else if(hours >= 1) cd = `in ${hours}h ${mins}m`;
-        else cd = `in ${mins}m`;
-        return {
-          dayName,
-          date: d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}),
-          time: CONFIG.POST_TIMES[dow],
-          countdown: cd
-        };
+        const ms = d - now;
+        const hours = Math.floor(ms / 3600000);
+        const mins = Math.floor((ms % 3600000) / 60000);
+        let cd;
+        if (hours >= 24) cd = 'in ' + Math.floor(hours / 24) + 'd ' + (hours % 24) + 'h';
+        else if (hours >= 1) cd = 'in ' + hours + 'h ' + mins + 'm';
+        else cd = 'in ' + mins + 'm';
+        return { dayName, date: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), time: CONFIG.POST_TIMES[dow], countdown: cd };
       }
     }
   }
-  return {dayName:'?',date:'?',time:'?',countdown:'?'};
+  return { dayName: '?', date: '—', time: '—', countdown: '—' };
 }
 
-function formatDuration(ms){
-  const s = Math.floor(ms/1000);
-  if(s < 60) return `${s}s`;
-  return `${Math.floor(s/60)}m ${s%60}s`;
+function reviewFCA(script) {
+  if (!script || !script.trim()) return { ok: null, hits: [] };
+  const lower = script.toLowerCase();
+  const hits = CONFIG.FCA_BLOCKLIST.filter(p => lower.includes(p));
+  return { ok: hits.length === 0, hits };
 }
 
-function formatDate(iso){
-  return new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-}
-
-// ─── N8N API ──────────────────────────────────────────────────────────────────
-async function n8nFetch(path){
-  const res = await fetch(`${CONFIG.N8N_BASE}/api/v1${path}`, {
-    headers: { 'X-N8N-API-KEY': CONFIG.N8N_API_KEY }
-  });
-  if(!res.ok) throw new Error(`n8n ${res.status}`);
-  return res.json();
-}
-
-async function triggerWorkflow(){
-  const triggerAt = Date.now() - 3000;
-  const res = await fetch(CONFIG.WEBHOOK_URL, {
-    method: 'POST',
-    headers: { 'Content-Type':'application/json' },
-    body: JSON.stringify({ source: 'fincast-pwa' })
-  });
-  if(!res.ok){
-    const t = await res.text().catch(()=>res.statusText);
-    throw new Error(`Trigger failed (${res.status}): ${t}`);
-  }
-  // Poll for the new execution
-  for(let i=0;i<20;i++){
-    await new Promise(r=>setTimeout(r,1000));
-    try{
-      const list = await listExecutions(10);
-      const match = list.find(e => new Date(e.startedAt).getTime() >= triggerAt);
-      if(match) return match.id;
-    }catch{}
-  }
-  throw new Error('Triggered but execution did not appear within 20s');
-}
-
-async function listExecutions(limit=20){
-  const data = await n8nFetch(`/executions?workflowId=${CONFIG.WORKFLOW_ID}&limit=${limit}`);
-  return data.data ?? [];
-}
-
-async function getExecution(id){
-  return n8nFetch(`/executions/${id}?includeData=true`);
-}
-
-function getCompletedFromExec(exec){
-  const rd = exec.data?.runData ?? exec.data?.resultData?.runData ?? {};
-  return new Set(Object.keys(rd));
-}
-
-function extractResultFromExec(exec){
-  const rd = exec.data?.runData ?? exec.data?.resultData?.runData ?? {};
-  const node = rd['Make Video URL'];
-  if(!node?.[0]) return null;
-  const json = node[0].data?.main?.[0]?.[0]?.json;
-  if(!json) return null;
-  return {
-    videoUrl: String(json.videoUrl ?? ''),
-    caption:  String(json.caption  ?? ''),
-    topic:    rd['Pick Topic']?.[0]?.data?.main?.[0]?.[0]?.json?.topic ?? ''
-  };
-}
-
-// ─── ANTHROPIC (optional, for Ideas/Script tabs) ──────────────────────────────
-async function callClaude(system, user){
-  if(!CONFIG.ANTHROPIC_KEY) throw new Error('Anthropic API key not configured');
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers: {
-      'Content-Type':'application/json',
-      'x-api-key': CONFIG.ANTHROPIC_KEY,
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true'
-    },
-    body: JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      system,
-      messages: [{role:'user', content: user}]
-    })
-  });
-  if(!res.ok){
-    const t = await res.text().catch(()=>res.statusText);
-    throw new Error(`Claude ${res.status}: ${t}`);
-  }
-  const data = await res.json();
-  return data.content?.[0]?.text ?? '';
-}
-
-// ─── DATA LOAD ────────────────────────────────────────────────────────────────
-async function loadStats(){
-  try{
-    const list = await listExecutions(50);
-    State.executions = list;
-    State.stats.total = list.length;
-    const weekAgo = Date.now() - 7*86400*1000;
-    State.stats.last7 = list.filter(e=>new Date(e.startedAt).getTime() > weekAgo).length;
-    const lastSuccess = list.find(e=>e.status==='success' && e.stoppedAt);
-    if(lastSuccess){
-      const ms = new Date(lastSuccess.stoppedAt) - new Date(lastSuccess.startedAt);
-      State.stats.lastDuration = formatDuration(ms);
-      try{
-        const detail = await getExecution(lastSuccess.id);
-        const r = extractResultFromExec(detail);
-        if(r?.topic) State.stats.lastTopic = r.topic;
-      }catch{}
-    }
-    $('#conn-status').textContent = 'Live';
-  }catch(e){
-    console.error('stats',e);
-    $('#conn-status').textContent = 'Offline';
-  }
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const url = CONFIG.WORKER_BASE + path;
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
+  const ct = res.headers.get('content-type') || '';
+  const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text();
+  if (!res.ok) throw new Error('api ' + res.status + ': ' + (typeof data === 'string' ? data.slice(0, 200) : JSON.stringify(data).slice(0, 200)));
+  return data;
 }
 
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
-function go(page){
+function go(page) {
   State.page = page;
-  $$('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === page));
-  render();
+  history.replaceState(null, '', '#' + page);
+  renderApp();
 }
 
-function render(){
-  const c = $('#page-container');
-  c.innerHTML = '';
-  const fn = PAGES[State.page] || PAGES.dashboard;
-  c.appendChild(fn());
+window.addEventListener('hashchange', () => {
+  const p = location.hash.replace('#', '') || 'home';
+  if (p !== State.page) { State.page = p; renderApp(); }
+});
+
+// ─── TABS ─────────────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'home',     label: 'Home',     icon: '▦' },
+  { id: 'script',   label: 'Script',   icon: '◈' },
+  { id: 'avatar',   label: 'Avatar',   icon: '🎬' },
+  { id: 'library',  label: 'Library',  icon: '▤' },
+  { id: 'publish',  label: 'Publish',  icon: '↗' },
+  { id: 'settings', label: 'Settings', icon: '⚙' },
+];
+
+function renderTabs() {
+  const nav = $('#tabs');
+  nav.innerHTML = TABS.map(t => html`
+    <button class="tab ${State.page === t.id ? 'on' : ''}" data-tab="${t.id}">
+      <div class="tab-i">${t.icon}</div>
+      <div>${esc(t.label)}</div>
+    </button>
+  `).join('');
+  nav.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => go(btn.dataset.tab);
+  });
 }
 
 // ─── PAGES ────────────────────────────────────────────────────────────────────
 const PAGES = {};
 
-PAGES.dashboard = () => {
-  const n = nextPostInfo();
+PAGES.home = () => {
   const el = document.createElement('div');
   el.className = 'page';
+  const n = nextPost();
+  const r = State.renders;
+  const total = r.length;
+  const ok = r.filter(x => x.status === 'success').length;
+  const successRate = total > 0 ? Math.round((ok / total) * 100) + '%' : '—';
+  const lastSuccess = r.find(x => x.status === 'success');
+  const lastDur = lastSuccess && lastSuccess.completedAt
+    ? fmtDur(new Date(lastSuccess.completedAt) - new Date(lastSuccess.createdAt))
+    : '—';
+  const balanceText = State.balance == null ? '—' : Math.round(State.balance).toLocaleString();
+
   el.innerHTML = html`
-    <div class="page-title">Faceless Finance</div>
-    <div class="page-sub">Wed · Fri · Sun · <span class="accent">UK personal finance & investing</span></div>
+    <div class="page-title">Faceless<span class="accent" style="color:var(--primary)">·</span>Finance</div>
+    <div class="page-sub">UK personal finance education · <span class="accent">Mon · Wed · Fri</span> cadence</div>
 
-    <div class="next-post">
-      <div class="next-post-label">Next scheduled post</div>
-      <div class="next-post-day">${esc(n.dayName)} ${esc(n.date)}</div>
-      <div class="next-post-when">${esc(n.time)} · ${esc(n.countdown)}</div>
-      <div class="next-post-countdown">⏱ Auto-publishes via n8n + Hedra + TikTok</div>
+    <div class="hero">
+      <div class="hero-eyebrow">Next scheduled post</div>
+      <div class="hero-headline">${esc(n.dayName)} ${esc(n.date)}</div>
+      <div class="hero-meta">${esc(n.time)} · ${esc(n.countdown)}</div>
+      <div class="hero-cta">▶ Tap Avatar to render the next one</div>
     </div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-val accent">${State.stats.total}</div>
-        <div class="stat-label">Total runs</div>
-        <div class="stat-delta">${State.stats.last7} this week</div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-val accent">${esc(balanceText)}</div>
+        <div class="stat-label">Credits</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-val gold">${esc(State.stats.lastDuration)}</div>
-        <div class="stat-label">Last render</div>
-        <div class="stat-delta muted">${esc(State.stats.lastTopic.slice(0,32) || '–')}</div>
+      <div class="stat">
+        <div class="stat-val">${esc(String(total))}</div>
+        <div class="stat-label">Renders</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val gold">${esc(successRate)}</div>
+        <div class="stat-label">Success</div>
       </div>
     </div>
 
-    <button class="cta" onclick="go('run')">
-      <span class="cta-icon">⚡</span> Run a video now
+    <button class="cta" id="quick-render">
+      <span class="cta-icon">🎬</span> Render Avatar Video
     </button>
 
     <div class="card" style="margin-top:14px">
-      <div class="card-title">Quick actions</div>
-      <div class="btn-row">
-        <button class="btn" onclick="go('ideas')">✦ Ideas</button>
-        <button class="btn" onclick="go('script')">◈ Script</button>
-        <button class="btn" onclick="go('schedule')">◫ Calendar</button>
-        <button class="btn" onclick="go('history')">↗ History</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Recent runs</div>
-      <div id="recent-runs">${State.executions.length ? '' : '<div class="empty">Loading…</div>'}</div>
-    </div>
-  `;
-  // Recent runs list
-  setTimeout(() => {
-    const rr = $('#recent-runs');
-    if(!rr) return;
-    if(State.executions.length === 0){
-      rr.innerHTML = '<div class="empty">No runs yet</div>';
-      return;
-    }
-    rr.innerHTML = State.executions.slice(0,5).map(e => html`
-      <div class="exec">
-        <div class="exec-status ${esc(e.status)}"></div>
-        <div class="exec-info">
-          <div class="exec-id">Run #${esc(e.id)}</div>
-          <div class="exec-meta">${esc(formatDate(e.startedAt))}</div>
-        </div>
-        <div class="exec-action">${esc(e.status.toUpperCase())}</div>
-      </div>
-    `).join('');
-  }, 0);
-  return el;
-};
-
-PAGES.run = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-
-  function renderRun(){
-    const showResult = State.result && !State.running;
-    const showError = State.error && !State.running;
-    el.innerHTML = html`
-      <div class="page-title">Run</div>
-      <div class="page-sub">${State.running ? '<span class="accent">● Running</span> · pipeline live' : showResult ? '<span class="accent">✓ Complete</span>' : showError ? 'Run stopped' : 'Ready to render'}</div>
-
-      <button class="cta ${State.running ? 'running' : ''}" id="run-btn" ${State.running ? 'disabled' : ''}>
-        <span class="cta-icon">${State.running ? '◐' : '⚡'}</span>
-        ${State.running ? `Running run #${esc(State.currentExecution || '?')}…` : 'Run Now'}
-      </button>
-
-      ${showError ? `<div class="error-banner">${esc(State.error)}</div>` : ''}
-
-      <div class="card glow" style="margin-top:14px">
-        <div class="card-title">Pipeline ${State.running ? '<span class="live">● LIVE</span>' : ''}</div>
-        <div class="pipeline">
-          ${CONFIG.PIPELINE.map((node, i) => {
-            const done = State.completedNodes.has(node);
-            const running = State.running && !done && State.completedNodes.size === i;
-            return html`
-              <div class="node ${done ? 'done' : ''} ${running ? 'running' : ''}">
-                <div class="node-dot">${done ? '✓' : (i+1)}</div>
-                <div class="node-label">${esc(CONFIG.PIPELINE_LABELS[i])}</div>
+      <div class="card-title">Recent</div>
+      <div id="recent">
+        ${r.length === 0
+          ? '<div class="empty">No renders yet. Tap above to create your first.</div>'
+          : r.slice(0, 5).map(x => html`
+              <div class="row" data-id="${esc(x.id)}">
+                <div class="row-dot ${esc(x.status)}"></div>
+                <div class="row-main">
+                  <div class="row-title">${esc((x.script || 'Render ' + x.id).slice(0, 50))}${x.script && x.script.length > 50 ? '…' : ''}</div>
+                  <div class="row-meta">${esc(fmtDate(x.createdAt))} · ${esc(x.cost ? x.cost + ' cr' : '—')}</div>
+                </div>
+                <div class="row-tag">${esc((x.status || 'pending').toUpperCase())}</div>
               </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-
-      ${showResult ? html`
-        <div class="result-card">
-          <div class="result-topic">📌 ${esc(State.result.topic)}</div>
-          <div class="result-caption">${esc(State.result.caption || '(no caption)')}</div>
-          <div class="result-meta">
-            <span>${esc(formatDate(new Date().toISOString()))}</span>
-          </div>
-          <div class="btn-row">
-            ${State.result.videoUrl ? `<button class="btn btn-accent" onclick="window.open('${esc(State.result.videoUrl)}','_blank')">▶ Open video</button>` : ''}
-            <button class="btn" onclick="State.result=null;State.completedNodes=new Set();render()">Run another</button>
-          </div>
-        </div>
-      ` : ''}
-    `;
-
-    const btn = $('#run-btn');
-    if(btn && !State.running){
-      btn.onclick = startRun;
-    }
-  }
-
-  renderRun();
-
-  async function startRun(){
-    State.running = true;
-    State.error = null;
-    State.result = null;
-    State.completedNodes = new Set();
-    State.currentExecution = null;
-    renderRun();
-
-    try {
-      const execId = await triggerWorkflow();
-      State.currentExecution = execId;
-      renderRun();
-
-      // Poll execution progress
-      for(let i=0;i<200;i++){
-        await new Promise(r=>setTimeout(r,2500));
-        try {
-          const exec = await getExecution(execId);
-          State.completedNodes = getCompletedFromExec(exec);
-          renderRun();
-          if(exec.status === 'success'){
-            State.result = extractResultFromExec(exec) || {topic:'(unknown)', caption:'', videoUrl:''};
-            State.running = false;
-            renderRun();
-            loadStats();
-            return;
-          }
-          if(exec.status === 'error' || exec.status === 'canceled'){
-            State.error = `Workflow ${exec.status}`;
-            State.running = false;
-            renderRun();
-            return;
-          }
-        }catch(e){ /* keep polling */ }
-      }
-      State.error = 'Timed out after ~8 minutes';
-      State.running = false;
-      renderRun();
-    } catch(e){
-      State.error = String(e.message || e);
-      State.running = false;
-      renderRun();
-    }
-  }
-
-  return el;
-};
-
-PAGES.schedule = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  const monthName = now.toLocaleString('default',{month:'long'});
-  const firstDow = new Date(y,m,1).getDay();
-  const daysInMonth = new Date(y,m+1,0).getDate();
-
-  const cells = [];
-  for(let i=0;i<firstDow;i++) cells.push(null);
-  for(let d=1;d<=daysInMonth;d++) cells.push(d);
-
-  el.innerHTML = html`
-    <div class="page-title">Schedule</div>
-    <div class="page-sub"><span class="accent">${esc(monthName)} ${y}</span> · Wed · Fri · Sun cadence</div>
-
-    <div class="card">
-      <div class="cal">
-        ${['S','M','T','W','T','F','S'].map(d => `<div class="cal-h">${d}</div>`).join('')}
-        ${cells.map(d => {
-          if(!d) return '<div class="cal-d empty"></div>';
-          const dow = new Date(y,m,d).getDay();
-          const isPost = CONFIG.POST_DAYS.includes(dow);
-          const isToday = d === now.getDate();
-          return `<div class="cal-d ${isPost?'post':''} ${isToday?'today':''}">${d}</div>`;
-        }).join('')}
-      </div>
-      <div style="display:flex;gap:14px;margin-top:14px;font-size:11px;color:var(--text-dim);font-family:'DM Mono',monospace">
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--accent-dim);border:1px solid var(--accent);margin-right:5px;vertical-align:middle"></span>Post day</span>
-        <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;outline:2px solid var(--gold);outline-offset:-2px;margin-right:5px;vertical-align:middle"></span>Today</span>
+            `).join('')
+        }
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Posting times (UK)</div>
-      <div style="font-family:'DM Mono',monospace;font-size:13px;line-height:1.9;color:var(--text-dim)">
-        <div>Wed · <span style="color:var(--accent)">16:00</span> · Peak engagement slot</div>
-        <div>Fri · <span style="color:var(--gold)">17:00</span> · End-of-week scroll</div>
-        <div>Sun · <span style="color:var(--purple)">11:00</span> · Sunday morning audience</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Topic queue</div>
-      <div class="chips">
-        ${CONFIG.TOPICS.map(t => `<span class="chip">${esc(t)}</span>`).join('')}
-      </div>
-    </div>
-  `;
-  return el;
-};
-
-PAGES.ideas = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-  el.innerHTML = html`
-    <div class="page-title">AI Ideas</div>
-    <div class="page-sub"><span class="accent">UK CA niche</span> · faceless finance angles</div>
-
-    ${CONFIG.ANTHROPIC_KEY ? '' : `
-      <div class="error-banner" style="margin-bottom:14px">
-        💡 To enable AI generation, add your Anthropic API key to CONFIG.ANTHROPIC_KEY in the source.
-        For now, ideas can still be drafted manually below.
-      </div>
-    `}
-
-    <div class="card">
-      <div class="card-title">Generate ideas</div>
-      <input class="input" id="topic-input" placeholder="e.g. ISA strategy, tax efficiency, side hustles..." style="margin-bottom:10px">
-      <select class="input" id="style-input" style="margin-bottom:12px">
-        <option value="evergreen">Evergreen</option>
-        <option value="trending">Trending / News-based</option>
-        <option value="beginner">Beginner-friendly</option>
-        <option value="advanced">Deep dive</option>
-      </select>
-      <button class="btn btn-accent" id="gen-ideas">✦ Generate 6 ideas</button>
-      <div class="ai-output" id="ideas-out">Enter a topic and tap generate…</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">CA differentiator angles</div>
-      <div style="font-size:13px;line-height:1.7;color:var(--text-dim)">
-        ▸ Lead with the credential: "As a UK chartered accountant…"<br>
-        ▸ Use real HMRC/FCA rules — accuracy is your moat<br>
-        ▸ Address myths salaried Brits believe<br>
-        ▸ "CA's take" segment adds authority to any topic
-      </div>
-    </div>
-  `;
-
-  setTimeout(() => {
-    const btn = $('#gen-ideas');
-    btn.onclick = async () => {
-      const topic = $('#topic-input').value || 'UK personal finance';
-      const style = $('#style-input').value;
-      const out = $('#ideas-out');
-      if(!CONFIG.ANTHROPIC_KEY){
-        out.textContent = 'Anthropic key not configured. Add CONFIG.ANTHROPIC_KEY to the source file to enable.';
-        return;
-      }
-      out.classList.add('loading');
-      out.textContent = '⬡ Generating…';
-      try {
-        const sys = `You are a TikTok content strategist for a faceless UK personal finance channel run by a Chartered Accountant. UK audience, £ currency, references to HMRC, FCA, ISA, SIPP, stamp duty, Bank of England. Generate 6 video ideas, numbered, each with a punchy 1-line hook underneath.`;
-        const text = await callClaude(sys, `Generate 6 TikTok video ideas for: "${topic}". Style: ${style}.`);
-        out.textContent = text;
-      } catch(e){
-        out.textContent = `Error: ${e.message}`;
-      }
-      out.classList.remove('loading');
-    };
-  }, 0);
-
-  return el;
-};
-
-PAGES.script = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-  el.innerHTML = html`
-    <div class="page-title">AI Script</div>
-    <div class="page-sub"><span class="accent">60-90s TikTok format</span> · hook → body → CTA</div>
-
-    <div class="card">
-      <div class="card-title">Video brief</div>
-      <input class="input" id="script-title" placeholder="Video title or topic..." style="margin-bottom:10px">
-      <select class="input" id="script-mode" style="margin-bottom:12px">
-        <option value="full">Full script</option>
-        <option value="hook">3 hook variations</option>
-        <option value="outline">Outline only</option>
-      </select>
-      <button class="btn btn-accent" id="gen-script">◈ Write</button>
-      <div class="ai-output" id="script-out">Enter a topic and tap write…</div>
-    </div>
-  `;
-
-  setTimeout(() => {
-    const btn = $('#gen-script');
-    btn.onclick = async () => {
-      const title = $('#script-title').value;
-      const mode  = $('#script-mode').value;
-      const out   = $('#script-out');
-      if(!title){ out.textContent = 'Please enter a topic first.'; return; }
-      if(!CONFIG.ANTHROPIC_KEY){
-        out.textContent = 'Anthropic key not configured. Add CONFIG.ANTHROPIC_KEY to the source file to enable.';
-        return;
-      }
-      out.classList.add('loading');
-      out.textContent = '⬡ Writing…';
-      try {
-        const sys = `You are a TikTok script writer for a faceless UK personal finance channel. Host is an unnamed Chartered Accountant — never on camera. UK audience, £, HMRC/FCA/ISA/SIPP/stamp duty references. Punchy, authoritative, simple language. 60-90 seconds total.`;
-        const prompts = {
-          outline: `Create a 60-90s script outline for: "${title}". Include: hook idea, 3-4 main beats, CTA. Mark sections clearly.`,
-          hook: `Write 3 different opening hooks (first 5 seconds) for a TikTok titled: "${title}". Use 3 techniques: 1) bold stat, 2) relatable pain, 3) curiosity gap.`,
-          full: `Write a full 60-90s TikTok script for: "${title}". Format: [HOOK 0-5s] [BODY with clear beats] [CTA]. Add [B-ROLL: …] cues. UK references.`
-        };
-        const text = await callClaude(sys, prompts[mode]);
-        out.textContent = text;
-      } catch(e){
-        out.textContent = `Error: ${e.message}`;
-      }
-      out.classList.remove('loading');
-    };
-  }, 0);
-
-  return el;
-};
-
-PAGES.avatar = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-  el.innerHTML = html`
-    <div class="page-title">Avatar Video</div>
-    <div class="page-sub"><span class="accent">Higgsfield Soul + Seedance 2.0</span> · voice + cinematic</div>
-
-    <div class="card">
-      <div class="card-title">Voice</div>
-      <select class="input" id="avatar-voice" style="margin-bottom:12px">
-        <option value="elevenlabs-pvc" selected>ElevenLabs PVC — "JB Blues Script"</option>
-        <option value="elevenlabs-professional">ElevenLabs — Other Professional</option>
-        <option value="google-tts">Google TTS (EN-GB)</option>
-      </select>
-      <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Selected voice will be used for lip-sync reference in animation.</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Script</div>
-      <textarea class="input" id="avatar-script" placeholder="Paste your 15–60s script here (or generate from Script tab)…" style="min-height:120px;margin-bottom:12px"></textarea>
-      <div id="avatar-fca" style="margin-bottom:12px;font-size:13px"></div>
-      <button class="btn btn-accent" id="render-avatar">▶ Render Avatar Video</button>
-      <div class="ai-output" id="avatar-out" style="margin-top:12px">Enter script and tap render…</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Auto-disclosures</div>
-      <div style="font-size:13px;color:var(--text-dim);line-height:1.6">
+      <div class="card-title">Compliance</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
         Every render auto-injects:
-        <br>• <strong>FCA disclaimer</strong> overlay (last 5s, "Educational content. Not financial advice…")
-        <br>• <strong>TikTok AI label</strong> (🤖 badge, bottom-right corner)
-        <br>• <strong>C2PA metadata</strong> (provenance, verifiable at verify.contentauthenticity.org)
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Preview existing render</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Paste a Higgsfield video URL to inspect it without spending credits.</div>
-      <input class="input" id="avatar-preview-url" type="url" placeholder="https://…cloudfront.net/…/hf_…mp4" style="margin-bottom:8px">
-      <button class="btn" id="avatar-preview-load">▷ Load</button>
-      <div id="avatar-preview-host" style="margin-top:12px"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Character Reference</div>
-      <div style="font-size:13px;color:var(--text-dim);line-height:1.6">
-        <strong>British man, late twenties</strong> — athletic build, short cropped brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm.
-        <br><br>Smart-casual British everyday: fitted plain tees, polos, open-collar fitted shirts, thin gold chain at neckline. Confident, friendly, direct eye contact.
-        <br><br><a href="CHARACTER_BIBLE.md" style="color:var(--accent);text-decoration:none">Full Character Bible →</a>
+        <br>• <b style="color:var(--text)">FCA disclaimer</b> — "Educational, not financial advice"
+        <br>• <b style="color:var(--text)">TikTok AI label</b> — 🤖 badge, bottom-right corner
+        <br>• <b style="color:var(--text)">C2PA metadata</b> — provenance signature for verification
       </div>
     </div>
   `;
 
   setTimeout(() => {
-    const btn = $('#render-avatar');
-    const voice = $('#avatar-voice');
-    const script = $('#avatar-script');
-    const out = $('#avatar-out');
-    const fca = $('#avatar-fca');
-
-    const FCA_BLOCKLIST = [
-      'guaranteed returns', 'guaranteed profit', 'guaranteed income',
-      'should buy', 'should invest', 'should purchase',
-      'i recommend', 'i advise', 'i suggest',
-      'you need', 'you should', 'you must',
-      'best choice', 'best option', 'best investment',
-      'everyone should', 'anyone should'
-    ];
-
-    const reviewFCA = (text) => {
-      if(!text || !text.trim()) return { ok: null };
-      const lower = text.toLowerCase();
-      const hits = FCA_BLOCKLIST.filter(p => lower.includes(p));
-      return { ok: hits.length === 0, hits };
-    };
-
-    const renderFCA = (result) => {
-      if(result.ok === null){ fca.innerHTML = ''; return; }
-      if(result.ok){
-        fca.innerHTML = '<div style="color:var(--accent);padding:8px 12px;background:rgba(16,242,160,0.08);border-radius:6px">✓ FCA review passed — disclaimer will be auto-added</div>';
-      } else {
-        fca.innerHTML = '<div style="color:var(--red);padding:8px 12px;background:rgba(255,77,109,0.08);border-radius:6px">'
-          + '<strong>⚠ FCA risk:</strong> ' + result.hits.map(h => '"' + h + '"').join(', ')
-          + '<br><span style="font-size:12px;opacity:0.8">Reframe as "Consider whether…" / "Depending on…" — no recommendations or guarantees.</span>'
-          + '</div>';
-      }
-    };
-
-    script.oninput = () => renderFCA(reviewFCA(script.value));
-
-    const showVideo = (host, url, sub) => {
-      const safe = String(url || '').trim();
-      if(!safe || !/^https?:\/\//i.test(safe)){
-        host.innerHTML = '<div style="color:var(--red)">Invalid URL.</div>';
-        return;
-      }
-      host.innerHTML = ''
-        + '<video controls playsinline preload="metadata" style="width:100%;max-width:360px;border-radius:8px;background:#000;display:block" src="' + safe.replace(/"/g,'&quot;') + '"></video>'
-        + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
-        +   '<a class="btn" href="' + safe.replace(/"/g,'&quot;') + '" download target="_blank" rel="noopener">⤓ Download</a>'
-        +   '<button class="btn" data-copy="' + safe.replace(/"/g,'&quot;') + '">⧉ Copy URL</button>'
-        + '</div>'
-        + (sub ? '<div style="margin-top:6px;font-size:12px;color:var(--text-dim)">' + sub + '</div>' : '');
-      const copyBtn = host.querySelector('[data-copy]');
-      if(copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(copyBtn.dataset.copy);
-    };
-
-    const previewUrl = $('#avatar-preview-url');
-    const previewLoad = $('#avatar-preview-load');
-    const previewHost = $('#avatar-preview-host');
-    previewLoad.onclick = () => showVideo(previewHost, previewUrl.value, 'Loaded from URL — no render cost.');
-
-    btn.onclick = async () => {
-      const scriptText = script.value.trim();
-      const voiceOption = voice.value;
-
-      if(!scriptText){
-        out.textContent = 'Please enter a script first.';
-        return;
-      }
-
-      const fcaResult = reviewFCA(scriptText);
-      renderFCA(fcaResult);
-      if(!fcaResult.ok){
-        out.textContent = '✗ Render blocked: script contains FCA-risky phrases. Fix the highlighted issues above before retrying. (Backend will also reject this — saving credits client-side.)';
-        return;
-      }
-
-      out.classList.add('loading');
-      out.textContent = '⬡ Submitting to avatar pipeline…\nKeyframe → audio → Wan 2.7 animation → disclosure overlays.\nTypical time: 3–10 minutes. This page will update when the render finishes.';
-
-      try {
-        const payload = {
-          source: 'avatar-pipeline',
-          script: scriptText,
-          voice: voiceOption,
-          soul_id: '64da88e0-fe5f-4af6-a2da-3b8de23fad64',
-          location_hint: 'generic-london-street',
-          duration_hint: Math.min(Math.ceil(scriptText.split(' ').length / 140 * 60), 60)
-        };
-
-        const res = await fetch(CONFIG.AVATAR_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        const ct = res.headers.get('content-type') || '';
-        const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
-
-        if(res.status === 400 && data && data.status === 'FCA_VIOLATION'){
-          out.classList.remove('loading');
-          out.innerHTML = '<strong style="color:var(--red)">✗ Backend FCA rejection</strong><br>'
-            + 'Violations: ' + (data.violations || []).map(v => '"' + v + '"').join(', ') + '<br>'
-            + (data.message || '');
-          return;
-        }
-
-        if(!res.ok){
-          const t = data ? JSON.stringify(data) : await res.text().catch(()=>res.statusText);
-          throw new Error('Render failed (' + res.status + '): ' + t);
-        }
-
-        if(data && data.status === 'success' && data.video_url){
-          out.classList.remove('loading');
-          out.innerHTML = '<strong style="color:var(--accent)">✓ Render complete</strong><br>'
-            + 'Duration: ' + (data.duration_seconds || '?') + 's · '
-            + 'FCA: ' + (data.compliance && data.compliance.fca_disclaimer_added ? '✓' : '✗') + ' · '
-            + 'AI label: ' + (data.compliance && data.compliance.tiktok_label_added ? '✓' : '✗') + ' · '
-            + 'C2PA: ' + (data.compliance && data.compliance.c2pa_metadata_added ? '✓' : '✗');
-          showVideo(previewHost, data.video_url, 'Latest render.');
-          previewUrl.value = data.video_url;
-          return;
-        }
-
-        out.textContent = '✓ Request accepted. Backend will continue processing. Paste the resulting URL into "Preview existing render" when ready.';
-      } catch(e){
-        out.textContent = 'Error: ' + e.message;
-      }
-      out.classList.remove('loading');
-    };
-  }, 0);
-
-  return el;
-};
-
-PAGES.history = () => {
-  const el = document.createElement('div');
-  el.className = 'page';
-  el.innerHTML = html`
-    <div class="page-title">History</div>
-    <div class="page-sub"><span class="accent">${State.executions.length}</span> runs · tap to inspect</div>
-
-    <div class="card">
-      <div class="card-title">All runs</div>
-      <div id="history-list">${State.executions.length ? '' : '<div class="empty">No runs yet</div>'}</div>
-    </div>
-  `;
-  setTimeout(() => {
-    const list = $('#history-list');
-    if(!list || State.executions.length === 0) return;
-    list.innerHTML = State.executions.map(e => {
-      const dur = e.stoppedAt ? formatDuration(new Date(e.stoppedAt) - new Date(e.startedAt)) : '–';
-      return html`
-        <div class="exec" data-id="${esc(e.id)}">
-          <div class="exec-status ${esc(e.status)}"></div>
-          <div class="exec-info">
-            <div class="exec-id">Run #${esc(e.id)}</div>
-            <div class="exec-meta">${esc(formatDate(e.startedAt))} · ${esc(dur)}</div>
-          </div>
-          <div class="exec-action">${esc(e.status.toUpperCase())}</div>
-        </div>
-      `;
-    }).join('');
-
-    list.querySelectorAll('.exec').forEach(row => {
-      row.onclick = async () => {
-        try {
-          const exec = await getExecution(row.dataset.id);
-          const r = extractResultFromExec(exec);
-          if(r?.videoUrl) window.open(r.videoUrl, '_blank');
-          else alert(`Run #${row.dataset.id}\nStatus: ${exec.status}\n(no video URL in result)`);
-        } catch(err){ alert('Could not load: ' + err.message); }
-      };
+    $('#quick-render').onclick = () => go('avatar');
+    el.querySelectorAll('#recent .row').forEach(row => {
+      row.onclick = () => { go('library'); /* TODO: scroll to row */ };
     });
   }, 0);
+
   return el;
 };
 
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
-window.go = go;
-window.State = State;
-window.render = render;
+// Stubs for tabs yet to be built
+const stub = (title, sub, msg) => () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  el.innerHTML = html`
+    <div class="page-title">${esc(title)}</div>
+    <div class="page-sub">${esc(sub)}</div>
+    <div class="card">
+      <div class="card-title">Coming soon</div>
+      <div style="color:var(--text-dim);font-size:14px;line-height:1.6">${esc(msg)}</div>
+    </div>
+  `;
+  return el;
+};
 
-$$('.tab').forEach(t => t.onclick = () => go(t.dataset.tab));
-render();
-loadStats().then(render);
-setInterval(loadStats, 60000);
+PAGES.script  = stub('Script',  'AI-written, FCA-checked',         'Claude-powered script writer with live FCA review. Lands next.');
+PAGES.avatar  = stub('Avatar',  'Soul keyframe + Wan 2.7 lip-sync', 'Render flow with audio + keyframe + lip-sync video. Lands next.');
+PAGES.library = stub('Library', 'All renders, searchable',         'Thumbnail grid of every render with status, filter, and one-tap download. Lands next.');
+PAGES.publish = stub('Publish', 'TikTok caption + disclosure',     'Caption templates, hashtag presets, auto-disclosure pinned comment. Manual paste flow. Lands next.');
+PAGES.settings = stub('Settings', 'Keys, character, schedule',     'API key management (server-side via Worker), avatar character spec, posting schedule. Lands next.');
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function renderApp() {
+  const root = $('#page-root');
+  root.innerHTML = '';
+  const pageFn = PAGES[State.page] || PAGES.home;
+  root.appendChild(pageFn());
+  renderTabs();
+}
+
+onChange(renderApp);
+
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+renderApp();
+
+// Expose handles for console debugging only — no secrets surfaced.
+window.FF = { State, set, go, api, Storage };
 </script>
 </body>
 </html>
