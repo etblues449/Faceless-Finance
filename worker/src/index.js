@@ -51,6 +51,8 @@ const ALLOWED_HOSTS = new Set([
   'api.pexels.com',
   // Higgsfield AI (Seedance v1 Pro — image-to-video)
   'platform.higgsfield.ai',
+  // Higgsfield official REST API (Soul image gen + Wan 2.7 lip-sync via /v1/generations)
+  'api.higgsfield.ai',
   // Fal.ai (Seedance 2.0 text-to-video via queue)
   'fal.run',
   'queue.fal.run',
@@ -83,6 +85,9 @@ const SECRET_INJECTION = {
   'api.heygen.com':                    (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
   'upload.heygen.com':                 (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
   'platform.higgsfield.ai':            (env) => env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET && { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } },
+  // The official REST endpoint uses a single Bearer token (HIGGSFIELD_TOKEN
+  // from cloud.higgsfield.ai → API). Confirmed by pipeline/render/higgsfield.py.
+  'api.higgsfield.ai':                 (env) => env.HIGGSFIELD_TOKEN && { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } },
   'fal.run':                           (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'queue.fal.run':                     (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'rest.alpha.fal.ai':                 (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },

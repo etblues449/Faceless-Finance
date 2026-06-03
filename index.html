@@ -264,6 +264,10 @@ const CONFIG = {
     soul_name: 'JB-FF-2026',
     default_location: 'generic-london-street',
     default_provider: 'wan2_7',
+    // A public URL to a JB-FF-2026 keyframe still. Generated once via Higgsfield
+    // Soul, hosted on the Worker (R2/KV) or any CDN. Override in Settings if you
+    // want to test with a different keyframe.
+    default_keyframe_url: '',
   },
   FCA_BLOCKLIST: [
     'guaranteed returns', 'guaranteed profit', 'guaranteed income',
@@ -796,50 +800,130 @@ PAGES.avatar = () => {
       progress.innerHTML = '';
       result.innerHTML = '';
 
+      const updateRec = (patch) => {
+        set({ renders: State.renders.map(x => x.id === id ? { ...x, ...patch } : x) });
+      };
+
       try {
-        // 1. Determine audio source
-        let audioUrl = (urlIn.value || '').trim();
-        if (uploadedAudio && voice.value === 'upload') {
-          // For v1, file uploads need a hosting endpoint. We accept the audio
-          // via the Worker (POST binary) — until that endpoint is implemented,
-          // surface a clear instruction.
-          throw new Error('Upload path needs a Worker /upload-audio endpoint. For now, paste a public URL in the Voice card, or upload via the Higgsfield dashboard and paste the URL here.');
+        // ─── 1. Keyframe URL ────────────────────────────────────────────────
+        // Wan 2.7 lip-sync needs a public still image to drive. For now we
+        // require a pre-generated Soul keyframe URL set in Settings.
+        const keyframeUrl = (settings.keyframeUrl || CONFIG.AVATAR.default_keyframe_url || '').trim();
+        if (!keyframeUrl) {
+          throw new Error('No Soul keyframe URL set. Open Settings → Character and paste a public URL to a JB-FF-2026 still (generated once via Higgsfield Soul). Without it Wan 2.7 has nothing to animate.');
         }
-        if (voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro') {
+
+        // ─── 2. Audio ─ ElevenLabs or paste-URL ─────────────────────────────
+        let audioUrl = (urlIn.value || '').trim();
+
+        if (voice.value === 'upload' && uploadedAudio) {
+          throw new Error('Local file upload needs a public hosting step (Worker R2 endpoint, next phase). For now: paste a public URL in the Voice card, or upload the MP3 to a CDN and paste its URL.');
+        }
+
+        if ((voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro') && !audioUrl) {
           if (!settings.elevenlabsKey || !settings.elevenlabsVoiceId) {
-            throw new Error('ElevenLabs not configured. Add the API key + voice ID in Settings, or pick "Upload your own" and paste a URL.');
+            throw new Error('ElevenLabs not configured. Add the API key + voice ID in Settings, or paste an audio URL.');
           }
           status.innerHTML = '<span class="row-dot running"></span> Generating voice with ElevenLabs…';
-          // Direct ElevenLabs call (Worker proxy preferred — wired in Settings phase)
-          const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
+          // Route via Worker proxy — ELEVENLABS_KEY is injected server-side
+          // (Design A), but the proxy also passes through xi-api-key from
+          // the browser, so either works. We send no key from the browser
+          // and rely on the Worker secret.
+          const ttsRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
             method: 'POST',
-            headers: { 'xi-api-key': settings.elevenlabsKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
             body: JSON.stringify({
               text: script.value.trim(),
               model_id: settings.elevenlabsModel || 'eleven_flash_v2',
               voice_settings: { stability: 0.5, similarity_boost: 0.75 },
             }),
           });
-          if (!r.ok) throw new Error('ElevenLabs ' + r.status + ': ' + (await r.text()).slice(0, 200));
-          const blob = await r.blob();
+          if (!ttsRes.ok) throw new Error('ElevenLabs ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
+          const blob = await ttsRes.blob();
+          // Higgsfield needs a public URL, not a blob. For now we surface the
+          // blob locally and require the user to host it. Next phase: POST to
+          // Worker /audio/upload (R2-backed) to get a public URL.
           audioUrl = URL.createObjectURL(blob);
-          // (TODO Phase 2 of Avatar tab: upload to Worker so Higgsfield can fetch it.)
+          result.innerHTML = '<div class="banner banner-info">✓ Voice generated locally. <a href="' + audioUrl + '" download="' + id + '.mp3">Download MP3</a> and paste a public URL in the Voice card to continue. (R2 audio-upload endpoint is the next phase.)</div>';
+          throw new Error('Audio is generated but lives in browser memory only. Wan 2.7 needs a public URL. Download it and paste a public-host URL in the Voice card.');
         }
-        if (!audioUrl) throw new Error('No audio source. Pick a voice provider with credentials, or paste an audio URL.');
 
-        // 2. Surface that we're past audio
-        status.innerHTML = '<span class="row-dot running"></span> Audio ready. Submitting render to Higgsfield (Soul keyframe + Wan 2.7 lip-sync)…';
+        if (!audioUrl) {
+          throw new Error('No audio source. Pick a voice provider with credentials, paste a public audio URL, or upload an MP3 + paste its public URL.');
+        }
 
-        // 3. Higgsfield render — direct API call from browser is blocked by CORS.
-        // The Cloudflare Worker proxy is needed. For now, surface a clear
-        // explanation so the user understands what is wired and what is not.
-        throw new Error('Higgsfield render needs the Cloudflare Worker proxy with HIGGSFIELD_KEY secret (Design A). Worker endpoint to wire next: POST ' + CONFIG.WORKER_BASE + '/avatar/render. Open Settings to confirm Worker base URL.');
+        // ─── 3. Submit Wan 2.7 generation via Worker proxy ──────────────────
+        status.innerHTML = '<span class="row-dot running"></span> Submitting Wan 2.7 lip-sync render…';
+        const subRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'wan2_7',
+            // Per models_explore: medias[].roles include start_image + audio
+            medias: [
+              { role: 'start_image', value: keyframeUrl },
+              { role: 'audio',       value: audioUrl    },
+            ],
+            // 9:16 portrait, 720p default; capped at 15s
+            aspect_ratio: '9:16',
+            resolution: settings.wanResolution || '720p',
+            duration: Math.max(2, Math.min(15, Math.round((script.value.trim().split(/\s+/).filter(Boolean).length) / 140 * 60))),
+          }),
+        });
+        const subBody = await subRes.text();
+        if (!subRes.ok) {
+          // Surface the upstream body so we can iterate on the request shape.
+          throw new Error('Higgsfield submit ' + subRes.status + ': ' + subBody.slice(0, 400));
+        }
+        let subJson; try { subJson = JSON.parse(subBody); } catch { subJson = {}; }
+        const jobId = subJson.id || subJson.request_id || subJson.generation_id || subJson.job_id;
+        if (!jobId) throw new Error('Submit OK but no job id in response: ' + subBody.slice(0, 200));
+
+        updateRec({ status: 'running', jobId });
+        status.innerHTML = '<span class="row-dot running"></span> Render running. Polling Higgsfield (job <code>' + esc(jobId) + '</code>)…';
+
+        // ─── 4. Poll until done ─────────────────────────────────────────────
+        const t0 = Date.now();
+        const timeoutMs = 15 * 60 * 1000;
+        let videoUrl = null;
+        while (Date.now() - t0 < timeoutMs) {
+          await new Promise(r => setTimeout(r, 8000));
+          const pollRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
+          if (!pollRes.ok) {
+            const body = await pollRes.text();
+            // 5xx is transient — keep polling. 4xx is fatal.
+            if (pollRes.status >= 400 && pollRes.status < 500) throw new Error('Poll ' + pollRes.status + ': ' + body.slice(0, 300));
+            continue;
+          }
+          const j = await pollRes.json().catch(() => ({}));
+          const st = String(j.status || '').toLowerCase();
+          const elapsed = Math.floor((Date.now() - t0) / 1000);
+          progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">' + esc(st || 'queued') + ' · ' + elapsed + 's elapsed</div>';
+          if (st === 'completed' || st === 'complete' || st === 'succeeded' || st === 'done') {
+            videoUrl = j.output_url || j.url || (j.output && j.output.url) || (j.result && j.result.url) || (Array.isArray(j.assets) && j.assets[0] && j.assets[0].url);
+            if (!videoUrl) throw new Error('Render succeeded but no video URL: ' + JSON.stringify(j).slice(0, 300));
+            break;
+          }
+          if (st === 'failed' || st === 'error' || st === 'cancelled' || st === 'canceled') {
+            throw new Error('Higgsfield render failed: ' + JSON.stringify(j).slice(0, 300));
+          }
+        }
+        if (!videoUrl) throw new Error('Render timed out after 15 minutes.');
+
+        // ─── 5. Done ────────────────────────────────────────────────────────
+        updateRec({ status: 'success', videoUrl, completedAt: new Date().toISOString() });
+        status.innerHTML = '<span class="row-dot success"></span> Render complete.';
+        result.innerHTML = ''
+          + '<video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="' + esc(videoUrl) + '"></video>'
+          + '<div class="btn-row" style="margin-top:10px">'
+          + '<a class="btn btn-accent" href="' + esc(videoUrl) + '" download target="_blank" rel="noopener">⤓ Download MP4</a>'
+          + '<button class="btn" onclick="FF.go(\'publish\')">→ Publish</button>'
+          + '</div>';
 
       } catch (e) {
-        const updated = State.renders.map(x => x.id === id ? { ...x, status: 'error', completedAt: new Date().toISOString(), error: e.message } : x);
-        set({ renders: updated });
+        updateRec({ status: 'error', completedAt: new Date().toISOString(), error: e.message });
         status.innerHTML = '<span class="row-dot error"></span> Render failed.';
-        result.innerHTML = '<div class="banner banner-error">' + esc(e.message) + '</div>';
+        if (!result.innerHTML) result.innerHTML = '<div class="banner banner-error">' + esc(e.message) + '</div>';
       } finally {
         render.disabled = false;
       }
@@ -1069,11 +1153,22 @@ PAGES.settings = () => {
 
     <div class="card">
       <div class="card-title">Character (locked)</div>
-      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7;margin-bottom:10px">
         <b style="color:var(--text)">JB-FF-2026</b> · soul_id <code>${esc(CONFIG.AVATAR.soul_id)}</code><br>
-        British man, late 20s, athletic, brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm. Smart-casual British everyday.<br><br>
-        To swap character, generate a new Higgsfield Soul and update <code>CONFIG.AVATAR.soul_id</code> in source.
+        British man, late 20s, athletic, brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm.
       </div>
+      <input class="input" id="set-keyframeUrl" placeholder="Public URL to a JB-FF-2026 keyframe still…" value="${esc(s.keyframeUrl || '')}" style="margin-bottom:6px">
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.5">
+        Wan 2.7 lip-sync needs a public image URL to animate. Use a Higgsfield Soul output URL, or any CDN-hosted still that matches the character spec.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Wan 2.7 resolution</div>
+      <select class="input" id="set-wanResolution">
+        <option value="720p" ${(s.wanResolution || '720p') === '720p' ? 'selected' : ''}>720p — ~22 cr / 15s (recommended for TikTok)</option>
+        <option value="1080p" ${s.wanResolution === '1080p' ? 'selected' : ''}>1080p — ~37 cr / 15s</option>
+      </select>
     </div>
 
     <div class="card">
@@ -1109,6 +1204,8 @@ PAGES.settings = () => {
         elevenlabsModel:     $('#set-elevenlabsModel').value,
         higgsfieldKey:       $('#set-higgsfieldKey').value.trim(),
         higgsfieldSecret:    $('#set-higgsfieldSecret').value.trim(),
+        keyframeUrl:         $('#set-keyframeUrl').value.trim(),
+        wanResolution:       $('#set-wanResolution').value,
       };
       set({ settings: next });
       const saved = $('#set-saved'); saved.style.opacity = '1';
