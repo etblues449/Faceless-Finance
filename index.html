@@ -650,7 +650,204 @@ PAGES.script = () => {
 
   return el;
 };
-PAGES.avatar  = stub('Avatar',  'Soul keyframe + Wan 2.7 lip-sync', 'Render flow with audio + keyframe + lip-sync video. Lands next.');
+PAGES.avatar = () => {
+  const el = document.createElement('div');
+  el.className = 'page';
+  const initial = Storage.get('avatarScript', '') || (Storage.get('scriptDraft', {}).text || '');
+
+  el.innerHTML = html`
+    <div class="page-title">Avatar</div>
+    <div class="page-sub">Soul keyframe · <span class="accent">Wan 2.7 lip-sync</span> · 9:16 · ready for TikTok</div>
+
+    <div class="card">
+      <div class="card-title">Voice</div>
+      <select class="input" id="a-voice" style="margin-bottom:8px">
+        <option value="elevenlabs-pvc" selected>ElevenLabs PVC — your voice clone</option>
+        <option value="elevenlabs-pro">ElevenLabs — Professional alternate</option>
+        <option value="upload">Upload your own MP3/M4A</option>
+        <option value="reuse">Reuse a prior audio file</option>
+      </select>
+      <input type="file" id="a-audio-file" accept="audio/*" class="hidden">
+      <input class="input" id="a-audio-url" placeholder="Or paste a public audio URL…" style="margin-bottom:0">
+    </div>
+
+    <div class="card">
+      <div class="card-title">Script (auto-filled from Script tab)</div>
+      <textarea class="input" id="a-script" placeholder="Paste a script or write one from the Script tab…">${esc(initial)}</textarea>
+      <div id="a-fca" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Location & character</div>
+      <select class="input" id="a-location" style="margin-bottom:10px">
+        <option value="generic-london-street" selected>Generic London residential street (recommended)</option>
+        <option value="generic-london-park">Generic London park / green space</option>
+        <option value="indoor-modern">Indoor — modern, neutral background</option>
+        <option value="indoor-office">Indoor — home office, soft daylight</option>
+      </select>
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.6">
+        Locked character: <b style="color:var(--text)">JB-FF-2026</b> — British man, late 20s, athletic, brown hair, blue-grey eyes, tight stubble, sleeve tattoo. Locations avoid named landmarks (text garbles on AI render).
+      </div>
+    </div>
+
+    <div class="card glow">
+      <div class="card-title">Render</div>
+      <div class="btn-row" style="margin-bottom:12px">
+        <button class="btn btn-accent" id="a-render" disabled>🎬 Render Avatar Video</button>
+        <button class="btn" id="a-cost">Estimate cost</button>
+      </div>
+      <div id="a-status" style="font-size:13px;color:var(--text-dim);line-height:1.6"></div>
+      <div id="a-progress" style="margin-top:10px"></div>
+      <div id="a-result" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">What gets baked into every render</div>
+      <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
+        • <b style="color:var(--text)">FCA disclaimer</b> overlay — last 5s, "Educational. Not advice."<br>
+        • <b style="color:var(--text)">TikTok AI label</b> — 🤖 badge, bottom-right corner.<br>
+        • <b style="color:var(--text)">C2PA metadata</b> — verifiable provenance signature.
+      </div>
+    </div>
+  `;
+
+  setTimeout(() => {
+    const voice  = $('#a-voice');
+    const fileIn = $('#a-audio-file');
+    const urlIn  = $('#a-audio-url');
+    const script = $('#a-script');
+    const fca    = $('#a-fca');
+    const loc    = $('#a-location');
+    const render = $('#a-render');
+    const costBtn = $('#a-cost');
+    const status = $('#a-status');
+    const progress = $('#a-progress');
+    const result = $('#a-result');
+
+    let uploadedAudio = null; // { name, size, url }
+
+    const showFile = () => {
+      if (uploadedAudio) {
+        urlIn.placeholder = '✓ ' + uploadedAudio.name + ' (' + Math.round(uploadedAudio.size / 1024) + ' KB) ready';
+        urlIn.value = '';
+      }
+    };
+
+    voice.onchange = () => {
+      const v = voice.value;
+      fileIn.classList.toggle('hidden', v !== 'upload');
+      urlIn.placeholder = v === 'upload'
+        ? (uploadedAudio ? '✓ ' + uploadedAudio.name : 'Choose a file with the picker, or paste a URL here…')
+        : v === 'reuse' ? 'Paste URL of a prior render audio…'
+        : 'Or paste a public audio URL to override the voice provider…';
+      if (v === 'upload') fileIn.click();
+    };
+
+    fileIn.onchange = (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      uploadedAudio = { name: f.name, size: f.size, file: f, url: URL.createObjectURL(f) };
+      showFile();
+    };
+
+    const refresh = () => {
+      const r = reviewFCA(script.value);
+      if (r.ok === null) { fca.innerHTML = ''; render.disabled = true; return; }
+      if (!r.ok) {
+        fca.innerHTML = '<div class="banner banner-error" style="margin:0"><b>⚠ FCA risk:</b> '
+          + r.hits.map(h => '"' + esc(h) + '"').join(', ')
+          + '<br><span style="opacity:.85">Fix the script (or open the Script tab) before rendering.</span></div>';
+        render.disabled = true;
+      } else {
+        fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed.</div>';
+        render.disabled = false;
+      }
+    };
+    script.oninput = refresh;
+    refresh();
+
+    costBtn.onclick = () => {
+      const wc = script.value.trim().split(/\s+/).filter(Boolean).length;
+      const sec = Math.max(4, Math.min(15, Math.round(wc / 140 * 60))); // Wan caps at 15s
+      // Wan 2.7 720p ~22 cr / 15s, 1080p ~37 cr / 15s
+      const cr720 = Math.round(22 * sec / 15);
+      const cr1080 = Math.round(37 * sec / 15);
+      status.innerHTML = ''
+        + '<b style="color:var(--text)">Estimated duration:</b> ' + sec + 's (script is ' + wc + ' words, capped at 15s)<br>'
+        + '<b style="color:var(--text)">Cost:</b> ~' + cr720 + ' credits (720p) · ~' + cr1080 + ' credits (1080p) on Wan 2.7';
+    };
+
+    render.onclick = async () => {
+      const settings = State.settings || {};
+      const id = uid();
+      const rec = {
+        id, type: 'avatar', status: 'pending',
+        createdAt: new Date().toISOString(),
+        script: script.value.trim(),
+        voice: voice.value,
+        location: loc.value,
+        provider: CONFIG.AVATAR.default_provider,
+        cost: null, videoUrl: null,
+      };
+      set({ renders: [rec, ...State.renders] });
+
+      render.disabled = true;
+      status.innerHTML = '<span class="row-dot pending"></span> Validating inputs…';
+      progress.innerHTML = '';
+      result.innerHTML = '';
+
+      try {
+        // 1. Determine audio source
+        let audioUrl = (urlIn.value || '').trim();
+        if (uploadedAudio && voice.value === 'upload') {
+          // For v1, file uploads need a hosting endpoint. We accept the audio
+          // via the Worker (POST binary) — until that endpoint is implemented,
+          // surface a clear instruction.
+          throw new Error('Upload path needs a Worker /upload-audio endpoint. For now, paste a public URL in the Voice card, or upload via the Higgsfield dashboard and paste the URL here.');
+        }
+        if (voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro') {
+          if (!settings.elevenlabsKey || !settings.elevenlabsVoiceId) {
+            throw new Error('ElevenLabs not configured. Add the API key + voice ID in Settings, or pick "Upload your own" and paste a URL.');
+          }
+          status.innerHTML = '<span class="row-dot running"></span> Generating voice with ElevenLabs…';
+          // Direct ElevenLabs call (Worker proxy preferred — wired in Settings phase)
+          const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
+            method: 'POST',
+            headers: { 'xi-api-key': settings.elevenlabsKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+            body: JSON.stringify({
+              text: script.value.trim(),
+              model_id: settings.elevenlabsModel || 'eleven_flash_v2',
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+          });
+          if (!r.ok) throw new Error('ElevenLabs ' + r.status + ': ' + (await r.text()).slice(0, 200));
+          const blob = await r.blob();
+          audioUrl = URL.createObjectURL(blob);
+          // (TODO Phase 2 of Avatar tab: upload to Worker so Higgsfield can fetch it.)
+        }
+        if (!audioUrl) throw new Error('No audio source. Pick a voice provider with credentials, or paste an audio URL.');
+
+        // 2. Surface that we're past audio
+        status.innerHTML = '<span class="row-dot running"></span> Audio ready. Submitting render to Higgsfield (Soul keyframe + Wan 2.7 lip-sync)…';
+
+        // 3. Higgsfield render — direct API call from browser is blocked by CORS.
+        // The Cloudflare Worker proxy is needed. For now, surface a clear
+        // explanation so the user understands what is wired and what is not.
+        throw new Error('Higgsfield render needs the Cloudflare Worker proxy with HIGGSFIELD_KEY secret (Design A). Worker endpoint to wire next: POST ' + CONFIG.WORKER_BASE + '/avatar/render. Open Settings to confirm Worker base URL.');
+
+      } catch (e) {
+        const updated = State.renders.map(x => x.id === id ? { ...x, status: 'error', completedAt: new Date().toISOString(), error: e.message } : x);
+        set({ renders: updated });
+        status.innerHTML = '<span class="row-dot error"></span> Render failed.';
+        result.innerHTML = '<div class="banner banner-error">' + esc(e.message) + '</div>';
+      } finally {
+        render.disabled = false;
+      }
+    };
+  }, 0);
+
+  return el;
+};
 PAGES.library = stub('Library', 'All renders, searchable',         'Thumbnail grid of every render with status, filter, and one-tap download. Lands next.');
 PAGES.publish = stub('Publish', 'TikTok caption + disclosure',     'Caption templates, hashtag presets, auto-disclosure pinned comment. Manual paste flow. Lands next.');
 PAGES.settings = stub('Settings', 'Keys, character, schedule',     'API key management (server-side via Worker), avatar character spec, posting schedule. Lands next.');
