@@ -216,9 +216,13 @@ textarea.input{min-height:90px;resize:vertical;font-family:'DM Mono',monospace;f
 
 <script>
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
+// TODO(security): N8N_API_KEY is exposed in this public file. Rotate the JWT
+// in n8n, move the new one to a Cloudflare Worker secret, and have the app
+// call the Worker (Design A pattern from CLAUDE.md) instead of n8n directly.
 const CONFIG = {
   N8N_BASE:    'https://jellybean1875.app.n8n.cloud',
   WEBHOOK_URL: 'https://jellybean1875.app.n8n.cloud/webhook/run-faceless-finance',
+  AVATAR_WEBHOOK_URL: 'https://jellybean1875.app.n8n.cloud/webhook/avatar-pipeline',
   WORKFLOW_ID: 'rFawDSoSv0QUiEJH',
   N8N_API_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4YTY3MjdjZS05ZmNjLTQyYzYtOTkwNC00N2MwMzZiM2Q5NjkiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMjQ0NDI4OTMtN2VkMi00MGE5LWI0Y2MtMDU4ZDBlMTg3ZDQyIiwiaWF0IjoxNzgwMDk3NjIxfQ.wAh3tzznpdIaFPk7HiAaNnxr33Kfm5qHK0YlUb0GxWg',
   ANTHROPIC_KEY: '',  // optional - leave empty if you want AI tools disabled
@@ -810,6 +814,14 @@ PAGES.avatar = () => {
     </div>
 
     <div class="card">
+      <div class="card-title">Preview existing render</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Paste a Higgsfield video URL to inspect it without spending credits.</div>
+      <input class="input" id="avatar-preview-url" type="url" placeholder="https://…cloudfront.net/…/hf_…mp4" style="margin-bottom:8px">
+      <button class="btn" id="avatar-preview-load">▷ Load</button>
+      <div id="avatar-preview-host" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Character Reference</div>
       <div style="font-size:13px;color:var(--text-dim);line-height:1.6">
         <strong>British man, late twenties</strong> — athletic build, short cropped brown hair, blue-grey eyes, tight stubble, sleeve tattoo on right arm.
@@ -856,6 +868,28 @@ PAGES.avatar = () => {
 
     script.oninput = () => renderFCA(reviewFCA(script.value));
 
+    const showVideo = (host, url, sub) => {
+      const safe = String(url || '').trim();
+      if(!safe || !/^https?:\/\//i.test(safe)){
+        host.innerHTML = '<div style="color:var(--red)">Invalid URL.</div>';
+        return;
+      }
+      host.innerHTML = ''
+        + '<video controls playsinline preload="metadata" style="width:100%;max-width:360px;border-radius:8px;background:#000;display:block" src="' + safe.replace(/"/g,'&quot;') + '"></video>'
+        + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
+        +   '<a class="btn" href="' + safe.replace(/"/g,'&quot;') + '" download target="_blank" rel="noopener">⤓ Download</a>'
+        +   '<button class="btn" data-copy="' + safe.replace(/"/g,'&quot;') + '">⧉ Copy URL</button>'
+        + '</div>'
+        + (sub ? '<div style="margin-top:6px;font-size:12px;color:var(--text-dim)">' + sub + '</div>' : '');
+      const copyBtn = host.querySelector('[data-copy]');
+      if(copyBtn) copyBtn.onclick = () => navigator.clipboard.writeText(copyBtn.dataset.copy);
+    };
+
+    const previewUrl = $('#avatar-preview-url');
+    const previewLoad = $('#avatar-preview-load');
+    const previewHost = $('#avatar-preview-host');
+    previewLoad.onclick = () => showVideo(previewHost, previewUrl.value, 'Loaded from URL — no render cost.');
+
     btn.onclick = async () => {
       const scriptText = script.value.trim();
       const voiceOption = voice.value;
@@ -868,12 +902,12 @@ PAGES.avatar = () => {
       const fcaResult = reviewFCA(scriptText);
       renderFCA(fcaResult);
       if(!fcaResult.ok){
-        out.textContent = '✗ Render blocked: script contains FCA-risky phrases. Fix the highlighted issues above before retrying. (n8n webhook will also reject this, so saving credits client-side.)';
+        out.textContent = '✗ Render blocked: script contains FCA-risky phrases. Fix the highlighted issues above before retrying. (Backend will also reject this — saving credits client-side.)';
         return;
       }
 
       out.classList.add('loading');
-      out.textContent = '⬡ Initializing avatar render…\nThis will create a Soul keyframe, generate audio, and animate with Seedance 2.0.\nExpect 5–10 minutes for a 15–30s clip.';
+      out.textContent = '⬡ Submitting to avatar pipeline…\nKeyframe → audio → Wan 2.7 animation → disclosure overlays.\nTypical time: 3–10 minutes. This page will update when the render finishes.';
 
       try {
         const payload = {
@@ -885,20 +919,43 @@ PAGES.avatar = () => {
           duration_hint: Math.min(Math.ceil(scriptText.split(' ').length / 140 * 60), 60)
         };
 
-        const res = await fetch(CONFIG.WEBHOOK_URL, {
+        const res = await fetch(CONFIG.AVATAR_WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
-        if(!res.ok){
-          const t = await res.text().catch(()=>res.statusText);
-          throw new Error(`Render trigger failed (${res.status}): ${t}`);
+        const ct = res.headers.get('content-type') || '';
+        const data = ct.includes('application/json') ? await res.json().catch(()=>null) : null;
+
+        if(res.status === 400 && data && data.status === 'FCA_VIOLATION'){
+          out.classList.remove('loading');
+          out.innerHTML = '<strong style="color:var(--red)">✗ Backend FCA rejection</strong><br>'
+            + 'Violations: ' + (data.violations || []).map(v => '"' + v + '"').join(', ') + '<br>'
+            + (data.message || '');
+          return;
         }
 
-        out.textContent = '✓ Render queued. Check History tab for progress.\n\nPipeline:\n1. Generate audio from script (ElevenLabs PVC)\n2. Create Soul keyframe (avatar at generic London location)\n3. Animate with Wan 2.7 (audio-driven lip-sync)\n4. Stitch + burn FCA disclaimer overlay (last 5s)\n5. Burn TikTok AI label (🤖 bottom-right, full duration)\n6. Embed C2PA provenance metadata';
+        if(!res.ok){
+          const t = data ? JSON.stringify(data) : await res.text().catch(()=>res.statusText);
+          throw new Error('Render failed (' + res.status + '): ' + t);
+        }
+
+        if(data && data.status === 'success' && data.video_url){
+          out.classList.remove('loading');
+          out.innerHTML = '<strong style="color:var(--accent)">✓ Render complete</strong><br>'
+            + 'Duration: ' + (data.duration_seconds || '?') + 's · '
+            + 'FCA: ' + (data.compliance && data.compliance.fca_disclaimer_added ? '✓' : '✗') + ' · '
+            + 'AI label: ' + (data.compliance && data.compliance.tiktok_label_added ? '✓' : '✗') + ' · '
+            + 'C2PA: ' + (data.compliance && data.compliance.c2pa_metadata_added ? '✓' : '✗');
+          showVideo(previewHost, data.video_url, 'Latest render.');
+          previewUrl.value = data.video_url;
+          return;
+        }
+
+        out.textContent = '✓ Request accepted. Backend will continue processing. Paste the resulting URL into "Preview existing render" when ready.';
       } catch(e){
-        out.textContent = `Error: ${e.message}`;
+        out.textContent = 'Error: ' + e.message;
       }
       out.classList.remove('loading');
     };
