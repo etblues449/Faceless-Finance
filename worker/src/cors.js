@@ -10,7 +10,8 @@ const ALLOW_HEADERS = [
   'X-API-Key', 'xi-api-key', 'X-Hedra-Key', 'X-Anthropic-Key',
   'anthropic-version', 'anthropic-dangerous-direct-browser-access',
   'OpenAI-Organization', 'OpenAI-Project',
-  'X-Requested-With',
+  'X-Runway-Version',
+  'X-Requested-With', 'X-Proxy-Token',
 ].join(', ');
 
 export function corsHeaders(env, request) {
