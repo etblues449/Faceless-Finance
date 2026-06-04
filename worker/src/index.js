@@ -85,17 +85,21 @@ const SECRET_INJECTION = {
   'api.heygen.com':                    (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
   'upload.heygen.com':                 (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
   // platform.higgsfield.ai is the real REST host (api.higgsfield.ai is a dead
-  // CNAME that times out — that's what the 522s were). Prefer the single
-  // Bearer token from cloud.higgsfield.ai → API; fall back to the older
-  // Key:Secret pair if only those are set.
+  // CNAME). Higgsfield's docs show the auth scheme is `Key {api_key}:{secret}`
+  // (NOT Bearer — that's what the 401 "Invalid credentials" errors were).
+  // Prefer the Key:Secret pair. Only fall back to HIGGSFIELD_TOKEN as Bearer if
+  // the Key:Secret pair isn't set (some older internal endpoints accept it).
   'platform.higgsfield.ai': (env) =>
-    env.HIGGSFIELD_TOKEN
-      ? { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } }
-      : (env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET
-          ? { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } }
+    (env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET)
+      ? { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } }
+      : (env.HIGGSFIELD_TOKEN
+          ? { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } }
           : null),
-  // Kept as a redirect for any saved URL pointing at the old host — same auth.
-  'api.higgsfield.ai': (env) => env.HIGGSFIELD_TOKEN && { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } },
+  // Kept for any saved URL pointing at the old (dead) host — same preference.
+  'api.higgsfield.ai': (env) =>
+    (env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET)
+      ? { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } }
+      : (env.HIGGSFIELD_TOKEN && { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } }),
   'fal.run':                           (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'queue.fal.run':                     (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'rest.alpha.fal.ai':                 (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
