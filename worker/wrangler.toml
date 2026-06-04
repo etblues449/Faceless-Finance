@@ -43,9 +43,11 @@ GH_REF = "main"
 # To enable later: uncomment, run `wrangler kv namespace create fincast_tokens`,
 # paste the returned ID here, then `wrangler deploy`.
 #
-# [[kv_namespaces]]
-# binding = "TOKENS"
-# id = ""
+# Declared here so the binding survives git-driven auto-deploys. Without this,
+# Cloudflare's "deploy from git" wipes any dashboard-added binding on each push.
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "236f53e24ee14ee2bce486af14c3eb03"
 
 # OPTIONAL Secrets (only needed if using Phase 2 OAuth publishing). Set via:
 #   wrangler secret put TIKTOK_CLIENT_KEY
