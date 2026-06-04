@@ -836,14 +836,33 @@ PAGES.avatar = () => {
 
     costBtn.onclick = () => {
       if (!scenes.length) { status.innerHTML = '<span style="color:var(--text-dim)">Plan scenes first to see the cost estimate.</span>'; return; }
+      const settings = State.settings || {};
+      const provider = settings.i2vProvider || 'runway';
       const totalSec = scenes.reduce((a, s) => a + (Number(s.seconds) || 5), 0);
-      const soulCost = scenes.length * 3;                       // Higgsfield Soul ~3 cr / still
-      const seedanceCost = Math.round(22 * totalSec / 5);        // Seedance ~22 cr / 5s @ 720p
+      const soulCost = scenes.length * 3; // Higgsfield Soul ~3 cr / still
+      // £/s rates (research-verified):
+      //   Runway Gen-4 Turbo: 5 cr/s × $0.01 = $0.05/s → ~£0.039/s
+      //   Veo 3.1 Fast (fal): $0.10/s → ~£0.079/s
+      //   Higgsfield DoP/Kling/Seedance: ~22 cr / 5s → opaque per-credit value
+      let i2vText, i2vTotalText;
+      if (provider === 'runway') {
+        const gbp = (totalSec * 0.039).toFixed(2);
+        i2vText = 'Runway Gen-4 Turbo i2v: ~£' + gbp + ' (' + totalSec + 's @ £0.039/s)';
+        i2vTotalText = '£' + gbp + ' Runway + ~' + soulCost + ' HF cr for Soul stills';
+      } else if (provider === 'veo_fal') {
+        const gbp = (totalSec * 0.079).toFixed(2);
+        i2vText = 'Veo 3.1 Fast (fal): ~£' + gbp + ' (' + totalSec + 's @ £0.079/s)';
+        i2vTotalText = '£' + gbp + ' fal + ~' + soulCost + ' HF cr for Soul stills';
+      } else {
+        const hfI2vCost = Math.round(22 * totalSec / 5);
+        i2vText = 'Higgsfield i2v (' + esc(provider) + '): ~' + hfI2vCost + ' HF credits';
+        i2vTotalText = '~' + (soulCost + hfI2vCost) + ' Higgsfield credits';
+      }
       status.innerHTML = ''
         + '<b style="color:var(--text)">' + scenes.length + ' scenes · ' + totalSec + 's total video</b><br>'
         + '<b style="color:var(--text)">Soul stills:</b> ~' + soulCost + ' Higgsfield credits<br>'
-        + '<b style="color:var(--text)">Seedance i2v:</b> ~' + seedanceCost + ' Higgsfield credits<br>'
-        + '<b style="color:var(--text)">Total:</b> ~' + (soulCost + seedanceCost) + ' Higgsfield credits (+ ElevenLabs voiceover billed separately).';
+        + '<b style="color:var(--text)">' + i2vText + '</b><br>'
+        + '<b style="color:var(--text)">Total:</b> ' + i2vTotalText + ' (+ ElevenLabs voiceover billed separately).';
     };
 
     planBtn.onclick = async () => {
@@ -910,8 +929,137 @@ PAGES.avatar = () => {
       }
     };
 
-    // Submit + poll one Higgsfield endpoint. Endpoint = full path under
-    // platform.higgsfield.ai/. Body = JSON to POST. Returns the upstream
+    // Provider-agnostic image-to-video helper. Dispatches to the right
+    // upstream based on settings.i2vProvider. Each provider has a different
+    // URL, body shape, and response shape. Returns { url, raw } on success
+    // so the rest of the render flow doesn't care which provider was used.
+    // Step name + step-tagged errors carry the provider label so failures
+    // point at the right place.
+    const callI2V = async (sceneIdx, totalScenes, provider, imageUrl, prompt, seconds) => {
+      const label = (i) => 'scene ' + i + '/' + totalScenes + ' — ';
+      const updateStatus = (suffix) => { status.innerHTML = '<span class="row-dot running"></span> ' + label(sceneIdx) + suffix; };
+
+      // ── Runway Gen-4 Turbo (default) ─────────────────────────────────────
+      // POST /v1/image_to_video, Bearer auth (Worker injects), X-Runway-Version
+      // header required, poll /v1/tasks/{id} until SUCCEEDED.
+      if (provider === 'runway') {
+        updateStatus('Runway Gen-4 Turbo (' + seconds + 's)…');
+        const sub = await stepFetch('scene ' + sceneIdx + ' Runway submit',
+          CONFIG.WORKER_BASE + '/proxy/api.dev.runwayml.com/v1/image_to_video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Runway-Version': '2024-11-06' },
+            body: JSON.stringify({
+              model: 'gen4_turbo',
+              promptImage: imageUrl,
+              promptText: prompt,
+              duration: seconds,
+              ratio: '720:1280',   // 9:16 vertical, 720p
+            }),
+          });
+        const subText = await sub.text();
+        if (!sub.ok) throw new Error('[scene ' + sceneIdx + ' Runway submit] HTTP ' + sub.status + ': ' + subText.slice(0, 400));
+        let j; try { j = JSON.parse(subText); } catch { j = {}; }
+        const taskId = j.id;
+        if (!taskId) throw new Error('[scene ' + sceneIdx + ' Runway submit] no task id. Body: ' + subText.slice(0, 300));
+        const t0 = Date.now();
+        const timeoutMs = 10 * 60 * 1000;
+        while (Date.now() - t0 < timeoutMs) {
+          await new Promise(r => setTimeout(r, 5000));
+          const poll = await stepFetch('scene ' + sceneIdx + ' Runway poll',
+            CONFIG.WORKER_BASE + '/proxy/api.dev.runwayml.com/v1/tasks/' + encodeURIComponent(taskId), {
+              headers: { 'X-Runway-Version': '2024-11-06' },
+            });
+          if (!poll.ok) {
+            const t = await poll.text();
+            if (poll.status >= 400 && poll.status < 500) throw new Error('[scene ' + sceneIdx + ' Runway poll] HTTP ' + poll.status + ': ' + t.slice(0, 300));
+            continue;
+          }
+          const pj = await poll.json().catch(() => ({}));
+          const st = String(pj.status || '').toUpperCase();
+          const elapsed = Math.floor((Date.now() - t0) / 1000);
+          progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">scene ' + sceneIdx + ' Runway · ' + esc(st || 'QUEUED') + ' · ' + elapsed + 's</div>';
+          if (st === 'SUCCEEDED') {
+            const u = Array.isArray(pj.output) ? pj.output[0] : (pj.output && pj.output.url) || pj.video_url || pj.url;
+            if (!u) throw new Error('[scene ' + sceneIdx + ' Runway] SUCCEEDED but no output url. Body: ' + JSON.stringify(pj).slice(0, 400));
+            return { url: typeof u === 'string' ? u : u.url, raw: pj };
+          }
+          if (st === 'FAILED' || st === 'CANCELLED' || st === 'CANCELED') {
+            throw new Error('[scene ' + sceneIdx + ' Runway failed] ' + JSON.stringify(pj).slice(0, 400));
+          }
+        }
+        throw new Error('[scene ' + sceneIdx + ' Runway] timed out after 10 min.');
+      }
+
+      // ── fal.ai Veo 3.1 Fast (hero shots) ─────────────────────────────────
+      // POST queue.fal.run/fal-ai/veo3.1/fast, Key auth (Worker injects).
+      // Returns request_id + status_url; poll until COMPLETED, asset under
+      // video.url. Note: fal returns absolute status_url; we proxy via Worker.
+      if (provider === 'veo_fal') {
+        updateStatus('Veo 3.1 Fast via fal (' + seconds + 's)…');
+        const sub = await stepFetch('scene ' + sceneIdx + ' Veo submit',
+          CONFIG.WORKER_BASE + '/proxy/queue.fal.run/fal-ai/veo3.1/fast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image_url: imageUrl,
+              prompt: prompt,
+              duration: seconds + 's',
+              aspect_ratio: '9:16',
+            }),
+          });
+        const subText = await sub.text();
+        if (!sub.ok) throw new Error('[scene ' + sceneIdx + ' Veo submit] HTTP ' + sub.status + ': ' + subText.slice(0, 400));
+        let j; try { j = JSON.parse(subText); } catch { j = {}; }
+        const reqId = j.request_id;
+        if (!reqId) throw new Error('[scene ' + sceneIdx + ' Veo submit] no request_id. Body: ' + subText.slice(0, 300));
+        // fal's status_url is absolute; re-proxy it via the Worker
+        const pollPath = '/proxy/queue.fal.run/fal-ai/veo3.1/fast/requests/' + encodeURIComponent(reqId) + '/status';
+        const resultPath = '/proxy/queue.fal.run/fal-ai/veo3.1/fast/requests/' + encodeURIComponent(reqId);
+        const t0 = Date.now();
+        const timeoutMs = 10 * 60 * 1000;
+        while (Date.now() - t0 < timeoutMs) {
+          await new Promise(r => setTimeout(r, 6000));
+          const poll = await stepFetch('scene ' + sceneIdx + ' Veo poll', CONFIG.WORKER_BASE + pollPath);
+          if (!poll.ok) {
+            const t = await poll.text();
+            if (poll.status >= 400 && poll.status < 500) throw new Error('[scene ' + sceneIdx + ' Veo poll] HTTP ' + poll.status + ': ' + t.slice(0, 300));
+            continue;
+          }
+          const pj = await poll.json().catch(() => ({}));
+          const st = String(pj.status || '').toUpperCase();
+          const elapsed = Math.floor((Date.now() - t0) / 1000);
+          progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">scene ' + sceneIdx + ' Veo · ' + esc(st || 'IN_QUEUE') + ' · ' + elapsed + 's</div>';
+          if (st === 'COMPLETED') {
+            const result = await stepFetch('scene ' + sceneIdx + ' Veo result', CONFIG.WORKER_BASE + resultPath);
+            if (!result.ok) throw new Error('[scene ' + sceneIdx + ' Veo result] HTTP ' + result.status + ': ' + (await result.text()).slice(0, 300));
+            const rj = await result.json().catch(() => ({}));
+            const u = (rj.video && (rj.video.url || rj.video)) || rj.url;
+            if (!u) throw new Error('[scene ' + sceneIdx + ' Veo] COMPLETED but no video url. Body: ' + JSON.stringify(rj).slice(0, 400));
+            return { url: typeof u === 'string' ? u : u.url, raw: rj };
+          }
+          if (st === 'FAILED' || st === 'ERROR') {
+            throw new Error('[scene ' + sceneIdx + ' Veo failed] ' + JSON.stringify(pj).slice(0, 400));
+          }
+        }
+        throw new Error('[scene ' + sceneIdx + ' Veo] timed out after 10 min.');
+      }
+
+      // ── Higgsfield DoP / Seedance / Kling (fallback to existing helper) ──
+      const hfEndpoint = (provider === 'kling') ? '/kling-video/v2.1/pro/image-to-video'
+        : (provider === 'seedance') ? '/bytedance/seedance/v1/pro/image-to-video'
+        : '/higgsfield-ai/dop/standard';
+      const hfLabel = (provider === 'kling') ? 'Kling i2v'
+        : (provider === 'seedance') ? 'Seedance i2v'
+        : 'DoP i2v';
+      updateStatus(hfLabel + ' (' + seconds + 's)…');
+      return callHiggsfield('scene ' + sceneIdx + ' ' + hfLabel, hfEndpoint, {
+        image_url: imageUrl,
+        prompt: prompt,
+        duration: seconds,
+      });
+    };
+
+
     // JSON of the final completed response. Defensive: handles both sync
     // (URL directly in submit response) and async (job id then poll).
     const callHiggsfield = async (stepName, endpoint, body) => {
@@ -982,7 +1130,7 @@ PAGES.avatar = () => {
         script: script.value.trim(),
         sample: !!sampleMode,
         scenes: scenesToRender.map(s => ({ ...s })),
-        provider: 'higgsfield-soul-seedance',
+        provider: 'soul+' + ((settings.i2vProvider) || 'runway'),
         sceneClips: [],
         audioUrl: null, videoUrl: null, cost: null,
       };
@@ -1031,24 +1179,11 @@ PAGES.avatar = () => {
             aspect_ratio: '9:16',
             resolution: '720p',
           });
-          // I2V model is configurable in Settings (default: DoP standard).
-          // Seedance v1 pro returned 404 "Model not found" on the user's API
-          // tier; DoP standard is Higgsfield's own model and confirmed live
-          // in the public docs. Kling is a paid alternative if DoP is gated.
-          const i2vEndpoint = (settings.i2vModel === 'kling')
-            ? '/kling-video/v2.1/pro/image-to-video'
-            : (settings.i2vModel === 'seedance')
-              ? '/bytedance/seedance/v1/pro/image-to-video'
-              : '/higgsfield-ai/dop/standard';
-          const i2vLabel = (settings.i2vModel === 'kling') ? 'Kling i2v'
-            : (settings.i2vModel === 'seedance') ? 'Seedance i2v'
-            : 'DoP i2v';
-          status.innerHTML = '<span class="row-dot running"></span> Scene ' + (i + 1) + '/' + scenesToRender.length + ' — ' + esc(i2vLabel) + ' (' + s.seconds + 's)…';
-          const vid = await callHiggsfield('scene ' + (i + 1) + ' ' + i2vLabel, i2vEndpoint, {
-            image_url: soul.url,
-            prompt: s.prompt,
-            duration: s.seconds,
-          });
+          // Provider dispatch: callI2V picks the right upstream based on
+          // settings.i2vProvider (runway / veo_fal / dop / kling / seedance).
+          // Default is runway — confirmed cheapest, best DX, native 9:16.
+          const provider = settings.i2vProvider || 'runway';
+          const vid = await callI2V(i + 1, scenesToRender.length, provider, soul.url, s.prompt, s.seconds);
           clips.push({ ...s, imageUrl: soul.url, videoUrl: vid.url });
           updateRec({ sceneClips: clips });
         }
@@ -1345,14 +1480,16 @@ PAGES.settings = () => {
     </div>
 
     <div class="card">
-      <div class="card-title">Image-to-video model</div>
-      <select class="input" id="set-i2vModel">
-        <option value="dop" ${(s.i2vModel || 'dop') === 'dop' ? 'selected' : ''}>DoP standard — Higgsfield's own (default)</option>
-        <option value="kling" ${s.i2vModel === 'kling' ? 'selected' : ''}>Kling v2.1 Pro — alternative</option>
-        <option value="seedance" ${s.i2vModel === 'seedance' ? 'selected' : ''}>Seedance v1 Pro — Bytedance (may be gated)</option>
+      <div class="card-title">Image-to-video provider</div>
+      <select class="input" id="set-i2vProvider">
+        <option value="runway" ${(s.i2vProvider || 'runway') === 'runway' ? 'selected' : ''}>Runway Gen-4 Turbo — recommended · ~£0.59 / 15s</option>
+        <option value="veo_fal" ${s.i2vProvider === 'veo_fal' ? 'selected' : ''}>Veo 3.1 Fast via fal — hero shots · ~£1.19 / 15s</option>
+        <option value="dop" ${s.i2vProvider === 'dop' ? 'selected' : ''}>Higgsfield DoP standard — uses HF credits</option>
+        <option value="kling" ${s.i2vProvider === 'kling' ? 'selected' : ''}>Higgsfield Kling v2.1 Pro — uses HF credits</option>
+        <option value="seedance" ${s.i2vProvider === 'seedance' ? 'selected' : ''}>Higgsfield Seedance v1 Pro — gated, may 404</option>
       </select>
       <div style="font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:6px">
-        Each scene's Soul still feeds into this model to make the animated clip. Switch if one returns "Model not found" or "not enough credits" on your tier.
+        Each scene's Soul still feeds into this provider to make the animated clip. <b style="color:var(--text)">Runway</b> is cheapest with the cleanest REST API. <b style="color:var(--text)">Veo via fal</b> for premium-quality hero shots. <b style="color:var(--text)">Higgsfield DoP</b> if you want to spend HF credits and like that aesthetic.
       </div>
     </div>
 
@@ -1400,7 +1537,7 @@ PAGES.settings = () => {
         keyframeUrl:         $('#set-keyframeUrl').value.trim(),
         characterBible:      $('#set-characterBible').value.trim(),
         wanResolution:       $('#set-wanResolution').value,
-        i2vModel:            $('#set-i2vModel').value,
+        i2vProvider:         $('#set-i2vProvider').value,
       };
       set({ settings: next });
       const saved = $('#set-saved'); saved.style.opacity = '1';
