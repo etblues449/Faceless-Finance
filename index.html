@@ -906,7 +906,7 @@ PAGES.avatar = () => {
 
         // ─── 3. Submit Wan 2.7 generation via Worker proxy ──────────────────
         status.innerHTML = '<span class="row-dot running"></span> Submitting Wan 2.7 lip-sync render…';
-        const subRes = await stepFetch('step 3/4 Higgsfield submit', CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations', {
+        const subRes = await stepFetch('step 3/4 Higgsfield submit', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai/v1/generations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -939,7 +939,7 @@ PAGES.avatar = () => {
         let videoUrl = null;
         while (Date.now() - t0 < timeoutMs) {
           await new Promise(r => setTimeout(r, 8000));
-          const pollRes = await stepFetch('step 4/4 poll', CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
+          const pollRes = await stepFetch('step 4/4 poll', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
           if (!pollRes.ok) {
             const body = await pollRes.text();
             if (pollRes.status >= 400 && pollRes.status < 500) throw new Error('[step 4/4 poll] HTTP ' + pollRes.status + ': ' + body.slice(0, 300));

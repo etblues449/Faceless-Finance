@@ -84,10 +84,18 @@ const SECRET_INJECTION = {
   'api.hedra.com':                     (env) => env.HEDRA_KEY       && { headers: { 'x-api-key': env.HEDRA_KEY } },
   'api.heygen.com':                    (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
   'upload.heygen.com':                 (env) => env.HEYGEN_KEY      && { headers: { 'x-api-key': env.HEYGEN_KEY } },
-  'platform.higgsfield.ai':            (env) => env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET && { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } },
-  // The official REST endpoint uses a single Bearer token (HIGGSFIELD_TOKEN
-  // from cloud.higgsfield.ai → API). Confirmed by pipeline/render/higgsfield.py.
-  'api.higgsfield.ai':                 (env) => env.HIGGSFIELD_TOKEN && { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } },
+  // platform.higgsfield.ai is the real REST host (api.higgsfield.ai is a dead
+  // CNAME that times out — that's what the 522s were). Prefer the single
+  // Bearer token from cloud.higgsfield.ai → API; fall back to the older
+  // Key:Secret pair if only those are set.
+  'platform.higgsfield.ai': (env) =>
+    env.HIGGSFIELD_TOKEN
+      ? { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } }
+      : (env.HIGGSFIELD_KEY && env.HIGGSFIELD_SECRET
+          ? { headers: { authorization: `Key ${env.HIGGSFIELD_KEY}:${env.HIGGSFIELD_SECRET}` } }
+          : null),
+  // Kept as a redirect for any saved URL pointing at the old host — same auth.
+  'api.higgsfield.ai': (env) => env.HIGGSFIELD_TOKEN && { headers: { authorization: `Bearer ${env.HIGGSFIELD_TOKEN}` } },
   'fal.run':                           (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'queue.fal.run':                     (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
   'rest.alpha.fal.ai':                 (env) => env.FAL_KEY         && { headers: { authorization: `Key ${env.FAL_KEY}` } },
