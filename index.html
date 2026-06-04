@@ -372,6 +372,28 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// Wraps fetch so a thrown error tells you WHICH step failed and WHY in plain
+// English. Without this, a TLS/CORS/DNS issue surfaces as the cryptic
+// "Failed to fetch" with no context. Returns the Response object on success.
+async function stepFetch(stepName, url, opts = {}) {
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    // TypeError "Failed to fetch" lands here. Distinguish from HTTP errors.
+    const isFailed = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    if (isFailed) {
+      throw new Error(
+        '[' + stepName + '] Network failure reaching ' + url + '. ' +
+        'Either the Worker is down, CORS preflight was blocked, or DNS/TLS failed. ' +
+        'Open ' + CONFIG.WORKER_BASE + '/ in a new tab — if that loads JSON, the Worker is up and the issue is request-specific (likely CORS).'
+      );
+    }
+    throw new Error('[' + stepName + '] fetch threw: ' + (e.message || String(e)));
+  }
+  return res;
+}
+
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 function go(page) {
   State.page = page;
@@ -570,7 +592,9 @@ PAGES.script = () => {
       const t = text.value.trim();
       const wc = t ? t.split(/\s+/).length : 0;
       const dur = Math.round(wc / 140 * 60);
-      meta.textContent = wc + ' words · ~' + dur + 's at 140 wpm';
+      const overCap = dur > 15;
+      meta.innerHTML = wc + ' words · ~' + dur + 's at 140 wpm'
+        + (overCap ? ' <span style="color:var(--red);font-weight:600">· over Wan 2.7 15s cap</span>' : '');
       const r = reviewFCA(t);
       if (r.ok === null) {
         fca.innerHTML = '';
@@ -626,7 +650,9 @@ PAGES.script = () => {
           hook:    'Write 3 distinct 5-second opening HOOKS for a UK personal finance TikTok about: "' + tp + '". Number them 1, 2, 3. Each on one line. Use a stat, a pain, and a curiosity gap.',
           full:    'Write a full 15–25s TikTok script for a UK personal finance video about: "' + tp + '". Hook, 2–3 punchy beats, CTA. ~50 words. Education only — never recommend products or guarantee returns. Plain text, no headers.',
         };
-        const system = 'You are a UK personal-finance educator writing TikTok scripts. UK terms (£, HMRC, ISA, SIPP, FCA). Punchy, simple. Strictly educational: never use "guaranteed", "should buy", "I recommend", "best option", "everyone should". Reframe as "Consider", "Depending on", "Many people may".';
+        const bible = (settings.characterBible || '').trim();
+        const system = 'You are a UK personal-finance educator writing TikTok scripts. UK terms (£, HMRC, ISA, SIPP, FCA). Punchy, simple. Strictly educational: never use "guaranteed", "should buy", "I recommend", "best option", "everyone should". Reframe as "Consider", "Depending on", "Many people may".'
+          + (bible ? '\n\nThe script is spoken on-camera by this character — write in their voice and stay consistent with their tone:\n' + bible : '');
         const data = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -696,8 +722,9 @@ PAGES.avatar = () => {
 
     <div class="card glow">
       <div class="card-title">Render</div>
-      <div class="btn-row" style="margin-bottom:12px">
-        <button class="btn btn-accent" id="a-render" disabled>🎬 Render Avatar Video</button>
+      <div class="btn-row" style="margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-accent" id="a-render" disabled>🎬 Render full</button>
+        <button class="btn" id="a-render-sample" disabled title="Render the first ~24 words as a 10s sample. Cheap way to test before committing to a full render.">⚡ 10s sample</button>
         <button class="btn" id="a-cost">Estimate cost</button>
       </div>
       <div id="a-status" style="font-size:13px;color:var(--text-dim);line-height:1.6"></div>
@@ -755,17 +782,30 @@ PAGES.avatar = () => {
     };
 
     const refresh = () => {
+      const sampleBtnRef = $('#a-render-sample');
       const r = reviewFCA(script.value);
-      if (r.ok === null) { fca.innerHTML = ''; render.disabled = true; return; }
+      const setDisabled = (d) => { render.disabled = d; if (sampleBtnRef) sampleBtnRef.disabled = d; };
+      if (r.ok === null) { fca.innerHTML = ''; setDisabled(true); return; }
       if (!r.ok) {
         fca.innerHTML = '<div class="banner banner-error" style="margin:0"><b>⚠ FCA risk:</b> '
           + r.hits.map(h => '"' + esc(h) + '"').join(', ')
           + '<br><span style="opacity:.85">Fix the script (or open the Script tab) before rendering.</span></div>';
-        render.disabled = true;
-      } else {
-        fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed.</div>';
-        render.disabled = false;
+        setDisabled(true);
+        return;
       }
+      // FCA passed — warn if over Wan 2.7's 15s cap.
+      const wc = script.value.trim().split(/\s+/).filter(Boolean).length;
+      const dur = Math.round(wc / 140 * 60);
+      let extra = '';
+      if (dur > 15) {
+        extra = '<div class="banner banner-warn" style="margin:6px 0 0">'
+          + '<b>⚠ Script too long:</b> ' + wc + ' words ≈ ' + dur + 's. '
+          + 'Wan 2.7 caps at 15s — anything beyond will be cut off. '
+          + 'Trim to ~35 words, or use <b>⚡ 10s sample</b> to render the opening only.'
+          + '</div>';
+      }
+      fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed. <span style="opacity:.7">' + wc + ' words · ~' + dur + 's</span></div>' + extra;
+      setDisabled(false);
     };
     script.oninput = refresh;
     refresh();
@@ -781,13 +821,20 @@ PAGES.avatar = () => {
         + '<b style="color:var(--text)">Cost:</b> ~' + cr720 + ' credits (720p) · ~' + cr1080 + ' credits (1080p) on Wan 2.7';
     };
 
-    render.onclick = async () => {
+    const doRender = async (sampleMode) => {
       const settings = State.settings || {};
+      // Sample mode: trim script to first ~24 words (~10s at 140wpm). This
+      // keeps cost low while we iterate on prompt + body shape.
+      const fullScript = script.value.trim();
+      const scriptForRender = sampleMode
+        ? fullScript.split(/\s+/).filter(Boolean).slice(0, 24).join(' ')
+        : fullScript;
       const id = uid();
       const rec = {
         id, type: 'avatar', status: 'pending',
         createdAt: new Date().toISOString(),
-        script: script.value.trim(),
+        script: scriptForRender,
+        sample: !!sampleMode,
         voice: voice.value,
         location: loc.value,
         provider: CONFIG.AVATAR.default_provider,
@@ -796,7 +843,8 @@ PAGES.avatar = () => {
       set({ renders: [rec, ...State.renders] });
 
       render.disabled = true;
-      status.innerHTML = '<span class="row-dot pending"></span> Validating inputs…';
+      sampleBtn.disabled = true;
+      status.innerHTML = '<span class="row-dot pending"></span> ' + (sampleMode ? '⚡ Sample mode · ' : '') + 'Validating inputs…';
       progress.innerHTML = '';
       result.innerHTML = '';
 
@@ -826,30 +874,30 @@ PAGES.avatar = () => {
           }
           status.innerHTML = '<span class="row-dot running"></span> Generating voice with ElevenLabs…';
           // Worker injects ELEVENLABS_KEY server-side (Design A).
-          const ttsRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
+          const ttsRes = await stepFetch('step 1/4 ElevenLabs', CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
             body: JSON.stringify({
-              text: script.value.trim(),
+              text: scriptForRender,
               model_id: settings.elevenlabsModel || 'eleven_flash_v2',
               voice_settings: { stability: 0.5, similarity_boost: 0.75 },
             }),
           });
-          if (!ttsRes.ok) throw new Error('ElevenLabs ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
+          if (!ttsRes.ok) throw new Error('[step 1/4 ElevenLabs] HTTP ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
           const audioBlob = await ttsRes.blob();
 
           // Upload to Worker /audio/upload to get a public URL Higgsfield
           // can fetch. 24h TTL is plenty for a render that finishes in 3 min.
           status.innerHTML = '<span class="row-dot running"></span> Hosting audio (' + Math.round(audioBlob.size / 1024) + ' KB)…';
-          const upRes = await fetch(CONFIG.WORKER_BASE + '/audio/upload', {
+          const upRes = await stepFetch('step 2/4 audio upload', CONFIG.WORKER_BASE + '/audio/upload', {
             method: 'POST',
             headers: { 'Content-Type': audioBlob.type || 'audio/mpeg' },
             body: audioBlob,
           });
-          if (!upRes.ok) throw new Error('Audio upload ' + upRes.status + ': ' + (await upRes.text()).slice(0, 200));
+          if (!upRes.ok) throw new Error('[step 2/4 audio upload] HTTP ' + upRes.status + ': ' + (await upRes.text()).slice(0, 200));
           const upJson = await upRes.json();
           audioUrl = upJson.url;
-          if (!audioUrl) throw new Error('Audio upload OK but no url in response: ' + JSON.stringify(upJson).slice(0, 200));
+          if (!audioUrl) throw new Error('[step 2/4 audio upload] response missing url: ' + JSON.stringify(upJson).slice(0, 200));
         }
 
         if (!audioUrl) {
@@ -858,30 +906,29 @@ PAGES.avatar = () => {
 
         // ─── 3. Submit Wan 2.7 generation via Worker proxy ──────────────────
         status.innerHTML = '<span class="row-dot running"></span> Submitting Wan 2.7 lip-sync render…';
-        const subRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations', {
+        const subRes = await stepFetch('step 3/4 Higgsfield submit', CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model: 'wan2_7',
-            // Per models_explore: medias[].roles include start_image + audio
             medias: [
               { role: 'start_image', value: keyframeUrl },
               { role: 'audio',       value: audioUrl    },
             ],
-            // 9:16 portrait, 720p default; capped at 15s
             aspect_ratio: '9:16',
             resolution: settings.wanResolution || '720p',
-            duration: Math.max(2, Math.min(15, Math.round((script.value.trim().split(/\s+/).filter(Boolean).length) / 140 * 60))),
+            duration: sampleMode
+              ? 10
+              : Math.max(2, Math.min(15, Math.round((scriptForRender.split(/\s+/).filter(Boolean).length) / 140 * 60))),
           }),
         });
         const subBody = await subRes.text();
         if (!subRes.ok) {
-          // Surface the upstream body so we can iterate on the request shape.
-          throw new Error('Higgsfield submit ' + subRes.status + ': ' + subBody.slice(0, 400));
+          throw new Error('[step 3/4 Higgsfield submit] HTTP ' + subRes.status + ': ' + subBody.slice(0, 400));
         }
         let subJson; try { subJson = JSON.parse(subBody); } catch { subJson = {}; }
         const jobId = subJson.id || subJson.request_id || subJson.generation_id || subJson.job_id;
-        if (!jobId) throw new Error('Submit OK but no job id in response: ' + subBody.slice(0, 200));
+        if (!jobId) throw new Error('[step 3/4 Higgsfield submit] OK but no job id in body: ' + subBody.slice(0, 200));
 
         updateRec({ status: 'running', jobId });
         status.innerHTML = '<span class="row-dot running"></span> Render running. Polling Higgsfield (job <code>' + esc(jobId) + '</code>)…';
@@ -892,11 +939,10 @@ PAGES.avatar = () => {
         let videoUrl = null;
         while (Date.now() - t0 < timeoutMs) {
           await new Promise(r => setTimeout(r, 8000));
-          const pollRes = await fetch(CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
+          const pollRes = await stepFetch('step 4/4 poll', CONFIG.WORKER_BASE + '/proxy/api.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
           if (!pollRes.ok) {
             const body = await pollRes.text();
-            // 5xx is transient — keep polling. 4xx is fatal.
-            if (pollRes.status >= 400 && pollRes.status < 500) throw new Error('Poll ' + pollRes.status + ': ' + body.slice(0, 300));
+            if (pollRes.status >= 400 && pollRes.status < 500) throw new Error('[step 4/4 poll] HTTP ' + pollRes.status + ': ' + body.slice(0, 300));
             continue;
           }
           const j = await pollRes.json().catch(() => ({}));
@@ -927,11 +973,17 @@ PAGES.avatar = () => {
       } catch (e) {
         updateRec({ status: 'error', completedAt: new Date().toISOString(), error: e.message });
         status.innerHTML = '<span class="row-dot error"></span> Render failed.';
-        if (!result.innerHTML) result.innerHTML = '<div class="banner banner-error">' + esc(e.message) + '</div>';
+        // Always show the full error, even if a partial result was rendered.
+        result.innerHTML = '<div class="banner banner-error" style="word-break:break-word">' + esc(e.message) + '</div>';
       } finally {
         render.disabled = false;
+        sampleBtn.disabled = false;
       }
     };
+
+    const sampleBtn = $('#a-render-sample');
+    render.onclick = () => doRender(false);
+    sampleBtn.onclick = () => doRender(true);
   }, 0);
 
   return el;
@@ -1168,6 +1220,14 @@ PAGES.settings = () => {
     </div>
 
     <div class="card">
+      <div class="card-title">Character Bible (locks AI persona across every generation)</div>
+      <textarea class="input" id="set-characterBible" placeholder="One paragraph describing how your on-camera character looks and sounds. Auto-prepended to script generation and (later) keyframe prompts. Be specific and visual — e.g. 'British man late twenties, athletic build, dark brown hair short and faded, blue-grey eyes, light stubble, sleeve tattoo right arm, speaks plainly and warmly with mild South-East accent.'" style="min-height:120px">${esc(s.characterBible || '')}</textarea>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:6px">
+        Used by the <b style="color:var(--text)">Script tab</b> as system context for Claude, and (next phase) by Higgsfield Soul when generating fresh keyframes. Keeps the persona consistent across every video.
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Wan 2.7 resolution</div>
       <select class="input" id="set-wanResolution">
         <option value="720p" ${(s.wanResolution || '720p') === '720p' ? 'selected' : ''}>720p — ~22 cr / 15s (recommended for TikTok)</option>
@@ -1209,6 +1269,7 @@ PAGES.settings = () => {
         higgsfieldKey:       $('#set-higgsfieldKey').value.trim(),
         higgsfieldSecret:    $('#set-higgsfieldSecret').value.trim(),
         keyframeUrl:         $('#set-keyframeUrl').value.trim(),
+        characterBible:      $('#set-characterBible').value.trim(),
         wanResolution:       $('#set-wanResolution').value,
       };
       set({ settings: next });
