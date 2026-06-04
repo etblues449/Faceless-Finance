@@ -928,14 +928,18 @@ PAGES.avatar = () => {
         || (Array.isArray(j.images) && j.images[0] && (j.images[0].url || j.images[0]))
         || (Array.isArray(j.videos) && j.videos[0] && (j.videos[0].url || j.videos[0]));
       if (inlineUrl) return { url: typeof inlineUrl === 'string' ? inlineUrl : inlineUrl.url, raw: j };
-      // Otherwise async — poll the job.
-      const jobId = j.id || j.request_id || j.generation_id || j.job_id;
+      // Otherwise async — poll the job at /requests/{request_id}/status.
+      // (Higgsfield docs: "Retrieve the status of a generation request" at
+      // platform.higgsfield.ai/requests/{id}/status — confirmed by their
+      // public docs page; the previous {endpoint}/{id} pattern was wrong
+      // and returned 405 Method Not Allowed.)
+      const jobId = j.request_id || j.id || j.generation_id || j.job_id;
       if (!jobId) throw new Error('[' + stepName + ' submit] OK but no asset URL or job id. Body: ' + subText.slice(0, 300));
       const t0 = Date.now();
       const timeoutMs = 10 * 60 * 1000;
       while (Date.now() - t0 < timeoutMs) {
         await new Promise(r => setTimeout(r, 6000));
-        const poll = await stepFetch(stepName + ' poll', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai' + endpoint + '/' + encodeURIComponent(jobId));
+        const poll = await stepFetch(stepName + ' poll', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai/requests/' + encodeURIComponent(jobId) + '/status');
         if (!poll.ok) {
           const t = await poll.text();
           if (poll.status >= 400 && poll.status < 500) throw new Error('[' + stepName + ' poll] HTTP ' + poll.status + ': ' + t.slice(0, 300));
@@ -945,14 +949,18 @@ PAGES.avatar = () => {
         const st = String(pj.status || '').toLowerCase();
         const elapsed = Math.floor((Date.now() - t0) / 1000);
         progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">' + esc(stepName) + ' · ' + esc(st || 'queued') + ' · ' + elapsed + 's</div>';
-        if (st === 'completed' || st === 'complete' || st === 'succeeded' || st === 'done') {
-          const u = pj.image_url || pj.video_url || pj.url || (pj.output && pj.output.url) || (pj.result && pj.result.url)
-            || (Array.isArray(pj.assets) && pj.assets[0] && (pj.assets[0].url || pj.assets[0]));
-          if (!u) throw new Error('[' + stepName + '] done but no asset url. Body: ' + JSON.stringify(pj).slice(0, 300));
+        if (st === 'completed' || st === 'complete' || st === 'succeeded' || st === 'done' || st === 'success') {
+          const u = pj.image_url || pj.video_url || pj.url
+            || (pj.output && (pj.output.url || pj.output.image_url || pj.output.video_url))
+            || (pj.result && (pj.result.url || pj.result.image_url || pj.result.video_url))
+            || (Array.isArray(pj.assets) && pj.assets[0] && (pj.assets[0].url || pj.assets[0]))
+            || (Array.isArray(pj.images) && pj.images[0] && (pj.images[0].url || pj.images[0]))
+            || (Array.isArray(pj.videos) && pj.videos[0] && (pj.videos[0].url || pj.videos[0]));
+          if (!u) throw new Error('[' + stepName + '] done but no asset url. Body: ' + JSON.stringify(pj).slice(0, 400));
           return { url: typeof u === 'string' ? u : u.url, raw: pj };
         }
         if (st === 'failed' || st === 'error' || st === 'cancelled' || st === 'canceled') {
-          throw new Error('[' + stepName + ' failed] ' + JSON.stringify(pj).slice(0, 300));
+          throw new Error('[' + stepName + ' failed] ' + JSON.stringify(pj).slice(0, 400));
         }
       }
       throw new Error('[' + stepName + '] timed out after ' + Math.round(timeoutMs / 60000) + ' min.');
