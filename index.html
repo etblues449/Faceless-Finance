@@ -269,6 +269,16 @@ const CONFIG = {
     // want to test with a different keyframe.
     default_keyframe_url: '',
   },
+  SCENES: {
+    // Cinematic-scene render flow: voiceover (ElevenLabs) plays over N
+    // environmental clips (Higgsfield Soul still → Seedance i2v). NO talking
+    // head, no on-camera character. Stitch into one MP4 lands in a follow-up
+    // PR (ffmpeg.wasm in browser).
+    default_count: 3,
+    max_count: 5,
+    default_scene_seconds: 5,
+    estimated_credits_per_scene: 25,  // 3 Soul + 22 Seedance/5s @ 720p, rough
+  },
   FCA_BLOCKLIST: [
     'guaranteed returns', 'guaranteed profit', 'guaranteed income',
     'should buy', 'should invest', 'should purchase',
@@ -410,7 +420,7 @@ window.addEventListener('hashchange', () => {
 const TABS = [
   { id: 'home',     label: 'Home',     icon: '▦' },
   { id: 'script',   label: 'Script',   icon: '◈' },
-  { id: 'avatar',   label: 'Avatar',   icon: '🎬' },
+  { id: 'avatar',   label: 'Render',   icon: '🎬' },
   { id: 'library',  label: 'Library',  icon: '▤' },
   { id: 'publish',  label: 'Publish',  icon: '↗' },
   { id: 'settings', label: 'Settings', icon: '⚙' },
@@ -454,7 +464,7 @@ PAGES.home = () => {
       <div class="hero-eyebrow">Next scheduled post</div>
       <div class="hero-headline">${esc(n.dayName)} ${esc(n.date)}</div>
       <div class="hero-meta">${esc(n.time)} · ${esc(n.countdown)}</div>
-      <div class="hero-cta">▶ Tap Avatar to render the next one</div>
+      <div class="hero-cta">▶ Tap Render to make the next one</div>
     </div>
 
     <div class="stats">
@@ -473,7 +483,7 @@ PAGES.home = () => {
     </div>
 
     <button class="cta" id="quick-render">
-      <span class="cta-icon">🎬</span> Render Avatar Video
+      <span class="cta-icon">🎬</span> Render new video
     </button>
 
     <div class="card" style="margin-top:14px">
@@ -538,7 +548,7 @@ PAGES.script = () => {
 
   el.innerHTML = html`
     <div class="page-title">Script</div>
-    <div class="page-sub">AI-written · <span class="accent">FCA-checked</span> · ready for Avatar tab</div>
+    <div class="page-sub">AI-written · <span class="accent">FCA-checked</span> · ready for Render tab</div>
 
     <div class="card">
       <div class="card-title">Brief</div>
@@ -559,7 +569,7 @@ PAGES.script = () => {
       <textarea class="input" id="s-text" placeholder="AI output appears here, or paste/type your own…">${esc(draft.text)}</textarea>
       <div id="s-fca" style="margin-top:10px"></div>
       <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-accent" id="s-send" disabled>→ Send to Avatar</button>
+        <button class="btn btn-accent" id="s-send" disabled>→ Send to Render</button>
         <button class="btn" id="s-copy">⧉ Copy</button>
         <span id="s-meta" style="margin-left:auto;font-size:11px;color:var(--text-dim);font-family:var(--mono);align-self:center"></span>
       </div>
@@ -686,8 +696,8 @@ PAGES.avatar = () => {
   const initial = Storage.get('avatarScript', '') || (Storage.get('scriptDraft', {}).text || '');
 
   el.innerHTML = html`
-    <div class="page-title">Avatar</div>
-    <div class="page-sub">Soul keyframe · <span class="accent">Wan 2.7 lip-sync</span> · 9:16 · ready for TikTok</div>
+    <div class="page-title">Render</div>
+    <div class="page-sub">Cinematic scenes · <span class="accent">voiceover overlay</span> · 9:16 · no talking head</div>
 
     <div class="card">
       <div class="card-title">Voice</div>
@@ -708,23 +718,27 @@ PAGES.avatar = () => {
     </div>
 
     <div class="card">
-      <div class="card-title">Location & character</div>
-      <select class="input" id="a-location" style="margin-bottom:10px">
-        <option value="generic-london-street" selected>Generic London residential street (recommended)</option>
-        <option value="generic-london-park">Generic London park / green space</option>
-        <option value="indoor-modern">Indoor — modern, neutral background</option>
-        <option value="indoor-office">Indoor — home office, soft daylight</option>
-      </select>
-      <div style="font-size:12px;color:var(--text-dim);line-height:1.6">
-        Locked character: <b style="color:var(--text)">JB-FF-2026</b> — British man, late 20s, athletic, brown hair, blue-grey eyes, tight stubble, sleeve tattoo. Locations avoid named landmarks (text garbles on AI render).
+      <div class="card-title">Scene plan</div>
+      <div class="btn-row" style="margin-bottom:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-accent" id="a-plan" disabled>✦ Plan scenes with Claude</button>
+        <select class="input" id="a-scene-count" style="max-width:140px">
+          <option value="auto" selected>Auto count</option>
+          <option value="3">3 scenes</option>
+          <option value="4">4 scenes</option>
+          <option value="5">5 scenes</option>
+        </select>
+      </div>
+      <div id="a-scenes" style="margin-bottom:0"></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.5">
+        Claude breaks the script into 3-5 environmental shots — London streets, offices, money close-ups, HMRC forms, calculators. <b>No people on screen.</b> Voiceover plays over the top.
       </div>
     </div>
 
     <div class="card glow">
       <div class="card-title">Render</div>
       <div class="btn-row" style="margin-bottom:12px;flex-wrap:wrap">
-        <button class="btn btn-accent" id="a-render" disabled>🎬 Render full</button>
-        <button class="btn" id="a-render-sample" disabled title="Render the first ~24 words as a 10s sample. Cheap way to test before committing to a full render.">⚡ 10s sample</button>
+        <button class="btn btn-accent" id="a-render" disabled>🎬 Render all scenes</button>
+        <button class="btn" id="a-render-sample" disabled title="Render only the first scene as a cheap test before committing to the whole set.">⚡ First scene only</button>
         <button class="btn" id="a-cost">Estimate cost</button>
       </div>
       <div id="a-status" style="font-size:13px;color:var(--text-dim);line-height:1.6"></div>
@@ -733,11 +747,10 @@ PAGES.avatar = () => {
     </div>
 
     <div class="card">
-      <div class="card-title">What gets baked into every render</div>
+      <div class="card-title">Pipeline</div>
       <div style="font-size:13px;color:var(--text-dim);line-height:1.7">
-        • <b style="color:var(--text)">FCA disclaimer</b> overlay — last 5s, "Educational. Not advice."<br>
-        • <b style="color:var(--text)">TikTok AI label</b> — 🤖 badge, bottom-right corner.<br>
-        • <b style="color:var(--text)">C2PA metadata</b> — verifiable provenance signature.
+        Per scene: <b style="color:var(--text)">Higgsfield Soul</b> renders a still → <b style="color:var(--text)">Higgsfield Seedance</b> animates it (~25 cr / 5s @ 720p).<br>
+        Voiceover via <b style="color:var(--text)">ElevenLabs</b> runs in parallel. Browser-side stitching (scenes + audio → one MP4) is the next PR (ffmpeg.wasm + COI service worker).
       </div>
     </div>
   `;
@@ -748,14 +761,32 @@ PAGES.avatar = () => {
     const urlIn  = $('#a-audio-url');
     const script = $('#a-script');
     const fca    = $('#a-fca');
-    const loc    = $('#a-location');
+    const planBtn = $('#a-plan');
+    const sceneCount = $('#a-scene-count');
+    const scenesEl = $('#a-scenes');
     const render = $('#a-render');
+    const sampleBtn = $('#a-render-sample');
     const costBtn = $('#a-cost');
     const status = $('#a-status');
     const progress = $('#a-progress');
     const result = $('#a-result');
 
     let uploadedAudio = null; // { name, size, url }
+    let scenes = Storage.get('plannedScenes', []); // [{seconds, prompt}, ...]
+
+    const drawScenes = () => {
+      if (!scenes.length) {
+        scenesEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);font-style:italic;padding:6px 0">No plan yet. Tap <b>✦ Plan scenes</b> after the FCA review passes.</div>';
+        return;
+      }
+      scenesEl.innerHTML = scenes.map((s, i) => '<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start">'
+        + '<div style="flex:0 0 26px;font-family:var(--mono);font-size:11px;color:var(--text-dim);padding-top:2px">' + String(i+1).padStart(2,'0') + '</div>'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="font-size:13px;line-height:1.5">' + esc(s.prompt) + '</div>'
+        +   '<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:4px">' + esc(String(s.seconds || 5)) + 's</div>'
+        + '</div>'
+        + '</div>').join('');
+    };
 
     const showFile = () => {
       if (uploadedAudio) {
@@ -782,206 +813,252 @@ PAGES.avatar = () => {
     };
 
     const refresh = () => {
-      const sampleBtnRef = $('#a-render-sample');
       const r = reviewFCA(script.value);
-      const setDisabled = (d) => { render.disabled = d; if (sampleBtnRef) sampleBtnRef.disabled = d; };
-      if (r.ok === null) { fca.innerHTML = ''; setDisabled(true); return; }
+      const noScenes = scenes.length === 0;
+      const setRenderDisabled = (d) => { render.disabled = d; sampleBtn.disabled = d; };
+      if (r.ok === null) { fca.innerHTML = ''; planBtn.disabled = true; setRenderDisabled(true); return; }
       if (!r.ok) {
         fca.innerHTML = '<div class="banner banner-error" style="margin:0"><b>⚠ FCA risk:</b> '
           + r.hits.map(h => '"' + esc(h) + '"').join(', ')
-          + '<br><span style="opacity:.85">Fix the script (or open the Script tab) before rendering.</span></div>';
-        setDisabled(true);
+          + '<br><span style="opacity:.85">Fix the script (or open the Script tab) before planning scenes.</span></div>';
+        planBtn.disabled = true; setRenderDisabled(true);
         return;
       }
-      // FCA passed — warn if over Wan 2.7's 15s cap.
       const wc = script.value.trim().split(/\s+/).filter(Boolean).length;
       const dur = Math.round(wc / 140 * 60);
-      let extra = '';
-      if (dur > 15) {
-        extra = '<div class="banner banner-warn" style="margin:6px 0 0">'
-          + '<b>⚠ Script too long:</b> ' + wc + ' words ≈ ' + dur + 's. '
-          + 'Wan 2.7 caps at 15s — anything beyond will be cut off. '
-          + 'Trim to ~35 words, or use <b>⚡ 10s sample</b> to render the opening only.'
-          + '</div>';
-      }
-      fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed. <span style="opacity:.7">' + wc + ' words · ~' + dur + 's</span></div>' + extra;
-      setDisabled(false);
+      fca.innerHTML = '<div class="banner banner-info" style="margin:0">✓ FCA review passed. <span style="opacity:.7">' + wc + ' words · ~' + dur + 's voiceover</span></div>';
+      planBtn.disabled = false;
+      setRenderDisabled(noScenes); // Render only enables after a scene plan exists
     };
     script.oninput = refresh;
     refresh();
+    drawScenes();
 
     costBtn.onclick = () => {
-      const wc = script.value.trim().split(/\s+/).filter(Boolean).length;
-      const sec = Math.max(4, Math.min(15, Math.round(wc / 140 * 60))); // Wan caps at 15s
-      // Wan 2.7 720p ~22 cr / 15s, 1080p ~37 cr / 15s
-      const cr720 = Math.round(22 * sec / 15);
-      const cr1080 = Math.round(37 * sec / 15);
+      if (!scenes.length) { status.innerHTML = '<span style="color:var(--text-dim)">Plan scenes first to see the cost estimate.</span>'; return; }
+      const totalSec = scenes.reduce((a, s) => a + (Number(s.seconds) || 5), 0);
+      const soulCost = scenes.length * 3;                       // Higgsfield Soul ~3 cr / still
+      const seedanceCost = Math.round(22 * totalSec / 5);        // Seedance ~22 cr / 5s @ 720p
       status.innerHTML = ''
-        + '<b style="color:var(--text)">Estimated duration:</b> ' + sec + 's (script is ' + wc + ' words, capped at 15s)<br>'
-        + '<b style="color:var(--text)">Cost:</b> ~' + cr720 + ' credits (720p) · ~' + cr1080 + ' credits (1080p) on Wan 2.7';
+        + '<b style="color:var(--text)">' + scenes.length + ' scenes · ' + totalSec + 's total video</b><br>'
+        + '<b style="color:var(--text)">Soul stills:</b> ~' + soulCost + ' Higgsfield credits<br>'
+        + '<b style="color:var(--text)">Seedance i2v:</b> ~' + seedanceCost + ' Higgsfield credits<br>'
+        + '<b style="color:var(--text)">Total:</b> ~' + (soulCost + seedanceCost) + ' Higgsfield credits (+ ElevenLabs voiceover billed separately).';
+    };
+
+    planBtn.onclick = async () => {
+      const settings = State.settings || {};
+      if (!settings.anthropicKey) {
+        status.innerHTML = '<span class="row-dot error"></span> No Anthropic key. Add one in Settings.';
+        return;
+      }
+      const r = reviewFCA(script.value);
+      if (!r.ok) return;
+      planBtn.disabled = true; planBtn.textContent = '⬡ Planning…';
+      status.innerHTML = '<span class="row-dot running"></span> Claude is breaking the script into scenes…';
+      try {
+        const count = sceneCount.value;
+        const wc = script.value.trim().split(/\s+/).filter(Boolean).length;
+        const dur = Math.round(wc / 140 * 60);
+        const bible = (settings.characterBible || '').trim();
+        const system = 'You break a UK personal-finance TikTok script into CINEMATIC SHOT DESCRIPTIONS for vertical 9:16 short-form video.\n'
+          + 'CONSTRAINTS:\n'
+          + '— Environmental only. NO PEOPLE ON CAMERA. NO FACES. NO TALKING HEADS.\n'
+          + '— Vocabulary: London streets at dusk, modern office interior, kitchen counter at morning light, hands holding a phone showing a banking app, UK pound coins close-up, HMRC paperwork on a desk, calculator next to a notebook, animated chart on a laptop screen, a printed P60, payslip folded on a table, ISA brochure, etc.\n'
+          + '— Each shot illustrates or symbolises what the voiceover is saying at that moment.\n'
+          + '— Each prompt MUST include: camera move (push-in, dolly, static, slow pan), lighting (golden hour, overcast, neon, soft window light), and one or two concrete visual props.\n'
+          + '— Scene seconds should SUM to approximately the voiceover duration provided.\n'
+          + 'OUTPUT FORMAT (strict): a single JSON object, nothing else, no markdown:\n'
+          + '{"scenes":[{"seconds":5,"prompt":"detailed shot description"}, ...]}'
+          + (bible ? '\n\nNARRATOR (voice/tone context, NOT shown on screen):\n' + bible : '');
+        const user = 'Voiceover duration target: ~' + dur + 's. Break into ' + (count === 'auto' ? '3-5' : count) + ' scenes.\n\nScript:\n' + script.value.trim();
+        const planRes = await stepFetch('planScenes Claude', 'https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': settings.anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: settings.anthropicModel || 'claude-sonnet-4-5',
+            max_tokens: 1500,
+            system,
+            messages: [{ role: 'user', content: user }],
+          }),
+        });
+        if (!planRes.ok) throw new Error('[planScenes Claude] HTTP ' + planRes.status + ': ' + (await planRes.text()).slice(0, 200));
+        const data = await planRes.json();
+        const text = (data.content && data.content[0] && data.content[0].text || '').trim();
+        const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+        let parsed;
+        try { parsed = JSON.parse(cleaned); }
+        catch { throw new Error('Claude did not return valid JSON. Got: ' + cleaned.slice(0, 220)); }
+        if (!parsed.scenes || !Array.isArray(parsed.scenes)) throw new Error('Claude JSON missing "scenes" array. Got: ' + cleaned.slice(0, 220));
+        scenes = parsed.scenes.slice(0, 8).map(s => ({
+          seconds: Math.max(2, Math.min(10, Number(s.seconds) || 5)),
+          prompt: String(s.prompt || '').slice(0, 600),
+        }));
+        Storage.set('plannedScenes', scenes);
+        drawScenes();
+        refresh();
+        status.innerHTML = '<span class="row-dot success"></span> Planned ' + scenes.length + ' scenes. Tap <b>Render</b> to generate them.';
+      } catch (e) {
+        status.innerHTML = '<span class="row-dot error"></span> ' + esc(e.message);
+      } finally {
+        planBtn.disabled = false; planBtn.textContent = '✦ Plan scenes with Claude';
+      }
+    };
+
+    // Submit + poll one Higgsfield endpoint. Endpoint = full path under
+    // platform.higgsfield.ai/. Body = JSON to POST. Returns the upstream
+    // JSON of the final completed response. Defensive: handles both sync
+    // (URL directly in submit response) and async (job id then poll).
+    const callHiggsfield = async (stepName, endpoint, body) => {
+      const sub = await stepFetch(stepName + ' submit', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai' + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const subText = await sub.text();
+      if (!sub.ok) throw new Error('[' + stepName + ' submit] HTTP ' + sub.status + ': ' + subText.slice(0, 400));
+      let j; try { j = JSON.parse(subText); } catch { j = {}; }
+      // Sync response? Some Higgsfield endpoints return the asset URL inline.
+      const inlineUrl = j.image_url || j.video_url || j.url
+        || (Array.isArray(j.images) && j.images[0] && (j.images[0].url || j.images[0]))
+        || (Array.isArray(j.videos) && j.videos[0] && (j.videos[0].url || j.videos[0]));
+      if (inlineUrl) return { url: typeof inlineUrl === 'string' ? inlineUrl : inlineUrl.url, raw: j };
+      // Otherwise async — poll the job.
+      const jobId = j.id || j.request_id || j.generation_id || j.job_id;
+      if (!jobId) throw new Error('[' + stepName + ' submit] OK but no asset URL or job id. Body: ' + subText.slice(0, 300));
+      const t0 = Date.now();
+      const timeoutMs = 10 * 60 * 1000;
+      while (Date.now() - t0 < timeoutMs) {
+        await new Promise(r => setTimeout(r, 6000));
+        const poll = await stepFetch(stepName + ' poll', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai' + endpoint + '/' + encodeURIComponent(jobId));
+        if (!poll.ok) {
+          const t = await poll.text();
+          if (poll.status >= 400 && poll.status < 500) throw new Error('[' + stepName + ' poll] HTTP ' + poll.status + ': ' + t.slice(0, 300));
+          continue;
+        }
+        const pj = await poll.json().catch(() => ({}));
+        const st = String(pj.status || '').toLowerCase();
+        const elapsed = Math.floor((Date.now() - t0) / 1000);
+        progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">' + esc(stepName) + ' · ' + esc(st || 'queued') + ' · ' + elapsed + 's</div>';
+        if (st === 'completed' || st === 'complete' || st === 'succeeded' || st === 'done') {
+          const u = pj.image_url || pj.video_url || pj.url || (pj.output && pj.output.url) || (pj.result && pj.result.url)
+            || (Array.isArray(pj.assets) && pj.assets[0] && (pj.assets[0].url || pj.assets[0]));
+          if (!u) throw new Error('[' + stepName + '] done but no asset url. Body: ' + JSON.stringify(pj).slice(0, 300));
+          return { url: typeof u === 'string' ? u : u.url, raw: pj };
+        }
+        if (st === 'failed' || st === 'error' || st === 'cancelled' || st === 'canceled') {
+          throw new Error('[' + stepName + ' failed] ' + JSON.stringify(pj).slice(0, 300));
+        }
+      }
+      throw new Error('[' + stepName + '] timed out after ' + Math.round(timeoutMs / 60000) + ' min.');
     };
 
     const doRender = async (sampleMode) => {
       const settings = State.settings || {};
-      // Sample mode: trim script to first ~24 words (~10s at 140wpm). This
-      // keeps cost low while we iterate on prompt + body shape.
-      const fullScript = script.value.trim();
-      const scriptForRender = sampleMode
-        ? fullScript.split(/\s+/).filter(Boolean).slice(0, 24).join(' ')
-        : fullScript;
-      const id = uid();
+      if (!scenes.length) { status.innerHTML = '<span class="row-dot error"></span> Plan scenes first.'; return; }
+      const scenesToRender = sampleMode ? scenes.slice(0, 1) : scenes;
+
+      render.disabled = true; sampleBtn.disabled = true;
+      status.innerHTML = '<span class="row-dot pending"></span> ' + (sampleMode ? '⚡ First scene · ' : '') + 'Starting render…';
+      progress.innerHTML = ''; result.innerHTML = '';
+
+      const runId = uid();
       const rec = {
-        id, type: 'avatar', status: 'pending',
+        id: runId, type: 'cinematic', status: 'pending',
         createdAt: new Date().toISOString(),
-        script: scriptForRender,
+        script: script.value.trim(),
         sample: !!sampleMode,
-        voice: voice.value,
-        location: loc.value,
-        provider: CONFIG.AVATAR.default_provider,
-        cost: null, videoUrl: null,
+        scenes: scenesToRender.map(s => ({ ...s })),
+        provider: 'higgsfield-soul-seedance',
+        sceneClips: [],
+        audioUrl: null, videoUrl: null, cost: null,
       };
       set({ renders: [rec, ...State.renders] });
 
-      render.disabled = true;
-      sampleBtn.disabled = true;
-      status.innerHTML = '<span class="row-dot pending"></span> ' + (sampleMode ? '⚡ Sample mode · ' : '') + 'Validating inputs…';
-      progress.innerHTML = '';
-      result.innerHTML = '';
-
       const updateRec = (patch) => {
-        set({ renders: State.renders.map(x => x.id === id ? { ...x, ...patch } : x) });
+        set({ renders: State.renders.map(x => x.id === runId ? { ...x, ...patch } : x) });
       };
 
       try {
-        // ─── 1. Keyframe URL ────────────────────────────────────────────────
-        // Wan 2.7 lip-sync needs a public still image to drive. For now we
-        // require a pre-generated Soul keyframe URL set in Settings.
-        const keyframeUrl = (settings.keyframeUrl || CONFIG.AVATAR.default_keyframe_url || '').trim();
-        if (!keyframeUrl) {
-          throw new Error('No Soul keyframe URL set. Open Settings → Character and paste a public URL to a JB-FF-2026 still (generated once via Higgsfield Soul). Without it Wan 2.7 has nothing to animate.');
-        }
-
-        // ─── 2. Audio ─ ElevenLabs or paste-URL ─────────────────────────────
+        // ─── 1. Voiceover (kicked off in parallel with scene 1) ─────────────
         let audioUrl = (urlIn.value || '').trim();
-
-        if (voice.value === 'upload' && uploadedAudio) {
-          throw new Error('Local file upload needs a public hosting step (Worker R2 endpoint, next phase). For now: paste a public URL in the Voice card, or upload the MP3 to a CDN and paste its URL.');
+        let audioPromise = Promise.resolve(audioUrl);
+        if (!audioUrl && (voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro')) {
+          if (!settings.elevenlabsVoiceId) throw new Error('No ElevenLabs voice ID. Add it in Settings, or paste a public audio URL.');
+          audioPromise = (async () => {
+            const ttsRes = await stepFetch('voiceover ElevenLabs', CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+              body: JSON.stringify({
+                text: script.value.trim(),
+                model_id: settings.elevenlabsModel || 'eleven_flash_v2',
+                voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+              }),
+            });
+            if (!ttsRes.ok) throw new Error('[voiceover ElevenLabs] HTTP ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
+            const blob = await ttsRes.blob();
+            const upRes = await stepFetch('voiceover audio-host', CONFIG.WORKER_BASE + '/audio/upload', {
+              method: 'POST',
+              headers: { 'Content-Type': blob.type || 'audio/mpeg' },
+              body: blob,
+            });
+            if (!upRes.ok) throw new Error('[voiceover audio-host] HTTP ' + upRes.status + ': ' + (await upRes.text()).slice(0, 200));
+            const j = await upRes.json();
+            return j.url;
+          })();
         }
 
-        if ((voice.value === 'elevenlabs-pvc' || voice.value === 'elevenlabs-pro') && !audioUrl) {
-          if (!settings.elevenlabsVoiceId) {
-            throw new Error('No ElevenLabs voice ID. Add it in Settings, or paste an audio URL.');
-          }
-          status.innerHTML = '<span class="row-dot running"></span> Generating voice with ElevenLabs…';
-          // Worker injects ELEVENLABS_KEY server-side (Design A).
-          const ttsRes = await stepFetch('step 1/4 ElevenLabs', CONFIG.WORKER_BASE + '/proxy/api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(settings.elevenlabsVoiceId), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-            body: JSON.stringify({
-              text: scriptForRender,
-              model_id: settings.elevenlabsModel || 'eleven_flash_v2',
-              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-            }),
-          });
-          if (!ttsRes.ok) throw new Error('[step 1/4 ElevenLabs] HTTP ' + ttsRes.status + ': ' + (await ttsRes.text()).slice(0, 200));
-          const audioBlob = await ttsRes.blob();
-
-          // Upload to Worker /audio/upload to get a public URL Higgsfield
-          // can fetch. 24h TTL is plenty for a render that finishes in 3 min.
-          status.innerHTML = '<span class="row-dot running"></span> Hosting audio (' + Math.round(audioBlob.size / 1024) + ' KB)…';
-          const upRes = await stepFetch('step 2/4 audio upload', CONFIG.WORKER_BASE + '/audio/upload', {
-            method: 'POST',
-            headers: { 'Content-Type': audioBlob.type || 'audio/mpeg' },
-            body: audioBlob,
-          });
-          if (!upRes.ok) throw new Error('[step 2/4 audio upload] HTTP ' + upRes.status + ': ' + (await upRes.text()).slice(0, 200));
-          const upJson = await upRes.json();
-          audioUrl = upJson.url;
-          if (!audioUrl) throw new Error('[step 2/4 audio upload] response missing url: ' + JSON.stringify(upJson).slice(0, 200));
-        }
-
-        if (!audioUrl) {
-          throw new Error('No audio source. Pick a voice provider with credentials, paste a public audio URL, or upload an MP3 + paste its public URL.');
-        }
-
-        // ─── 3. Submit Wan 2.7 generation via Worker proxy ──────────────────
-        status.innerHTML = '<span class="row-dot running"></span> Submitting Wan 2.7 lip-sync render…';
-        const subRes = await stepFetch('step 3/4 Higgsfield submit', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai/v1/generations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'wan2_7',
-            medias: [
-              { role: 'start_image', value: keyframeUrl },
-              { role: 'audio',       value: audioUrl    },
-            ],
+        // ─── 2. Per scene: Soul still → Seedance i2v ────────────────────────
+        const clips = [];
+        for (let i = 0; i < scenesToRender.length; i++) {
+          const s = scenesToRender[i];
+          status.innerHTML = '<span class="row-dot running"></span> Scene ' + (i + 1) + '/' + scenesToRender.length + ' — Soul still…';
+          const soul = await callHiggsfield('scene ' + (i + 1) + ' Soul', '/higgsfield-ai/soul/standard', {
+            prompt: s.prompt,
             aspect_ratio: '9:16',
-            resolution: settings.wanResolution || '720p',
-            duration: sampleMode
-              ? 10
-              : Math.max(2, Math.min(15, Math.round((scriptForRender.split(/\s+/).filter(Boolean).length) / 140 * 60))),
-          }),
-        });
-        const subBody = await subRes.text();
-        if (!subRes.ok) {
-          throw new Error('[step 3/4 Higgsfield submit] HTTP ' + subRes.status + ': ' + subBody.slice(0, 400));
+            resolution: '720p',
+          });
+          status.innerHTML = '<span class="row-dot running"></span> Scene ' + (i + 1) + '/' + scenesToRender.length + ' — Seedance animation (' + s.seconds + 's)…';
+          const vid = await callHiggsfield('scene ' + (i + 1) + ' Seedance', '/bytedance/seedance/v1/pro/image-to-video', {
+            image_url: soul.url,
+            prompt: s.prompt,
+            duration: s.seconds,
+          });
+          clips.push({ ...s, imageUrl: soul.url, videoUrl: vid.url });
+          updateRec({ sceneClips: clips });
         }
-        let subJson; try { subJson = JSON.parse(subBody); } catch { subJson = {}; }
-        const jobId = subJson.id || subJson.request_id || subJson.generation_id || subJson.job_id;
-        if (!jobId) throw new Error('[step 3/4 Higgsfield submit] OK but no job id in body: ' + subBody.slice(0, 200));
 
-        updateRec({ status: 'running', jobId });
-        status.innerHTML = '<span class="row-dot running"></span> Render running. Polling Higgsfield (job <code>' + esc(jobId) + '</code>)…';
+        // ─── 3. Wait for voiceover ──────────────────────────────────────────
+        progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">Finalising voiceover…</div>';
+        audioUrl = await audioPromise;
 
-        // ─── 4. Poll until done ─────────────────────────────────────────────
-        const t0 = Date.now();
-        const timeoutMs = 15 * 60 * 1000;
-        let videoUrl = null;
-        while (Date.now() - t0 < timeoutMs) {
-          await new Promise(r => setTimeout(r, 8000));
-          const pollRes = await stepFetch('step 4/4 poll', CONFIG.WORKER_BASE + '/proxy/platform.higgsfield.ai/v1/generations/' + encodeURIComponent(jobId));
-          if (!pollRes.ok) {
-            const body = await pollRes.text();
-            if (pollRes.status >= 400 && pollRes.status < 500) throw new Error('[step 4/4 poll] HTTP ' + pollRes.status + ': ' + body.slice(0, 300));
-            continue;
-          }
-          const j = await pollRes.json().catch(() => ({}));
-          const st = String(j.status || '').toLowerCase();
-          const elapsed = Math.floor((Date.now() - t0) / 1000);
-          progress.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)">' + esc(st || 'queued') + ' · ' + elapsed + 's elapsed</div>';
-          if (st === 'completed' || st === 'complete' || st === 'succeeded' || st === 'done') {
-            videoUrl = j.output_url || j.url || (j.output && j.output.url) || (j.result && j.result.url) || (Array.isArray(j.assets) && j.assets[0] && j.assets[0].url);
-            if (!videoUrl) throw new Error('Render succeeded but no video URL: ' + JSON.stringify(j).slice(0, 300));
-            break;
-          }
-          if (st === 'failed' || st === 'error' || st === 'cancelled' || st === 'canceled') {
-            throw new Error('Higgsfield render failed: ' + JSON.stringify(j).slice(0, 300));
-          }
-        }
-        if (!videoUrl) throw new Error('Render timed out after 15 minutes.');
-
-        // ─── 5. Done ────────────────────────────────────────────────────────
-        updateRec({ status: 'success', videoUrl, completedAt: new Date().toISOString() });
-        status.innerHTML = '<span class="row-dot success"></span> Render complete.';
-        result.innerHTML = ''
-          + '<video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="' + esc(videoUrl) + '"></video>'
-          + '<div class="btn-row" style="margin-top:10px">'
-          + '<a class="btn btn-accent" href="' + esc(videoUrl) + '" download target="_blank" rel="noopener">⤓ Download MP4</a>'
-          + '<button class="btn" onclick="FF.go(\'publish\')">→ Publish</button>'
-          + '</div>';
+        // ─── 4. Done. Stitching ships in the next PR ────────────────────────
+        updateRec({ status: 'success', sceneClips: clips, audioUrl, completedAt: new Date().toISOString() });
+        status.innerHTML = '<span class="row-dot success"></span> ' + clips.length + ' scene' + (clips.length > 1 ? 's' : '') + ' rendered.';
+        result.innerHTML = clips.map((c, i) => ''
+            + '<div style="margin-bottom:14px">'
+            +   '<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:4px">Scene ' + (i + 1) + ' · ' + esc(String(c.seconds)) + 's</div>'
+            +   '<video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="' + esc(c.videoUrl) + '"></video>'
+            + '</div>').join('')
+          + (audioUrl
+              ? '<div style="margin-top:6px"><div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:4px">Voiceover</div><audio controls preload="metadata" style="width:100%;max-width:280px" src="' + esc(audioUrl) + '"></audio></div>'
+              : '')
+          + '<div class="banner banner-info" style="margin-top:14px">Browser-side stitching (scenes + voiceover → one MP4 with audio overlay) ships in the next PR. Download each clip + audio for now.</div>';
 
       } catch (e) {
         updateRec({ status: 'error', completedAt: new Date().toISOString(), error: e.message });
         status.innerHTML = '<span class="row-dot error"></span> Render failed.';
-        // Always show the full error, even if a partial result was rendered.
         result.innerHTML = '<div class="banner banner-error" style="word-break:break-word">' + esc(e.message) + '</div>';
       } finally {
-        render.disabled = false;
-        sampleBtn.disabled = false;
+        render.disabled = false; sampleBtn.disabled = false;
       }
     };
 
-    const sampleBtn = $('#a-render-sample');
     render.onclick = () => doRender(false);
     sampleBtn.onclick = () => doRender(true);
   }, 0);
@@ -1009,7 +1086,7 @@ PAGES.library = () => {
 
     <div class="card">
       <div class="card-title">Renders</div>
-      <div id="lib-list">${all.length === 0 ? '<div class="empty">No renders yet. Go to Avatar to create one.</div>' : ''}</div>
+      <div id="lib-list">${all.length === 0 ? '<div class="empty">No renders yet. Go to Render to create one.</div>' : ''}</div>
     </div>
   `;
 
@@ -1019,26 +1096,46 @@ PAGES.library = () => {
       const f = Storage.get('libraryFilter', 'all');
       const filtered = f === 'all' ? all : all.filter(x => x.status === f);
       if (filtered.length === 0) { list.innerHTML = '<div class="empty">No renders match "' + esc(f) + '".</div>'; return; }
-      list.innerHTML = filtered.map(x => html`
+      list.innerHTML = filtered.map(x => {
+        const clips = Array.isArray(x.sceneClips) ? x.sceneClips : [];
+        const sceneCountLabel = clips.length ? clips.length + ' scene' + (clips.length > 1 ? 's' : '') : '';
+        return html`
         <div class="row" data-id="${esc(x.id)}" style="align-items:flex-start;flex-direction:column;gap:8px">
           <div style="display:flex;align-items:center;gap:12px;width:100%">
             <div class="row-dot ${esc(x.status)}"></div>
             <div class="row-main">
               <div class="row-title">${esc((x.script || 'Render').slice(0, 80))}${x.script && x.script.length > 80 ? '…' : ''}</div>
-              <div class="row-meta">${esc(fmtDate(x.createdAt))} · ${esc(x.provider || 'wan2_7')} · ${esc(x.cost ? x.cost + ' cr' : '—')}</div>
+              <div class="row-meta">${esc(fmtDate(x.createdAt))} · ${esc(x.provider || 'cinematic')}${sceneCountLabel ? ' · ' + esc(sceneCountLabel) : ''} · ${esc(x.cost ? x.cost + ' cr' : '—')}</div>
             </div>
             <div class="row-tag">${esc((x.status || 'pending').toUpperCase())}</div>
           </div>
-          ${x.videoUrl ? html`
+          ${clips.map((c, i) => html`
+            <div style="width:100%">
+              <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:4px">Scene ${i + 1} · ${esc(String(c.seconds || 5))}s</div>
+              <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="${esc(c.videoUrl)}"></video>
+              <div class="btn-row" style="margin-top:6px">
+                <a class="btn btn-sm" href="${esc(c.videoUrl)}" download target="_blank" rel="noopener">⤓ Download</a>
+                <button class="btn btn-sm" data-copy="${esc(c.videoUrl)}">⧉ Copy URL</button>
+              </div>
+            </div>
+          `).join('')}
+          ${x.audioUrl ? html`
+            <div style="width:100%;margin-top:4px">
+              <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:4px">Voiceover</div>
+              <audio controls preload="metadata" style="width:100%;max-width:280px" src="${esc(x.audioUrl)}"></audio>
+            </div>
+          ` : ''}
+          ${x.videoUrl && !clips.length ? html`
             <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="${esc(x.videoUrl)}"></video>
             <div class="btn-row" style="width:100%">
               <a class="btn btn-sm" href="${esc(x.videoUrl)}" download target="_blank" rel="noopener">⤓ Download</a>
               <button class="btn btn-sm" data-copy="${esc(x.videoUrl)}">⧉ Copy URL</button>
             </div>
           ` : ''}
-          ${x.error ? '<div class="banner banner-error" style="margin:0;width:100%;font-size:12px">' + esc(x.error) + '</div>' : ''}
+          ${x.error ? '<div class="banner banner-error" style="margin:0;width:100%;font-size:12px;word-break:break-word">' + esc(x.error) + '</div>' : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
       list.querySelectorAll('[data-copy]').forEach(b => {
         b.onclick = async (e) => {
           e.stopPropagation();
