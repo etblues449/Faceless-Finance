@@ -1031,8 +1031,20 @@ PAGES.avatar = () => {
             aspect_ratio: '9:16',
             resolution: '720p',
           });
-          status.innerHTML = '<span class="row-dot running"></span> Scene ' + (i + 1) + '/' + scenesToRender.length + ' — Seedance animation (' + s.seconds + 's)…';
-          const vid = await callHiggsfield('scene ' + (i + 1) + ' Seedance', '/bytedance/seedance/v1/pro/image-to-video', {
+          // I2V model is configurable in Settings (default: DoP standard).
+          // Seedance v1 pro returned 404 "Model not found" on the user's API
+          // tier; DoP standard is Higgsfield's own model and confirmed live
+          // in the public docs. Kling is a paid alternative if DoP is gated.
+          const i2vEndpoint = (settings.i2vModel === 'kling')
+            ? '/kling-video/v2.1/pro/image-to-video'
+            : (settings.i2vModel === 'seedance')
+              ? '/bytedance/seedance/v1/pro/image-to-video'
+              : '/higgsfield-ai/dop/standard';
+          const i2vLabel = (settings.i2vModel === 'kling') ? 'Kling i2v'
+            : (settings.i2vModel === 'seedance') ? 'Seedance i2v'
+            : 'DoP i2v';
+          status.innerHTML = '<span class="row-dot running"></span> Scene ' + (i + 1) + '/' + scenesToRender.length + ' — ' + esc(i2vLabel) + ' (' + s.seconds + 's)…';
+          const vid = await callHiggsfield('scene ' + (i + 1) + ' ' + i2vLabel, i2vEndpoint, {
             image_url: soul.url,
             prompt: s.prompt,
             duration: s.seconds,
@@ -1333,9 +1345,21 @@ PAGES.settings = () => {
     </div>
 
     <div class="card">
-      <div class="card-title">Wan 2.7 resolution</div>
+      <div class="card-title">Image-to-video model</div>
+      <select class="input" id="set-i2vModel">
+        <option value="dop" ${(s.i2vModel || 'dop') === 'dop' ? 'selected' : ''}>DoP standard — Higgsfield's own (default)</option>
+        <option value="kling" ${s.i2vModel === 'kling' ? 'selected' : ''}>Kling v2.1 Pro — alternative</option>
+        <option value="seedance" ${s.i2vModel === 'seedance' ? 'selected' : ''}>Seedance v1 Pro — Bytedance (may be gated)</option>
+      </select>
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.5;margin-top:6px">
+        Each scene's Soul still feeds into this model to make the animated clip. Switch if one returns "Model not found" or "not enough credits" on your tier.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Wan 2.7 resolution (legacy)</div>
       <select class="input" id="set-wanResolution">
-        <option value="720p" ${(s.wanResolution || '720p') === '720p' ? 'selected' : ''}>720p — ~22 cr / 15s (recommended for TikTok)</option>
+        <option value="720p" ${(s.wanResolution || '720p') === '720p' ? 'selected' : ''}>720p — ~22 cr / 15s</option>
         <option value="1080p" ${s.wanResolution === '1080p' ? 'selected' : ''}>1080p — ~37 cr / 15s</option>
       </select>
     </div>
@@ -1376,6 +1400,7 @@ PAGES.settings = () => {
         keyframeUrl:         $('#set-keyframeUrl').value.trim(),
         characterBible:      $('#set-characterBible').value.trim(),
         wanResolution:       $('#set-wanResolution').value,
+        i2vModel:            $('#set-i2vModel').value,
       };
       set({ settings: next });
       const saved = $('#set-saved'); saved.style.opacity = '1';
