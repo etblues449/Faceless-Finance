@@ -1,0 +1,44 @@
+name: Deploy Worker
+
+# Builds and PROMOTES the Cloudflare Worker on every push to main that touches
+# worker/. Cloudflare's dashboard git-integration builds new versions but
+# leaves them un-promoted (you have to click "Deploy this version"), which
+# caused PR #110 to merge without going live. wrangler deploy promotes to
+# 100% traffic, so a merge here = the change is actually serving requests.
+#
+# REQUIRED GitHub secret:
+#   CLOUDFLARE_API_TOKEN  - scoped "Edit Cloudflare Workers" on the
+#                           fincast-worker account. Create at:
+#                           https://dash.cloudflare.com/profile/api-tokens
+#                           (Use the "Edit Cloudflare Workers" template.)
+# REQUIRED GitHub variable (or secret):
+#   CLOUDFLARE_ACCOUNT_ID - your Cloudflare account ID (Workers & Pages page,
+#                           right sidebar). Safe as a variable, not a secret.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy via wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'worker'
+          command: deploy
