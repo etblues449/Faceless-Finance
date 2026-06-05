@@ -1237,6 +1237,11 @@ PAGES.library = () => {
           <button class="btn btn-sm ${filter === f ? 'btn-accent' : ''}" data-filter="${f}">${esc(f.toUpperCase())}</button>
         `).join('')}
       </div>
+      ${all.filter(x => x.status === 'error').length > 0 ? html`
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-sm" id="lib-clear-errors">🗑 Clear ${all.filter(x => x.status === 'error').length} error${all.filter(x => x.status === 'error').length > 1 ? 's' : ''}</button>
+        </div>
+      ` : ''}
     </div>
 
     <div class="card">
@@ -1263,6 +1268,7 @@ PAGES.library = () => {
               <div class="row-meta">${esc(fmtDate(x.createdAt))} · ${esc(x.provider || 'cinematic')}${sceneCountLabel ? ' · ' + esc(sceneCountLabel) : ''} · ${esc(x.cost ? x.cost + ' cr' : '—')}</div>
             </div>
             <div class="row-tag">${esc((x.status || 'pending').toUpperCase())}</div>
+            <button class="btn btn-sm" data-delete="${esc(x.id)}" title="Delete render" style="padding:4px 10px;line-height:1;min-width:auto">✕</button>
           </div>
           ${clips.map((c, i) => html`
             <div style="width:100%">
@@ -1298,6 +1304,24 @@ PAGES.library = () => {
           catch { alert('Copy failed.'); }
         };
       });
+      list.querySelectorAll('[data-delete]').forEach(b => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          if (!confirm('Delete this render? Cannot be undone.')) return;
+          const id = b.dataset.delete;
+          set({ renders: (State.renders || []).filter(x => x.id !== id) });
+          go('library');
+        };
+      });
+    };
+
+    const clearErrBtn = $('#lib-clear-errors');
+    if (clearErrBtn) clearErrBtn.onclick = () => {
+      const errs = (State.renders || []).filter(x => x.status === 'error');
+      if (!errs.length) return;
+      if (!confirm('Delete ' + errs.length + ' error render' + (errs.length > 1 ? 's' : '') + '? Cannot be undone.')) return;
+      set({ renders: (State.renders || []).filter(x => x.status !== 'error') });
+      go('library');
     };
 
     el.querySelectorAll('[data-filter]').forEach(b => {
