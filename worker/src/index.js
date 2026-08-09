@@ -67,6 +67,26 @@ const ALLOWED_HOSTS = new Set([
   'api.dev.runwayml.com',              // Runway Developer API (Gen-4 Turbo image-to-video)
 ]);
 
+// Media-download CDNs (generation OUTPUTS: the finished clips/images/audio).
+// These get GET/HEAD-only passthrough with CORS so the browser can fetch the
+// bytes back for ffmpeg.wasm stitching. Matched by host SUFFIX because the
+// exact subdomain is unpredictable (Runway hands out random *.cloudfront.net
+// hosts; fal uses *.fal.media). No secret injection ever runs for these — they
+// are unauthenticated signed URLs — and non-GET methods are refused, so this
+// stays a read-only media fetch, not a general open proxy.
+const MEDIA_HOST_SUFFIXES = [
+  '.cloudfront.net',       // Runway Gen-4 output CDN
+  '.fal.media',            // fal (Veo / Seedance) output CDN
+  '.amazonaws.com',        // S3 presigned output URLs (any region/bucket)
+  '.blob.core.windows.net',// Azure blob (some providers)
+  '.googleapis.com',       // Google (Veo) output storage
+  '.higgsfield.ai',        // Higgsfield Soul still / clip output
+];
+
+function isMediaHost(host) {
+  return MEDIA_HOST_SUFFIXES.some(suffix => host === suffix.slice(1) || host.endsWith(suffix));
+}
+
 // ── Design A: server-side key injection ──────────────────────────────────────
 // Generation keys live ONLY as Worker secrets (`wrangler secret put`). For these
 // hosts the Worker injects the real credential and DROPS whatever the browser
@@ -114,7 +134,12 @@ async function handleProxy(request, env, parts) {
   // Also supports query string passthrough.
   if (parts.length < 2) return error(env, request, 'proxy requires /proxy/<host>/<path>', 400);
   const targetHost = parts[1];
-  if (!ALLOWED_HOSTS.has(targetHost)) {
+  // A host qualifies if it's an explicitly-managed API host, OR a media-output
+  // CDN fetched read-only (GET/HEAD). The latter is how the stitcher pulls the
+  // finished clips back into the browser without hitting a CORS wall.
+  const isGetLike = request.method === 'GET' || request.method === 'HEAD';
+  const mediaAllowed = isGetLike && isMediaHost(targetHost);
+  if (!ALLOWED_HOSTS.has(targetHost) && !mediaAllowed) {
     return error(env, request, `proxy: host '${targetHost}' not in allowlist`, 403);
   }
   // Require the shared proxy token (when configured) so the injected keys can't
