@@ -1273,7 +1273,9 @@ PAGES.library = () => {
           ${clips.map((c, i) => html`
             <div style="width:100%">
               <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:4px">Scene ${i + 1} · ${esc(String(c.seconds || 5))}s</div>
-              <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="${esc(c.videoUrl)}"></video>
+              <div class="video-slot" data-video="${esc(c.videoUrl)}" style="width:100%;max-width:280px;aspect-ratio:9/16;border-radius:8px;background:#000;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative">
+                <div style="color:#fff;font-size:13px;font-family:var(--mono);opacity:.85;text-align:center;pointer-events:none">▶ Tap to play<br><span style="font-size:11px;opacity:.6">Scene ${i + 1}</span></div>
+              </div>
               <div class="btn-row" style="margin-top:6px">
                 <a class="btn btn-sm" href="${esc(c.videoUrl)}" download target="_blank" rel="noopener">⤓ Download</a>
                 <button class="btn btn-sm" data-copy="${esc(c.videoUrl)}">⧉ Copy URL</button>
@@ -1287,7 +1289,9 @@ PAGES.library = () => {
             </div>
           ` : ''}
           ${x.videoUrl && !clips.length ? html`
-            <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="${esc(x.videoUrl)}"></video>
+            <div class="video-slot" data-video="${esc(x.videoUrl)}" style="width:100%;max-width:280px;aspect-ratio:9/16;border-radius:8px;background:#000;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative">
+              <div style="color:#fff;font-size:13px;font-family:var(--mono);opacity:.85;pointer-events:none">▶ Tap to play</div>
+            </div>
             <div class="btn-row" style="width:100%">
               <a class="btn btn-sm" href="${esc(x.videoUrl)}" download target="_blank" rel="noopener">⤓ Download</a>
               <button class="btn btn-sm" data-copy="${esc(x.videoUrl)}">⧉ Copy URL</button>
@@ -1302,6 +1306,27 @@ PAGES.library = () => {
           e.stopPropagation();
           try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = '✓ Copied'; setTimeout(() => b.textContent = '⧉ Copy URL', 1200); }
           catch { alert('Copy failed.'); }
+        };
+      });
+      // Tap-to-load video: mobile browsers show a broken placeholder for a
+      // cross-origin <video> that auto-loads before any user gesture. Defer
+      // the load to the tap — the gesture lets the browser fetch + play it.
+      list.querySelectorAll('.video-slot[data-video]').forEach(slot => {
+        slot.onclick = (e) => {
+          e.stopPropagation();
+          const url = slot.dataset.video;
+          if (!url || slot.querySelector('video')) return;
+          slot.innerHTML = '';
+          slot.style.cursor = 'default';
+          const v = document.createElement('video');
+          v.controls = true; v.playsInline = true; v.setAttribute('webkit-playsinline', '');
+          v.preload = 'auto';
+          v.style.cssText = 'width:100%;height:100%;border-radius:8px;background:#000';
+          v.src = url;
+          slot.appendChild(v);
+          v.load();
+          const p = v.play();
+          if (p && p.catch) p.catch(() => {}); // if autoplay blocked, native controls still work
         };
       });
       list.querySelectorAll('[data-delete]').forEach(b => {
@@ -1350,7 +1375,9 @@ PAGES.publish = () => {
     ${lastSuccess && lastSuccess.videoUrl ? html`
       <div class="card glow">
         <div class="card-title">Most recent render — ready to publish</div>
-        <video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000;margin-bottom:10px" src="${esc(lastSuccess.videoUrl)}"></video>
+        <div class="video-slot" data-video="${esc(lastSuccess.videoUrl)}" style="width:100%;max-width:280px;aspect-ratio:9/16;border-radius:8px;background:#000;margin-bottom:10px;display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <div style="color:#fff;font-size:13px;font-family:var(--mono);opacity:.85;pointer-events:none">▶ Tap to play</div>
+        </div>
         <div class="btn-row">
           <a class="btn btn-accent" href="${esc(lastSuccess.videoUrl)}" download target="_blank" rel="noopener">⤓ Download MP4</a>
           <a class="btn" href="https://www.tiktok.com/upload" target="_blank" rel="noopener">↗ Open TikTok upload</a>
@@ -1435,6 +1462,21 @@ PAGES.publish = () => {
     };
     const cc = $('#p-copy-caption'); cc.dataset.orig = cc.textContent; cc.onclick = copyOf('#p-caption', cc);
     const cp = $('#p-copy-pinned');  cp.dataset.orig = cp.textContent; cp.onclick = copyOf('#p-pinned', cp);
+
+    // Tap-to-load video (same rationale as the Library player)
+    el.querySelectorAll('.video-slot[data-video]').forEach(slot => {
+      slot.onclick = () => {
+        const url = slot.dataset.video;
+        if (!url || slot.querySelector('video')) return;
+        slot.innerHTML = ''; slot.style.cursor = 'default';
+        const v = document.createElement('video');
+        v.controls = true; v.playsInline = true; v.setAttribute('webkit-playsinline', '');
+        v.preload = 'auto';
+        v.style.cssText = 'width:100%;height:100%;border-radius:8px;background:#000';
+        v.src = url; slot.appendChild(v); v.load();
+        const p = v.play(); if (p && p.catch) p.catch(() => {});
+      };
+    });
   }, 0);
 
   return el;
