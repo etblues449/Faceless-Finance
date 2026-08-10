@@ -439,6 +439,115 @@ function renderTabs() {
   });
 }
 
+// ─── STITCH (ffmpeg.wasm, browser-side) ─────────────────────────────────────
+// Concatenates the scene clips and overlays the ElevenLabs voiceover into one
+// 9:16 MP4, entirely in the browser. Needs cross-origin isolation (the COI
+// service worker supplies COOP/COEP so SharedArrayBuffer is available). ffmpeg
+// core + wrapper load lazily from a CDN on first use; both base URLs are
+// overridable (window.__FFMPEG_BASE__ / __FFMPEG_CORE_BASE__) so tests can
+// serve them same-origin.
+const FFMPEG_VER = { ffmpeg: '0.12.15', core: '0.12.10' };
+let _ffmpegPromise = null;
+
+function ffLoadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+// Inlined replacements for @ffmpeg/util (whose UMD build isn't browser-self-
+// contained — it require()s a sibling module — so we don't depend on it).
+async function ffToBlobURL(url, type) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  return URL.createObjectURL(new Blob([buf], { type }));
+}
+async function ffFetchFile(url) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+async function getFFmpeg(onLog) {
+  if (_ffmpegPromise) return _ffmpegPromise;
+  _ffmpegPromise = (async () => {
+    if (!self.crossOriginIsolated) {
+      throw new Error('This browser tab is not cross-origin isolated, so stitching can’t run. Fully reload the page once (the COI service worker needs a reload to take effect) and try again.');
+    }
+    const base = window.__FFMPEG_BASE__ || 'https://unpkg.com/@ffmpeg';
+    if (!window.FFmpegWASM) await ffLoadScript(base + '/ffmpeg@' + FFMPEG_VER.ffmpeg + '/dist/umd/ffmpeg.js');
+    const { FFmpeg } = window.FFmpegWASM;
+    const ff = new FFmpeg();
+    if (onLog) ff.on('log', ({ message }) => onLog(message));
+    const coreBase = window.__FFMPEG_CORE_BASE__ || ('https://unpkg.com/@ffmpeg/core@' + FFMPEG_VER.core + '/dist/umd');
+    await ff.load({
+      coreURL: await ffToBlobURL(coreBase + '/ffmpeg-core.js', 'text/javascript'),
+      wasmURL: await ffToBlobURL(coreBase + '/ffmpeg-core.wasm', 'application/wasm'),
+    });
+    return ff;
+  })();
+  return _ffmpegPromise;
+}
+
+// Route a cross-origin media URL through the Worker media proxy so the browser
+// can read its bytes (generation CDNs don't send CORS headers). Same-origin
+// URLs (test fixtures, the Worker's own /audio host) pass straight through.
+function mediaFetchUrl(url) {
+  try {
+    const u = new URL(url, location.href);
+    if (u.host === location.host) return u.href;
+    if (url.startsWith(CONFIG.WORKER_BASE)) return url;
+    return CONFIG.WORKER_BASE + '/proxy/' + u.host + u.pathname + u.search;
+  } catch { return url; }
+}
+
+// Stitch one render record → object URL of the finished MP4. onProgress(msg) is
+// called with human-readable step labels.
+async function stitchRender(rec, onProgress) {
+  const clips = (rec.sceneClips || []).filter(c => c && c.videoUrl);
+  if (!clips.length) throw new Error('No scene clips to stitch.');
+  const step = (m) => { if (onProgress) onProgress(m); };
+  const ff = await getFFmpeg();
+  const fetchFile = ffFetchFile;
+
+  // 1. Fetch every clip into ffmpeg's virtual FS.
+  for (let i = 0; i < clips.length; i++) {
+    step('Fetching scene ' + (i + 1) + '/' + clips.length + '…');
+    const data = await fetchFile(mediaFetchUrl(clips[i].videoUrl));
+    await ff.writeFile('c' + i + '.mp4', data);
+  }
+
+  // 2. Normalise each clip to identical params (concat demuxer needs uniform
+  //    codec/res/fps/pixfmt/SAR). 1080x1920 9:16, 30fps, yuv420p, no audio.
+  const normed = [];
+  for (let i = 0; i < clips.length; i++) {
+    step('Normalising scene ' + (i + 1) + '/' + clips.length + '…');
+    const out = 'n' + i + '.mp4';
+    await ff.exec(['-i', 'c' + i + '.mp4',
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30',
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', out]);
+    normed.push(out);
+  }
+
+  // 3. Concatenate.
+  step('Joining scenes…');
+  await ff.writeFile('list.txt', new TextEncoder().encode(normed.map(n => "file '" + n + "'").join('\n')));
+  await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', 'joined.mp4']);
+
+  // 4. Overlay voiceover if present. -shortest trims to whichever ends first.
+  let outName = 'joined.mp4';
+  if (rec.audioUrl) {
+    step('Adding voiceover…');
+    await ff.writeFile('vo.mp3', await fetchFile(mediaFetchUrl(rec.audioUrl)));
+    await ff.exec(['-i', 'joined.mp4', '-i', 'vo.mp3', '-c:v', 'copy', '-c:a', 'aac', '-shortest', 'final.mp4']);
+    outName = 'final.mp4';
+  }
+
+  step('Finalising…');
+  const data = await ff.readFile(outName);
+  return URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+}
+
 // ─── PAGES ────────────────────────────────────────────────────────────────────
 const PAGES = {};
 
@@ -1297,10 +1406,45 @@ PAGES.library = () => {
               <button class="btn btn-sm" data-copy="${esc(x.videoUrl)}">⧉ Copy URL</button>
             </div>
           ` : ''}
+          ${x.status === 'success' && clips.length ? html`
+            <div style="width:100%;margin-top:4px">
+              <button class="btn btn-sm btn-accent" data-stitch="${esc(x.id)}">⧉ Stitch into one MP4${clips.length > 1 ? ' (' + clips.length + ' scenes' + (x.audioUrl ? ' + voiceover)' : ')') : (x.audioUrl ? ' + voiceover' : '')}</button>
+              <div class="stitch-out" data-stitch-out="${esc(x.id)}" style="margin-top:8px"></div>
+            </div>
+          ` : ''}
           ${x.error ? '<div class="banner banner-error" style="margin:0;width:100%;font-size:12px;word-break:break-word">' + esc(x.error) + '</div>' : ''}
         </div>
       `;
       }).join('');
+      list.querySelectorAll('[data-stitch]').forEach(b => {
+        b.onclick = async (e) => {
+          e.stopPropagation();
+          const id = b.dataset.stitch;
+          const rec = (State.renders || []).find(r => r.id === id);
+          const out = list.querySelector('[data-stitch-out="' + CSS.escape(id) + '"]');
+          if (!rec || !out) return;
+          b.disabled = true;
+          const orig = b.textContent;
+          const setMsg = (m) => { out.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text-dim)"><span class="row-dot running"></span> ' + esc(m) + '</div>'; };
+          setMsg('Loading video engine…');
+          try {
+            const url = await stitchRender(rec, setMsg);
+            out.innerHTML = ''
+              + '<video controls playsinline preload="metadata" style="width:100%;max-width:280px;border-radius:8px;background:#000" src="' + url + '"></video>'
+              + '<div class="btn-row" style="margin-top:6px">'
+              +   '<a class="btn btn-sm btn-accent" href="' + url + '" download="faceless-finance.mp4">⤓ Download MP4</a>'
+              +   '<a class="btn btn-sm" href="https://www.tiktok.com/upload" target="_blank" rel="noopener">↗ TikTok upload</a>'
+              + '</div>'
+              + '<div class="banner banner-info" style="margin-top:8px;font-size:11px">Stitched in your browser. Download it, then upload to TikTok. (Auto-publish + on-screen FCA card come next.)</div>';
+            b.textContent = '✓ Stitched — re-stitch';
+          } catch (err) {
+            out.innerHTML = '<div class="banner banner-error" style="font-size:12px;word-break:break-word">' + esc(err.message) + '</div>';
+            b.textContent = orig;
+          } finally {
+            b.disabled = false;
+          }
+        };
+      });
       list.querySelectorAll('[data-copy]').forEach(b => {
         b.onclick = async (e) => {
           e.stopPropagation();
